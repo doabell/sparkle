@@ -1,3 +1,9 @@
+// Portions of the Discord presence integration were adapted from DiscordBee:
+// https://github.com/sll552/DiscordBee
+// Those adapted portions are licensed under Apache-2.0 and have been modified
+// substantially for Sparkle. Sparkle's Catbox artwork integration and related
+// changes are original Sparkle work. See THIRD_PARTY_NOTICES.md.
+
 use crate::cache;
 use crate::models::{PlaybackState, Track};
 use crate::settings;

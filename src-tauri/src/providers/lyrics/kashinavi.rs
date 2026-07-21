@@ -1,3 +1,8 @@
+// Portions adapted from mb_KashiNaviLyricsPlugin:
+// https://github.com/noriokun4649/mb_KashiNaviLyricsPlugin
+// MIT-licensed source, modified substantially for Sparkle. See
+// THIRD_PARTY_NOTICES.md.
+
 use crate::models::Lyrics;
 use regex::Regex;
 use reqwest::blocking::Client;
