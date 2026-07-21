@@ -1,3 +1,9 @@
+// Portions adapted from MusicBee-QQLyrics, which is derived from
+// MusicBee-NeteaseLyrics:
+// https://github.com/mslxl/MusicBee-QQLyrics
+// The adapted portions are licensed under Apache-2.0 and have been modified
+// substantially for Sparkle. See THIRD_PARTY_NOTICES.md.
+
 use crate::models::Lyrics;
 use base64::Engine;
 use regex::Regex;

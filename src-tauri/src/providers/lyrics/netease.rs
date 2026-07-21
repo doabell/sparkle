@@ -1,3 +1,8 @@
+// Portions adapted from MusicBee-NeteaseLyrics and its NetEase implementation:
+// https://github.com/cqjjjzr/MusicBee-NeteaseLyrics
+// The adapted portions are licensed under Apache-2.0 and have been modified
+// substantially for Sparkle. See THIRD_PARTY_NOTICES.md.
+
 use crate::models::Lyrics;
 use aes::cipher::block_padding::Pkcs7;
 use aes::cipher::generic_array::GenericArray;

@@ -1396,6 +1396,65 @@
                             </label>
                         </div>
                     {/if}
+                    <div class="debug-row debug-row-toggle">
+                        <div class="debug-toggle-copy">
+                            <span class="debug-label">Third-party licenses</span
+                            >
+                            <span class="debug-description">
+                                Sparkle includes adapted open-source components.
+                            </span>
+                        </div>
+                    </div>
+                    <div class="third-party-notices">
+                        <p class="hint">
+                            Sparkle's own code is MIT-licensed. Adapted upstream
+                            projects:
+                        </p>
+                        <ul>
+                            <li>
+                                <a
+                                    href="https://github.com/cqjjjzr/MusicBee-NeteaseLyrics"
+                                    target="_blank"
+                                    rel="noreferrer">MusicBee-NeteaseLyrics</a
+                                > — Apache-2.0
+                            </li>
+                            <li>
+                                <a
+                                    href="https://github.com/mslxl/MusicBee-QQLyrics"
+                                    target="_blank"
+                                    rel="noreferrer">MusicBee-QQLyrics</a
+                                > — Apache-2.0
+                            </li>
+                            <li>
+                                <a
+                                    href="https://github.com/real-zony/ZonyLrcToolsX"
+                                    target="_blank"
+                                    rel="noreferrer">ZonyLrcToolsX</a
+                                > — MIT
+                            </li>
+                            <li>
+                                <a
+                                    href="https://github.com/noriokun4649/mb_KashiNaviLyricsPlugin"
+                                    target="_blank"
+                                    rel="noreferrer">mb_KashiNaviLyricsPlugin</a
+                                > — MIT
+                            </li>
+                            <li>
+                                <a
+                                    href="https://github.com/htsign/MusicBeePluginTemplate"
+                                    target="_blank"
+                                    rel="noreferrer">MusicBeePluginTemplate</a
+                                > — MIT
+                            </li>
+                            <li>
+                                <a
+                                    href="https://github.com/sll552/DiscordBee"
+                                    target="_blank"
+                                    rel="noreferrer">DiscordBee</a
+                                > — Apache-2.0
+                            </li>
+                        </ul>
+                    </div>
                 </div>
             {:else}
                 <p class="hint">Debug info unavailable.</p>
