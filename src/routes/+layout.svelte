@@ -277,16 +277,6 @@
                 event.preventDefault();
                 setVolume(Math.max(0, $playback.volume - VOLUME_STEP));
                 break;
-            case "n":
-            case "N":
-                event.preventDefault();
-                nextTrack();
-                break;
-            case "p":
-            case "P":
-                event.preventDefault();
-                previousTrack();
-                break;
         }
     }
 
