@@ -1,0 +1,47 @@
+{
+    "name": "sparkle",
+    "version": "0.1.0",
+    "description": "A local-first music player for your own library.",
+    "private": true,
+    "author": "doabell",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/doabell/sparkle.git"
+    },
+    "homepage": "https://github.com/doabell/sparkle#readme",
+    "bugs": {
+        "url": "https://github.com/doabell/sparkle/issues"
+    },
+    "type": "module",
+    "scripts": {
+        "dev": "vite dev",
+        "build": "vite build",
+        "preview": "vite preview",
+        "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+        "test": "node --test --experimental-strip-types test/scrollRestore.test.ts test/scrollback.test.ts test/songIndex.test.ts test/artists.test.ts test/searchHistory.test.ts test/windowTitle.test.ts",
+        "format": "prettier --write . && cargo fmt --manifest-path src-tauri/Cargo.toml",
+        "format:check": "prettier --check . && cargo fmt --check --manifest-path src-tauri/Cargo.toml",
+        "version:check": "node scripts/check-version.mjs",
+        "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+        "tauri": "tauri"
+    },
+    "license": "MIT",
+    "dependencies": {
+        "@tauri-apps/api": "^2",
+        "@tauri-apps/plugin-dialog": "^2",
+        "@tauri-apps/plugin-opener": "^2",
+        "tauri-plugin-media-api": "^0.1.1"
+    },
+    "devDependencies": {
+        "@sveltejs/adapter-static": "^3.0.6",
+        "@sveltejs/kit": "^2.9.0",
+        "@sveltejs/vite-plugin-svelte": "^5.0.0",
+        "@tauri-apps/cli": "^2",
+        "prettier": "^3.9.5",
+        "prettier-plugin-svelte": "^4.1.1",
+        "svelte": "^5.0.0",
+        "svelte-check": "^4.0.0",
+        "typescript": "~5.6.2",
+        "vite": "^6.0.3"
+    }
+}

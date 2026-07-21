@@ -1,0 +1,59 @@
+[package]
+name = "sparkle"
+version = "0.1.0"
+description = "A local-first music player for your own library."
+authors = ["doabell"]
+edition = "2021"
+rust-version = "1.89"
+license = "MIT"
+repository = "https://github.com/doabell/sparkle"
+homepage = "https://github.com/doabell/sparkle"
+readme = "../README.md"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "sparkle_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+flate2 = "1"
+lofty = { version = "0.24.0", features = ["serde"] }
+rodio = "0.22.2"
+rusqlite = { version = "0.35.0", features = ["bundled"] }
+reqwest = { version = "0.13.4", features = ["json", "blocking", "query", "form", "multipart", "cookies"] }
+tokio = { version = "1.51.0", features = ["rt-multi-thread", "macros", "fs", "time"] }
+regex = "1"
+base64 = "0.22.1"
+discord-rich-presence = "1.1.0"
+image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "jpeg", "png", "webp"] }
+md-5 = "0.11.0"
+encoding_rs = "0.8.35"
+aes = "0.8"
+cbc = "0.1"
+num-bigint = "0.5.1"
+num-traits = "0.2.19"
+tauri-plugin-media = "0.1.1"
+log = "0.4"
+tauri-plugin-log = "2"
+
+[patch.crates-io]
+# The upstream Windows adapter enables MediaPlayer's automatic command manager
+# while also installing a manual ButtonPressed handler. Sparkle needs the
+# manual handler to route controls to its own audio engine.
+tauri-plugin-media = { path = "patches/tauri-plugin-media" }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Graphics_GdiPlus"] }
