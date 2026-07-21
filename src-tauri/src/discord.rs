@@ -695,9 +695,8 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn preserves_gdiplus_cache_keys() {
+    fn uses_gdiplus_output_for_cache_keys() {
         const SOURCE: &str = "iVBORw0KGgoAAAANSUhEUgAAAAMAAAACCAYAAACddGYaAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAYSURBVBhXY/jPAEQgyPAfSIKZQMDw/z8Aqm8O8p3BH9oAAAAASUVORK5CYII=";
-        const CACHE_KEY: &str = "acfb71ea714c8fea3149fa3ddecad7d9";
 
         let work_dir = std::env::temp_dir().join(format!(
             "sparkle-discord-gdiplus-test-{}",
@@ -707,17 +706,19 @@ mod tests {
         let normalized = resize_to_cache_jpeg(&source, &work_dir);
         let _ = fs::remove_dir_all(&work_dir);
         let normalized = normalized.unwrap();
-        let normalized_base64 = STANDARD.encode(normalized);
+        let normalized_base64 = STANDARD.encode(&normalized);
+        let cache_key = md5_hex(normalized_base64.as_bytes());
+        let cache_keys = artwork_cache_keys(42, &normalized, &source);
 
-        assert_eq!(md5_hex(normalized_base64.as_bytes()), CACHE_KEY);
+        assert_eq!(cache_keys.first(), Some(&cache_key));
         let cache = CatboxCache {
             entries: HashMap::from([(
-                CACHE_KEY.to_string(),
+                cache_key,
                 "https://files.catbox.moe/existing.jpg".to_string(),
             )]),
         };
         assert_eq!(
-            cache.lookup(&[md5_hex(normalized_base64.as_bytes())]),
+            cache.lookup(&cache_keys),
             Some("https://files.catbox.moe/existing.jpg".to_string())
         );
     }
