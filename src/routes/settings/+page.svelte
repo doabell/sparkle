@@ -49,7 +49,6 @@
         { keys: "Space", action: "Play / pause" },
         { keys: "\u2190 / \u2192", action: "Seek \u00b15 s" },
         { keys: "Ctrl+\u2190 / Ctrl+\u2192", action: "Previous / next track" },
-        { keys: "N / P", action: "Next / previous track" },
         { keys: "\u2191 / \u2193", action: "Volume \u00b15%" },
     ];
 
