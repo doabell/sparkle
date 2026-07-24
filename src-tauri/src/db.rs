@@ -151,9 +151,9 @@ CREATE INDEX IF NOT EXISTS idx_play_history_started ON play_history(started_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_play_history_event
     ON play_history(track_id, started_at, played_ms);
 
--- Uploaded Catbox artwork is user-owned presence metadata. It deliberately
+-- Uploaded Discord artwork is user-owned presence metadata. It deliberately
 -- lives outside normal cache cleanup so clearing/refetching album art cannot
--- cause repeat uploads to Catbox.
+-- cause repeat uploads to the configured artwork store.
 CREATE TABLE IF NOT EXISTS discord_artwork_cache (
     cache_key TEXT NOT NULL PRIMARY KEY,
     url TEXT NOT NULL,

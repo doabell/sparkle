@@ -18,6 +18,14 @@ const ACCENT_COLOR_KEY: &str = "accent_color";
 const DISCORD_ENABLED_KEY: &str = "discord_enabled";
 const DISCORD_APP_ID_KEY: &str = "discord_app_id";
 const DISCORD_CATBOX_USER_HASH_KEY: &str = "discord_catbox_user_hash";
+const DISCORD_ARTWORK_S3_ENDPOINT_KEY: &str = "discord_artwork_s3_endpoint";
+const DISCORD_ARTWORK_S3_BUCKET_KEY: &str = "discord_artwork_s3_bucket";
+const DISCORD_ARTWORK_S3_PUBLIC_URL_KEY: &str = "discord_artwork_s3_public_url";
+const DISCORD_ARTWORK_S3_ACCESS_KEY_KEY: &str = "discord_artwork_s3_access_key";
+const DISCORD_ARTWORK_S3_SECRET_KEY_KEY: &str = "discord_artwork_s3_secret_key";
+const DISCORD_ARTWORK_S3_SESSION_TOKEN_KEY: &str = "discord_artwork_s3_session_token";
+const DISCORD_ARTWORK_S3_REGION_KEY: &str = "discord_artwork_s3_region";
+const DISCORD_ARTWORK_S3_PREFIX_KEY: &str = "discord_artwork_s3_prefix";
 const DEBUG_LOGGING_ENABLED_KEY: &str = "debug_logging_enabled";
 const SESSION_SNAPSHOT_KEY: &str = "session.snapshot";
 
@@ -180,6 +188,22 @@ pub struct Settings {
     pub discord_app_id: String,
     #[serde(default = "default_discord_catbox_user_hash")]
     pub discord_catbox_user_hash: String,
+    #[serde(default)]
+    pub discord_artwork_s3_endpoint: String,
+    #[serde(default)]
+    pub discord_artwork_s3_bucket: String,
+    #[serde(default)]
+    pub discord_artwork_s3_public_url: String,
+    #[serde(default)]
+    pub discord_artwork_s3_access_key: String,
+    #[serde(default)]
+    pub discord_artwork_s3_secret_key: String,
+    #[serde(default)]
+    pub discord_artwork_s3_session_token: String,
+    #[serde(default)]
+    pub discord_artwork_s3_region: String,
+    #[serde(default)]
+    pub discord_artwork_s3_prefix: String,
     #[serde(default = "default_debug_logging_enabled")]
     pub debug_logging_enabled: bool,
     #[serde(default = "default_lyrics_sources")]
@@ -207,6 +231,14 @@ impl Default for Settings {
             discord_enabled: default_discord_enabled(),
             discord_app_id: default_discord_app_id(),
             discord_catbox_user_hash: default_discord_catbox_user_hash(),
+            discord_artwork_s3_endpoint: String::new(),
+            discord_artwork_s3_bucket: String::new(),
+            discord_artwork_s3_public_url: String::new(),
+            discord_artwork_s3_access_key: String::new(),
+            discord_artwork_s3_secret_key: String::new(),
+            discord_artwork_s3_session_token: String::new(),
+            discord_artwork_s3_region: String::new(),
+            discord_artwork_s3_prefix: String::new(),
             debug_logging_enabled: default_debug_logging_enabled(),
             lyrics_sources: default_lyrics_sources(),
             artist_info_sources: default_artist_info_sources(),
@@ -274,6 +306,34 @@ pub fn load_settings(conn: &Connection) -> Result<Settings, String> {
             DISCORD_CATBOX_USER_HASH_KEY,
             default_discord_catbox_user_hash(),
         )?,
+        discord_artwork_s3_endpoint: load_json(
+            conn,
+            DISCORD_ARTWORK_S3_ENDPOINT_KEY,
+            String::new(),
+        )?,
+        discord_artwork_s3_bucket: load_json(conn, DISCORD_ARTWORK_S3_BUCKET_KEY, String::new())?,
+        discord_artwork_s3_public_url: load_json(
+            conn,
+            DISCORD_ARTWORK_S3_PUBLIC_URL_KEY,
+            String::new(),
+        )?,
+        discord_artwork_s3_access_key: load_json(
+            conn,
+            DISCORD_ARTWORK_S3_ACCESS_KEY_KEY,
+            String::new(),
+        )?,
+        discord_artwork_s3_secret_key: load_json(
+            conn,
+            DISCORD_ARTWORK_S3_SECRET_KEY_KEY,
+            String::new(),
+        )?,
+        discord_artwork_s3_session_token: load_json(
+            conn,
+            DISCORD_ARTWORK_S3_SESSION_TOKEN_KEY,
+            String::new(),
+        )?,
+        discord_artwork_s3_region: load_json(conn, DISCORD_ARTWORK_S3_REGION_KEY, String::new())?,
+        discord_artwork_s3_prefix: load_json(conn, DISCORD_ARTWORK_S3_PREFIX_KEY, String::new())?,
         debug_logging_enabled: load_json(
             conn,
             DEBUG_LOGGING_ENABLED_KEY,
@@ -318,6 +378,46 @@ pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<(), Strin
     )?;
     save_json(
         conn,
+        DISCORD_ARTWORK_S3_ENDPOINT_KEY,
+        &settings.discord_artwork_s3_endpoint,
+    )?;
+    save_json(
+        conn,
+        DISCORD_ARTWORK_S3_BUCKET_KEY,
+        &settings.discord_artwork_s3_bucket,
+    )?;
+    save_json(
+        conn,
+        DISCORD_ARTWORK_S3_PUBLIC_URL_KEY,
+        &settings.discord_artwork_s3_public_url,
+    )?;
+    save_json(
+        conn,
+        DISCORD_ARTWORK_S3_ACCESS_KEY_KEY,
+        &settings.discord_artwork_s3_access_key,
+    )?;
+    save_json(
+        conn,
+        DISCORD_ARTWORK_S3_SECRET_KEY_KEY,
+        &settings.discord_artwork_s3_secret_key,
+    )?;
+    save_json(
+        conn,
+        DISCORD_ARTWORK_S3_SESSION_TOKEN_KEY,
+        &settings.discord_artwork_s3_session_token,
+    )?;
+    save_json(
+        conn,
+        DISCORD_ARTWORK_S3_REGION_KEY,
+        &settings.discord_artwork_s3_region,
+    )?;
+    save_json(
+        conn,
+        DISCORD_ARTWORK_S3_PREFIX_KEY,
+        &settings.discord_artwork_s3_prefix,
+    )?;
+    save_json(
+        conn,
         DEBUG_LOGGING_ENABLED_KEY,
         &settings.debug_logging_enabled,
     )?;
@@ -348,6 +448,10 @@ mod tests {
         settings.monitored_folders.push("C:\\Music".to_string());
         settings.artist_split_regex = "foo".to_string();
         settings.debug_logging_enabled = true;
+        settings.discord_artwork_s3_endpoint = "https://s3.example.test".to_string();
+        settings.discord_artwork_s3_bucket = "artwork".to_string();
+        settings.discord_artwork_s3_access_key = "access".to_string();
+        settings.discord_artwork_s3_secret_key = "secret".to_string();
         save_settings(&conn, &settings).unwrap();
         let loaded = load_settings(&conn).unwrap();
         assert_eq!(loaded.monitored_folders, settings.monitored_folders);
@@ -367,6 +471,22 @@ mod tests {
         assert_eq!(
             loaded.discord_catbox_user_hash,
             settings.discord_catbox_user_hash
+        );
+        assert_eq!(
+            loaded.discord_artwork_s3_endpoint,
+            settings.discord_artwork_s3_endpoint
+        );
+        assert_eq!(
+            loaded.discord_artwork_s3_bucket,
+            settings.discord_artwork_s3_bucket
+        );
+        assert_eq!(
+            loaded.discord_artwork_s3_access_key,
+            settings.discord_artwork_s3_access_key
+        );
+        assert_eq!(
+            loaded.discord_artwork_s3_secret_key,
+            settings.discord_artwork_s3_secret_key
         );
         assert_eq!(loaded.debug_logging_enabled, settings.debug_logging_enabled);
         assert_eq!(loaded.lyrics_sources, settings.lyrics_sources);

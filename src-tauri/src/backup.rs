@@ -190,6 +190,9 @@ pub fn export(
         let mut value = settings::load_settings(conn)?;
         value.brave_api_key.clear();
         value.discord_catbox_user_hash.clear();
+        value.discord_artwork_s3_access_key.clear();
+        value.discord_artwork_s3_secret_key.clear();
+        value.discord_artwork_s3_session_token.clear();
         value.monitored_folders.clear();
         Some(value)
     } else {
@@ -284,6 +287,10 @@ pub fn import(
             let current = settings::load_settings(&tx)?;
             backup_settings.brave_api_key = current.brave_api_key;
             backup_settings.discord_catbox_user_hash = current.discord_catbox_user_hash;
+            backup_settings.discord_artwork_s3_access_key = current.discord_artwork_s3_access_key;
+            backup_settings.discord_artwork_s3_secret_key = current.discord_artwork_s3_secret_key;
+            backup_settings.discord_artwork_s3_session_token =
+                current.discord_artwork_s3_session_token;
             backup_settings.monitored_folders = current.monitored_folders;
             if !backup_settings
                 .lyrics_sources

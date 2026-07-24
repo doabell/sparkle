@@ -1127,6 +1127,14 @@ pub fn get_online_settings(state: State<'_, AppState>) -> Result<OnlineSettings,
         discord_enabled: settings.discord_enabled,
         discord_app_id: settings.discord_app_id,
         discord_catbox_user_hash: settings.discord_catbox_user_hash,
+        discord_artwork_s3_endpoint: settings.discord_artwork_s3_endpoint,
+        discord_artwork_s3_bucket: settings.discord_artwork_s3_bucket,
+        discord_artwork_s3_public_url: settings.discord_artwork_s3_public_url,
+        discord_artwork_s3_access_key: settings.discord_artwork_s3_access_key,
+        discord_artwork_s3_secret_key: settings.discord_artwork_s3_secret_key,
+        discord_artwork_s3_session_token: settings.discord_artwork_s3_session_token,
+        discord_artwork_s3_region: settings.discord_artwork_s3_region,
+        discord_artwork_s3_prefix: settings.discord_artwork_s3_prefix,
         debug_logging_enabled: settings.debug_logging_enabled,
     })
 }
@@ -1155,6 +1163,14 @@ pub fn set_online_settings(
     full.discord_enabled = settings.discord_enabled;
     full.discord_app_id = settings.discord_app_id;
     full.discord_catbox_user_hash = settings.discord_catbox_user_hash;
+    full.discord_artwork_s3_endpoint = settings.discord_artwork_s3_endpoint;
+    full.discord_artwork_s3_bucket = settings.discord_artwork_s3_bucket;
+    full.discord_artwork_s3_public_url = settings.discord_artwork_s3_public_url;
+    full.discord_artwork_s3_access_key = settings.discord_artwork_s3_access_key;
+    full.discord_artwork_s3_secret_key = settings.discord_artwork_s3_secret_key;
+    full.discord_artwork_s3_session_token = settings.discord_artwork_s3_session_token;
+    full.discord_artwork_s3_region = settings.discord_artwork_s3_region;
+    full.discord_artwork_s3_prefix = settings.discord_artwork_s3_prefix;
     full.debug_logging_enabled = settings.debug_logging_enabled;
     settings::save_settings(&conn, &full)?;
     drop(conn);
@@ -1189,8 +1205,8 @@ pub fn clear_all_caches(state: State<'_, AppState>) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     cache::clear_lyrics(&conn)?;
     cache::clear_artist_info(&conn, &state.cache_dir)?;
-    // Catbox uploads are user-owned Discord artwork metadata, not disposable
-    // cache. They intentionally survive this cleanup to avoid re-uploading.
+    // Uploaded Discord artwork is user-owned metadata, not disposable cache.
+    // It intentionally survives this cleanup to avoid re-uploading.
     cache::clear_images(&conn, &state.cache_dir)
 }
 
