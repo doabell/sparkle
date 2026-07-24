@@ -18,7 +18,8 @@ Your library database, cache, and listening history stay on your computer. Onlin
 ## Discord artwork storage
 
 New Discord artwork uploads can use any S3-compatible object store. Configure
-from Settings → Discord Rich Presence. The endpoint and bucket are required;
+the explicit Artwork storage mode in Settings → Discord Rich Presence:
+Disabled, Catbox, or S3-compatible storage. The endpoint and bucket are required;
 the public URL is useful when objects are served through a CDN or custom public
 domain. Authenticated stores can use an access key, secret key, and optional
 session token. Region defaults to `us-east-1`, and the object prefix defaults
@@ -31,11 +32,15 @@ equivalent `SPARKLE_ARTWORK_S3_ENDPOINT`, `SPARKLE_ARTWORK_S3_BUCKET`,
 `SPARKLE_ARTWORK_S3_REGION`, and `SPARKLE_ARTWORK_S3_PREFIX` variables remain
 supported when all S3 Settings fields are empty.
 
-The Discord worker lists that prefix once, uses the existing object named from
-the artwork's content hash when available, and uploads a deterministic
-`<hash>.jpg` only when it is missing. Existing local artwork URLs remain
-usable. If S3 is not configured, the legacy Catbox upload path is retained for
-backward compatibility.
+The Settings test action performs a real list/access check and uploads a small
+test object, which it leaves in the selected store.
+
+In S3 mode, the Discord worker lists that prefix once, uses the existing object
+named from the artwork's content hash when available, and uploads a
+deterministic `<hash>.jpg` only when it is missing. In Catbox mode, the exact
+URL returned by Catbox is preserved. The v8 artwork cache keeps independent
+Catbox and S3 URLs for each artwork key, so switching stores does not overwrite
+either provider's cached filename or cause a repeat upload.
 
 ## Install
 

@@ -18,6 +18,7 @@ const ACCENT_COLOR_KEY: &str = "accent_color";
 const DISCORD_ENABLED_KEY: &str = "discord_enabled";
 const DISCORD_APP_ID_KEY: &str = "discord_app_id";
 const DISCORD_CATBOX_USER_HASH_KEY: &str = "discord_catbox_user_hash";
+const DISCORD_ARTWORK_STORE_KEY: &str = "discord_artwork_store";
 const DISCORD_ARTWORK_S3_ENDPOINT_KEY: &str = "discord_artwork_s3_endpoint";
 const DISCORD_ARTWORK_S3_BUCKET_KEY: &str = "discord_artwork_s3_bucket";
 const DISCORD_ARTWORK_S3_PUBLIC_URL_KEY: &str = "discord_artwork_s3_public_url";
@@ -125,6 +126,10 @@ fn default_discord_catbox_user_hash() -> String {
     String::new()
 }
 
+fn default_discord_artwork_store() -> String {
+    "catbox".to_string()
+}
+
 fn default_debug_logging_enabled() -> bool {
     false
 }
@@ -188,6 +193,8 @@ pub struct Settings {
     pub discord_app_id: String,
     #[serde(default = "default_discord_catbox_user_hash")]
     pub discord_catbox_user_hash: String,
+    #[serde(default = "default_discord_artwork_store")]
+    pub discord_artwork_store: String,
     #[serde(default)]
     pub discord_artwork_s3_endpoint: String,
     #[serde(default)]
@@ -231,6 +238,7 @@ impl Default for Settings {
             discord_enabled: default_discord_enabled(),
             discord_app_id: default_discord_app_id(),
             discord_catbox_user_hash: default_discord_catbox_user_hash(),
+            discord_artwork_store: default_discord_artwork_store(),
             discord_artwork_s3_endpoint: String::new(),
             discord_artwork_s3_bucket: String::new(),
             discord_artwork_s3_public_url: String::new(),
@@ -306,6 +314,11 @@ pub fn load_settings(conn: &Connection) -> Result<Settings, String> {
             DISCORD_CATBOX_USER_HASH_KEY,
             default_discord_catbox_user_hash(),
         )?,
+        discord_artwork_store: load_json(
+            conn,
+            DISCORD_ARTWORK_STORE_KEY,
+            default_discord_artwork_store(),
+        )?,
         discord_artwork_s3_endpoint: load_json(
             conn,
             DISCORD_ARTWORK_S3_ENDPOINT_KEY,
@@ -375,6 +388,11 @@ pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<(), Strin
         conn,
         DISCORD_CATBOX_USER_HASH_KEY,
         &settings.discord_catbox_user_hash,
+    )?;
+    save_json(
+        conn,
+        DISCORD_ARTWORK_STORE_KEY,
+        &settings.discord_artwork_store,
     )?;
     save_json(
         conn,
@@ -452,6 +470,7 @@ mod tests {
         settings.discord_artwork_s3_bucket = "artwork".to_string();
         settings.discord_artwork_s3_access_key = "access".to_string();
         settings.discord_artwork_s3_secret_key = "secret".to_string();
+        settings.discord_artwork_store = "s3".to_string();
         save_settings(&conn, &settings).unwrap();
         let loaded = load_settings(&conn).unwrap();
         assert_eq!(loaded.monitored_folders, settings.monitored_folders);
@@ -472,6 +491,7 @@ mod tests {
             loaded.discord_catbox_user_hash,
             settings.discord_catbox_user_hash
         );
+        assert_eq!(loaded.discord_artwork_store, settings.discord_artwork_store);
         assert_eq!(
             loaded.discord_artwork_s3_endpoint,
             settings.discord_artwork_s3_endpoint

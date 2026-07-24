@@ -208,6 +208,8 @@ pub struct OnlineSettings {
     #[serde(default)]
     pub discord_catbox_user_hash: String,
     #[serde(default)]
+    pub discord_artwork_store: String,
+    #[serde(default)]
     pub discord_artwork_s3_endpoint: String,
     #[serde(default)]
     pub discord_artwork_s3_bucket: String,

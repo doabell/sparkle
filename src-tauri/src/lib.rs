@@ -623,6 +623,7 @@ pub fn run() {
             online_commands::get_album_art_data,
             online_commands::get_online_settings,
             online_commands::set_online_settings,
+            online_commands::test_artwork_storage,
             online_commands::set_artist_providers,
             online_commands::set_artist_bio,
             online_commands::search_artist_images,
