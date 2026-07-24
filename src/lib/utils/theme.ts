@@ -1,33 +1,85 @@
-function hexToRgb(hex: string): [number, number, number] | null {
-    const m = hex.trim().match(/^#?([0-9a-f]{6})$/i);
-    if (!m) return null;
-    const v = parseInt(m[1], 16);
-    return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
-}
+import {
+    createAccentTheme,
+    normalizeAccentForegroundPreference,
+    normalizeHex,
+    type AccentForegroundPreference,
+    type AccentPalette,
+    type AccentTheme,
+} from "./accentPalette.ts";
 
-function lighten(
-    [r, g, b]: [number, number, number],
-    amount: number,
-): [number, number, number] {
-    const mix = (c: number) =>
-        Math.min(255, Math.round(c + (255 - c) * amount));
-    return [mix(r), mix(g), mix(b)];
-}
+export * from "./accentPalette.ts";
 
-// Applies the chosen accent color app-wide. Glows/shadows derive from
-// --color-accent via color-mix, so only the two base vars need setting.
-export function applyAccent(hex: string) {
-    const rgb = hexToRgb(hex) ?? [250, 36, 60];
-    const [r, g, b] = rgb;
-    const [hr, hg, hb] = lighten(rgb, 0.18);
+const PALETTE_CACHE_KEY = "sparkle.accent.v1";
+const CSS_PALETTE_PROPERTIES: [keyof AccentPalette, string][] = [
+    ["content", "content"],
+    ["graphic", "graphic"],
+    ["fill", "fill"],
+    ["fillHover", "fill-hover"],
+    ["fillActive", "fill-active"],
+    ["fillDisabled", "fill-disabled"],
+    ["onFill", "on-fill"],
+    ["onFillDisabled", "on-fill-disabled"],
+    ["subtle", "subtle"],
+    ["onSubtle", "on-subtle"],
+    ["selection", "selection"],
+    ["onSelection", "on-selection"],
+    ["focus", "focus"],
+    ["native", "native"],
+];
+
+export function applyAccent(
+    value: string,
+    preference: AccentForegroundPreference = "auto",
+): AccentTheme {
+    const theme = createAccentTheme(value, preference);
     const root = document.documentElement;
-    root.style.setProperty("--color-accent", `rgb(${r}, ${g}, ${b})`);
-    root.style.setProperty("--color-accent-hover", `rgb(${hr}, ${hg}, ${hb})`);
+    root.style.setProperty("--color-accent-seed", theme.seed);
+    for (const mode of ["dark", "light"] as const) {
+        for (const [property, cssName] of CSS_PALETTE_PROPERTIES) {
+            root.style.setProperty(
+                `--accent-${mode}-${cssName}`,
+                theme[mode][property],
+            );
+        }
+    }
+    return theme;
 }
 
-export function normalizeHex(value: string): string | null {
-    const rgb = hexToRgb(value);
-    if (!rgb) return null;
-    const [r, g, b] = rgb;
-    return `#${((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1)}`;
+export function cacheAccent(
+    value: string,
+    preference: AccentForegroundPreference = "auto",
+): void {
+    const seed = normalizeHex(value);
+    if (!seed || typeof localStorage === "undefined") return;
+    try {
+        localStorage.setItem(
+            PALETTE_CACHE_KEY,
+            JSON.stringify({
+                seed,
+                preference: normalizeAccentForegroundPreference(preference),
+            }),
+        );
+    } catch {
+        // The database remains authoritative when storage is unavailable,
+        // blocked, or full.
+    }
+}
+
+export function applyCachedAccent(): boolean {
+    if (typeof localStorage === "undefined") return false;
+    try {
+        const cached = JSON.parse(
+            localStorage.getItem(PALETTE_CACHE_KEY) ?? "",
+        );
+        const seed =
+            typeof cached?.seed === "string" ? normalizeHex(cached.seed) : null;
+        if (!seed) return false;
+        applyAccent(
+            seed,
+            normalizeAccentForegroundPreference(cached.preference),
+        );
+        return true;
+    } catch {
+        return false;
+    }
 }

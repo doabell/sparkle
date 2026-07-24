@@ -18,7 +18,7 @@
         "build": "vite build",
         "preview": "vite preview",
         "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-        "test": "node --test --experimental-strip-types test/scrollRestore.test.ts test/scrollback.test.ts test/songIndex.test.ts test/artists.test.ts test/searchHistory.test.ts test/windowTitle.test.ts",
+        "test": "node --test --experimental-strip-types test/scrollRestore.test.ts test/scrollback.test.ts test/songIndex.test.ts test/artists.test.ts test/searchHistory.test.ts test/windowTitle.test.ts test/theme.test.ts test/commandPalette.test.ts",
         "format": "prettier --write . && cargo fmt --manifest-path src-tauri/Cargo.toml",
         "format:check": "prettier --check . && cargo fmt --check --manifest-path src-tauri/Cargo.toml",
         "version:check": "node scripts/check-version.mjs",

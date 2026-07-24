@@ -338,7 +338,7 @@
         width: 1rem;
         height: 1rem;
         flex-shrink: 0;
-        color: var(--color-accent);
+        color: var(--color-accent-graphic);
     }
 
     .row-eq svg {
@@ -375,7 +375,7 @@
     }
 
     .queue-row.current .row-title {
-        color: var(--color-accent);
+        color: var(--color-accent-content);
     }
 
     .row-artist {

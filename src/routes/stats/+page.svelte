@@ -618,7 +618,7 @@
         z-index: -1;
         background: radial-gradient(
             ellipse 60% 100% at 30% 0%,
-            color-mix(in srgb, var(--color-accent) 16%, transparent) 0%,
+            color-mix(in srgb, var(--color-accent-seed) 16%, transparent) 0%,
             transparent 70%
         );
         pointer-events: none;
@@ -678,10 +678,12 @@
     }
 
     .segment.active {
-        background: var(--color-accent);
-        color: #fff;
-        box-shadow: 0 2px 10px
-            color-mix(in srgb, var(--color-accent) 35%, transparent);
+        background: var(--color-accent-fill);
+        color: var(--color-on-accent-fill);
+        box-shadow:
+            inset 0 0 0 1px var(--color-accent-graphic),
+            0 2px 10px
+                color-mix(in srgb, var(--color-accent-seed) 35%, transparent);
     }
 
     .error {
@@ -734,7 +736,7 @@
             145deg,
             color-mix(
                 in srgb,
-                var(--color-accent) 22%,
+                var(--color-accent-seed) 22%,
                 var(--color-surface-elevated)
             ),
             var(--color-surface)
@@ -742,11 +744,15 @@
     }
 
     .stat-card:nth-child(1) .stat-icon {
-        background: color-mix(in srgb, var(--color-accent) 28%, transparent);
+        background: color-mix(
+            in srgb,
+            var(--color-accent-seed) 28%,
+            transparent
+        );
     }
 
     .stat-card.primary .stat-value {
-        color: color-mix(in srgb, var(--color-accent) 78%, white);
+        color: color-mix(in srgb, var(--color-accent-seed) 78%, white);
     }
 
     .stat-icon {
@@ -756,8 +762,8 @@
         width: 2.25rem;
         height: 2.25rem;
         border-radius: var(--radius-full);
-        background: color-mix(in srgb, var(--color-accent) 16%, transparent);
-        color: var(--color-accent);
+        background: var(--color-accent-subtle);
+        color: var(--color-on-accent-subtle);
         margin-bottom: var(--spacing-sm);
     }
 
@@ -817,7 +823,7 @@
         background:
             radial-gradient(
                 circle at 88% 12%,
-                color-mix(in srgb, var(--color-accent) 22%, transparent),
+                color-mix(in srgb, var(--color-accent-seed) 22%, transparent),
                 transparent 48%
             ),
             linear-gradient(
@@ -873,7 +879,7 @@
 
     .insight-kicker {
         margin-bottom: var(--spacing-xs);
-        color: var(--color-accent);
+        color: var(--color-accent-content);
         font-size: 0.6875rem;
         font-weight: var(--font-weight-bold);
         letter-spacing: 0.09em;
@@ -931,8 +937,8 @@
         flex-shrink: 0;
         padding: var(--spacing-xs) var(--spacing-sm);
         border-radius: var(--radius-full);
-        background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-        color: var(--color-accent);
+        background: var(--color-accent-subtle);
+        color: var(--color-on-accent-subtle);
         font-size: var(--font-size-xs);
         font-weight: var(--font-weight-semibold);
         font-variant-numeric: tabular-nums;
@@ -959,8 +965,8 @@
         border-radius: 4px 4px 2px 2px;
         background: linear-gradient(
             to top,
-            color-mix(in srgb, var(--color-accent) 45%, transparent),
-            color-mix(in srgb, var(--color-accent) 85%, white 0%)
+            var(--color-accent-graphic),
+            var(--color-accent-content)
         );
         transition:
             height var(--transition-slow),
@@ -970,11 +976,11 @@
     .bar.peak {
         background: linear-gradient(
             to top,
-            var(--color-accent),
-            color-mix(in srgb, var(--color-accent) 60%, white)
+            var(--color-accent-graphic),
+            var(--color-accent-content)
         );
         box-shadow: 0 0 16px
-            color-mix(in srgb, var(--color-accent) 45%, transparent);
+            color-mix(in srgb, var(--color-accent-seed) 45%, transparent);
     }
 
     .bar.empty {
@@ -1032,7 +1038,7 @@
     }
 
     a.top-row:focus-visible {
-        outline: 2px solid var(--color-accent);
+        outline: 2px solid var(--color-accent-focus);
         outline-offset: 2px;
     }
 
@@ -1058,9 +1064,9 @@
     }
 
     .top-rank-peak {
-        color: var(--color-accent);
+        color: var(--color-accent-content);
         text-shadow: 0 0 14px
-            color-mix(in srgb, var(--color-accent) 45%, transparent);
+            color-mix(in srgb, var(--color-accent-seed) 45%, transparent);
     }
 
     .tops-list :global(.top-art) {

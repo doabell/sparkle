@@ -1379,7 +1379,7 @@
     }
 
     .candidate:hover {
-        border-color: var(--color-accent);
+        border-color: var(--color-accent-graphic);
         transform: scale(1.03);
     }
 
@@ -1469,7 +1469,7 @@
 
     .crop-zoom input[type="range"] {
         flex: 1;
-        accent-color: var(--color-accent);
+        accent-color: var(--color-accent-native);
     }
 
     .crop-actions {

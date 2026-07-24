@@ -9,7 +9,7 @@ pub fn split_artists(input: &str, regex: &Regex, exceptions: &[String]) -> Vec<S
     }
     regex
         .split(input)
-        .map(|s| normalize_artist_name(s))
+        .map(normalize_artist_name)
         .filter(|s| !s.is_empty())
         .collect()
 }

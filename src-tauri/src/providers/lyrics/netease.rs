@@ -286,10 +286,8 @@ fn extract_feat(s: &str) -> (String, Vec<String>) {
     if clause.is_empty() {
         return (text, Vec::new());
     }
-    let clause = clause
-        .trim_start_matches(|c| c == '.' || c == ' ')
-        .trim_end_matches(')');
-    let artists = split_by_delimiters(&clause);
+    let clause = clause.trim_start_matches(['.', ' ']).trim_end_matches(')');
+    let artists = split_by_delimiters(clause);
     (text, artists)
 }
 

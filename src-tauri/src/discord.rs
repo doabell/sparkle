@@ -54,7 +54,9 @@ impl DiscordPresence {
     }
 
     pub fn update(&self, playback: &PlaybackState) {
-        let _ = self.tx.send(DiscordCommand::Playback(playback.clone()));
+        let _ = self
+            .tx
+            .send(DiscordCommand::Playback(Box::new(playback.clone())));
     }
 
     /// Re-evaluate the most recent playback state after Settings changes.
@@ -64,7 +66,7 @@ impl DiscordPresence {
 }
 
 enum DiscordCommand {
-    Playback(PlaybackState),
+    Playback(Box<PlaybackState>),
     Refresh,
 }
 
@@ -75,8 +77,16 @@ struct ConnectedDiscordClient {
 
 struct ArtworkPayload {
     jpeg: Vec<u8>,
-    cache_keys: Vec<String>,
+    content_keys: Vec<String>,
     persistent_key: String,
+}
+
+impl ArtworkPayload {
+    fn durable_cache_keys(&self) -> Vec<String> {
+        let mut keys = self.content_keys.clone();
+        keys.push(self.persistent_key.clone());
+        keys
+    }
 }
 
 struct PresenceFields {
@@ -218,12 +228,19 @@ impl ArtworkCache {
         })
     }
 
-    fn contains_key_for_store(&self, key: &str, kind: ArtworkStoreKind) -> bool {
-        self.entries
-            .get(key)
-            .and_then(|urls| urls.url_for(kind))
-            .filter(|url| is_artwork_url(url))
-            .is_some()
+    fn keys_match_url_for_store(
+        &self,
+        keys: &[String],
+        kind: ArtworkStoreKind,
+        expected_url: &str,
+    ) -> bool {
+        keys.iter().all(|key| {
+            self.entries
+                .get(key)
+                .and_then(|urls| urls.url_for(kind))
+                .filter(|url| is_artwork_url(url))
+                == Some(expected_url)
+        })
     }
 
     fn store(
@@ -372,7 +389,7 @@ fn worker(rx: Receiver<DiscordCommand>, db_path: PathBuf, image_cache_dir: PathB
         match rx.recv_timeout(RETRY_INTERVAL) {
             Ok(DiscordCommand::Playback(playback)) => {
                 latest_playback = Some(playback);
-                if let Some(playback) = latest_playback.as_ref() {
+                if let Some(playback) = latest_playback.as_deref() {
                     apply_playback(
                         &conn,
                         &image_cache_dir,
@@ -385,7 +402,14 @@ fn worker(rx: Receiver<DiscordCommand>, db_path: PathBuf, image_cache_dir: PathB
             }
             Ok(DiscordCommand::Refresh) => {
                 artwork_store = load_artwork_store(&conn);
-                if let Some(playback) = latest_playback.as_ref() {
+                match ArtworkCache::load(&conn) {
+                    Ok(cache) => artwork_cache = cache,
+                    Err(err) => log::warn!(
+                        target: "sparkle::discord::artwork",
+                        "event=cache_reload_failed error={err}"
+                    ),
+                }
+                if let Some(playback) = latest_playback.as_deref() {
                     apply_playback(
                         &conn,
                         &image_cache_dir,
@@ -402,7 +426,7 @@ fn worker(rx: Receiver<DiscordCommand>, db_path: PathBuf, image_cache_dir: PathB
                 // to restore and must not produce periodic clear attempts.
                 if client.is_none() {
                     if let Some(playback) = latest_playback
-                        .as_ref()
+                        .as_deref()
                         .filter(|playback| playback.is_playing && playback.current_track.is_some())
                     {
                         apply_playback(
@@ -478,30 +502,23 @@ fn apply_playback(
             "event=artwork_disabled store=disabled"
         );
         None
-    } else if let Some(url) =
-        persistent_artwork_url_for_store(artwork_cache, track.album_id, artwork_store)
-    {
-        // This is durable user-owned metadata: use it without touching the
-        // disposable album-art cache or doing any image work.
-        log::debug!(
-            target: "sparkle::discord::artwork",
-            "event=persistent_hit store={store_name}"
-        );
-        Some(url)
     } else {
         match artwork_for_track(conn, image_cache_dir, track) {
             Ok(Some(artwork)) => {
-                match artwork_cache.lookup_for_store(&artwork.cache_keys, artwork_store) {
+                let durable_keys = artwork.durable_cache_keys();
+                match artwork_cache.lookup_for_store(&artwork.content_keys, artwork_store) {
                     Some(url) => {
-                        // Older entries only have content hashes. Once one is reused,
-                        // add the durable album key so clearing/re-fetching image
-                        // cache data cannot cause another artwork upload.
-                        if !artwork_cache
-                            .contains_key_for_store(&artwork.persistent_key, artwork_store.kind)
-                        {
+                        // Content hashes prove that the durable album pointer still
+                        // describes the current image. Repair missing legacy aliases
+                        // and replace a stale album pointer without re-uploading.
+                        if !artwork_cache.keys_match_url_for_store(
+                            &durable_keys,
+                            artwork_store.kind,
+                            &url,
+                        ) {
                             if let Err(err) = artwork_cache.store(
                                 conn,
-                                &artwork.cache_keys,
+                                &durable_keys,
                                 artwork_store.kind,
                                 url.clone(),
                             ) {
@@ -522,22 +539,23 @@ fn apply_playback(
                             target: "sparkle::discord::artwork",
                             "event=upload_started store={store_name} bytes={} content_hashes={}",
                             artwork.jpeg.len(),
-                            artwork.cache_keys.len()
+                            artwork.content_keys.len()
                         );
                         let upload_result = match artwork_store.kind {
                             ArtworkStoreKind::S3 => match artwork_store.s3_store.as_mut() {
                                 Some(s3_store) => {
                                     log::debug!(
                                         target: "sparkle::discord::s3",
-                                        "event=listing_for_hash store=s3"
+                                        "event=probing_content_keys store=s3 candidates={}",
+                                        artwork.content_keys.len()
                                     );
-                                    s3_store.find_or_upload(artwork.jpeg, &artwork.cache_keys)
+                                    s3_store.find_or_upload(artwork.jpeg, &artwork.content_keys)
                                 }
                                 None => Err("S3 artwork store is unavailable".to_string()),
                             },
                             ArtworkStoreKind::Catbox => upload_to_catbox(
                                 artwork.jpeg,
-                                &artwork.cache_keys[0],
+                                &artwork.content_keys[0],
                                 settings.discord_catbox_user_hash.trim(),
                             ),
                             ArtworkStoreKind::Disabled => {
@@ -553,7 +571,7 @@ fn apply_playback(
                                 );
                                 if let Err(err) = artwork_cache.store(
                                     conn,
-                                    &artwork.cache_keys,
+                                    &durable_keys,
                                     artwork_store.kind,
                                     url.clone(),
                                 ) {
@@ -565,7 +583,7 @@ fn apply_playback(
                                     log::debug!(
                                         target: "sparkle::discord::artwork",
                                         "event=cache_stored store={store_name} keys={}",
-                                        artwork.cache_keys.len()
+                                        durable_keys.len()
                                     );
                                 }
                                 Some(url)
@@ -583,18 +601,24 @@ fn apply_playback(
                 }
             }
             Ok(None) => {
+                let fallback =
+                    persistent_artwork_url_for_store(artwork_cache, track.album_id, artwork_store);
                 log::debug!(
                     target: "sparkle::discord::artwork",
-                    "event=artwork_unavailable store={store_name}"
+                    "event=artwork_unavailable store={store_name} persistent_fallback={}",
+                    fallback.is_some()
                 );
-                None
+                fallback
             }
             Err(err) => {
+                let fallback =
+                    persistent_artwork_url_for_store(artwork_cache, track.album_id, artwork_store);
                 log::warn!(
                     target: "sparkle::discord::artwork",
-                    "event=artwork_prepare_failed store={store_name} error={err}"
+                    "event=artwork_prepare_failed store={store_name} persistent_fallback={} error={err}",
+                    fallback.is_some()
                 );
-                None
+                fallback
             }
         }
     };
@@ -670,11 +694,11 @@ fn artwork_for_track(
 
     let jpeg = resize_to_cache_jpeg(&original, image_cache_dir)?;
     let persistent_key = album_artwork_key(album_id);
-    let cache_keys = artwork_cache_keys(album_id, &jpeg, &original);
+    let content_keys = artwork_content_keys(&jpeg, &original);
 
     Ok(Some(ArtworkPayload {
         jpeg,
-        cache_keys,
+        content_keys,
         persistent_key,
     }))
 }
@@ -682,13 +706,13 @@ fn artwork_for_track(
 fn resize_to_cache_jpeg(original: &[u8], work_dir: &Path) -> Result<Vec<u8>, String> {
     #[cfg(windows)]
     {
-        return gdiplus::resize_to_cache_jpeg(
+        gdiplus::resize_to_cache_jpeg(
             original,
             work_dir,
             &md5_hex(original),
             ARTWORK_MAX_DIMENSION,
             JPEG_QUALITY,
-        );
+        )
     }
 
     #[cfg(not(windows))]
@@ -724,6 +748,18 @@ fn album_artwork_key(album_id: i64) -> String {
     format!("album:{album_id}")
 }
 
+/// Removes only the album-to-current-art pointer. Content-hash entries remain
+/// reusable, so replacing artwork cannot force an upload when those bytes were
+/// seen before.
+pub(crate) fn invalidate_album_artwork(conn: &Connection, album_id: i64) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM discord_artwork_cache WHERE cache_key = ?",
+        [album_artwork_key(album_id)],
+    )
+    .map(|_| ())
+    .map_err(|err| err.to_string())
+}
+
 #[cfg(test)]
 fn persistent_artwork_url(cache: &ArtworkCache, album_id: Option<i64>) -> Option<String> {
     album_id.and_then(|id| cache.lookup(&[album_artwork_key(id)]))
@@ -737,18 +773,16 @@ fn persistent_artwork_url_for_store(
     album_id.and_then(|id| cache.lookup_for_store(&[album_artwork_key(id)], artwork_store))
 }
 
-fn artwork_cache_keys(album_id: i64, normalized_jpeg: &[u8], original: &[u8]) -> Vec<String> {
+fn artwork_content_keys(normalized_jpeg: &[u8], original: &[u8]) -> Vec<String> {
     let normalized_base64 = STANDARD.encode(normalized_jpeg);
     let original_base64 = STANDARD.encode(original);
-    let mut keys = unique_cache_keys([
+    unique_cache_keys([
         md5_hex(normalized_base64.as_bytes()),
         // Keep the original-artwork hash as a fallback so old cache entries
         // remain reusable without another upload.
         md5_hex(original_base64.as_bytes()),
         md5_hex(original),
-    ]);
-    keys.push(album_artwork_key(album_id));
-    keys
+    ])
 }
 
 fn md5_hex(input: &[u8]) -> String {
@@ -989,8 +1023,10 @@ mod tests {
 
     #[test]
     fn disabled_artwork_storage_does_not_upload() {
-        let mut settings = crate::settings::Settings::default();
-        settings.discord_artwork_store = "disabled".to_string();
+        let settings = crate::settings::Settings {
+            discord_artwork_store: "disabled".to_string(),
+            ..Default::default()
+        };
         assert_eq!(
             test_artwork_storage(&settings),
             Err("artwork storage is disabled".to_string())
@@ -1014,11 +1050,13 @@ mod tests {
             kind: ArtworkStoreKind::Catbox,
             s3_store: None,
         };
-        let mut s3_settings = crate::settings::Settings::default();
-        s3_settings.discord_artwork_s3_endpoint = "http://minio.example.test:9000".to_string();
-        s3_settings.discord_artwork_s3_bucket = "sparkle".to_string();
-        s3_settings.discord_artwork_s3_public_url = "https://cdn.example.test".to_string();
-        s3_settings.discord_artwork_s3_prefix = "artwork".to_string();
+        let s3_settings = crate::settings::Settings {
+            discord_artwork_s3_endpoint: "http://minio.example.test:9000".to_string(),
+            discord_artwork_s3_bucket: "sparkle".to_string(),
+            discord_artwork_s3_public_url: "https://cdn.example.test".to_string(),
+            discord_artwork_s3_prefix: "artwork".to_string(),
+            ..Default::default()
+        };
         let s3 = ArtworkStoreState {
             kind: ArtworkStoreKind::S3,
             s3_store: Some(
@@ -1046,24 +1084,32 @@ mod tests {
     }
 
     #[test]
-    fn catbox_artwork_is_pinned_to_the_album() {
-        let first = artwork_cache_keys(42, b"normalized-one", b"original-one");
-        let second = artwork_cache_keys(42, b"normalized-two", b"original-two");
+    fn changed_artwork_does_not_reuse_a_stale_album_pointer() {
+        let first = artwork_content_keys(b"normalized-one", b"original-one");
+        let second = artwork_content_keys(b"normalized-two", b"original-two");
         let persistent_key = album_artwork_key(42);
         let url = "https://files.catbox.moe/existing.jpg".to_string();
-        let cache = ArtworkCache {
-            entries: HashMap::from([(
-                persistent_key.clone(),
+        let mut entries = HashMap::new();
+        for key in first {
+            entries.insert(
+                key,
                 ArtworkUrls {
                     catbox_url: Some(url.clone()),
                     ..Default::default()
                 },
-            )]),
-        };
+            );
+        }
+        entries.insert(
+            persistent_key.clone(),
+            ArtworkUrls {
+                catbox_url: Some(url.clone()),
+                ..Default::default()
+            },
+        );
+        let cache = ArtworkCache { entries };
 
-        assert!(first.contains(&persistent_key));
-        assert!(second.contains(&persistent_key));
-        assert_eq!(cache.lookup(&second), Some(url));
+        assert_eq!(cache.lookup(&second), None);
+        assert_eq!(cache.lookup(&[persistent_key]), Some(url));
     }
 
     #[test]
@@ -1175,6 +1221,89 @@ mod tests {
     }
 
     #[test]
+    fn content_hit_repairs_a_stale_album_pointer_without_an_upload() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "
+            CREATE TABLE discord_artwork_cache (
+                cache_key TEXT NOT NULL PRIMARY KEY,
+                catbox_url TEXT,
+                s3_url TEXT,
+                updated_at INTEGER NOT NULL DEFAULT 0,
+                CHECK (catbox_url IS NOT NULL OR s3_url IS NOT NULL)
+            );
+            ",
+        )
+        .unwrap();
+        let content_key = artwork_content_keys(b"normalized", b"original")
+            .into_iter()
+            .next()
+            .unwrap();
+        let persistent_key = album_artwork_key(42);
+        let current_url = "https://files.catbox.moe/current.jpg".to_string();
+        let stale_url = "https://files.catbox.moe/stale.jpg".to_string();
+        let mut cache = ArtworkCache {
+            entries: HashMap::from([
+                (
+                    content_key.clone(),
+                    ArtworkUrls {
+                        catbox_url: Some(current_url.clone()),
+                        ..Default::default()
+                    },
+                ),
+                (
+                    persistent_key.clone(),
+                    ArtworkUrls {
+                        catbox_url: Some(stale_url),
+                        ..Default::default()
+                    },
+                ),
+            ]),
+        };
+        let keys = vec![content_key, persistent_key];
+
+        assert!(!cache.keys_match_url_for_store(&keys, ArtworkStoreKind::Catbox, &current_url));
+        cache
+            .store(&conn, &keys, ArtworkStoreKind::Catbox, current_url.clone())
+            .unwrap();
+        assert!(cache.keys_match_url_for_store(&keys, ArtworkStoreKind::Catbox, &current_url));
+    }
+
+    #[test]
+    fn artwork_invalidation_removes_only_the_album_pointer() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "
+            CREATE TABLE discord_artwork_cache (
+                cache_key TEXT NOT NULL PRIMARY KEY,
+                catbox_url TEXT,
+                s3_url TEXT,
+                updated_at INTEGER NOT NULL DEFAULT 0,
+                CHECK (catbox_url IS NOT NULL OR s3_url IS NOT NULL)
+            );
+            ",
+        )
+        .unwrap();
+        let content_key = artwork_content_keys(b"normalized", b"original")
+            .into_iter()
+            .next()
+            .unwrap();
+        let album_key = album_artwork_key(42);
+        let url = "https://files.catbox.moe/current.jpg";
+        conn.execute(
+            "INSERT INTO discord_artwork_cache (cache_key, catbox_url) VALUES (?1, ?2), (?3, ?2)",
+            rusqlite::params![content_key, url, album_key],
+        )
+        .unwrap();
+
+        invalidate_album_artwork(&conn, 42).unwrap();
+
+        let cache = ArtworkCache::load(&conn).unwrap();
+        assert_eq!(cache.lookup(&[content_key]), Some(url.to_string()));
+        assert_eq!(persistent_artwork_url(&cache, Some(42)), None);
+    }
+
+    #[test]
     fn truncates_without_splitting_utf8_characters() {
         assert_eq!(truncate_utf8("hello\u{1f30d}", 6), "hello");
     }
@@ -1194,7 +1323,7 @@ mod tests {
         let normalized = normalized.unwrap();
         let normalized_base64 = STANDARD.encode(&normalized);
         let cache_key = md5_hex(normalized_base64.as_bytes());
-        let cache_keys = artwork_cache_keys(42, &normalized, &source);
+        let cache_keys = artwork_content_keys(&normalized, &source);
 
         assert_eq!(cache_keys.first(), Some(&cache_key));
         let cache = ArtworkCache {

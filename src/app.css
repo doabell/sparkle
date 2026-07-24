@@ -8,8 +8,51 @@
     --color-text: #ffffff;
     --color-text-secondary: #b3b3b3;
     --color-text-muted: #a0a0a0;
-    --color-accent: #fa2d48;
-    --color-accent-hover: #ff4961;
+    /* The user-selected color is a seed. Components consume semantic roles
+       derived from it so custom colors remain legible in every context. */
+    --color-accent-seed: #fa243c;
+    --accent-dark-content: #ff6a69;
+    --accent-dark-graphic: #fa243c;
+    --accent-dark-fill: #e7002f;
+    --accent-dark-fill-hover: #d5002a;
+    --accent-dark-fill-active: #c50027;
+    --accent-dark-fill-disabled: #a2625f;
+    --accent-dark-on-fill: #ffffff;
+    --accent-dark-on-fill-disabled: #ffffff;
+    --accent-dark-subtle: #46242a;
+    --accent-dark-on-subtle: #ffffff;
+    --accent-dark-selection: #6f1621;
+    --accent-dark-on-selection: #ffffff;
+    --accent-dark-focus: #fa243c;
+    --accent-dark-native: #e7002f;
+    --accent-light-content: #ba0024;
+    --accent-light-graphic: #ec0331;
+    --accent-light-fill: #e7002f;
+    --accent-light-fill-hover: #d5002a;
+    --accent-light-fill-active: #c50027;
+    --accent-light-fill-disabled: #a2625f;
+    --accent-light-on-fill: #ffffff;
+    --accent-light-on-fill-disabled: #ffffff;
+    --accent-light-subtle: #ebd1d8;
+    --accent-light-on-subtle: #000000;
+    --accent-light-selection: #f7b6bf;
+    --accent-light-on-selection: #000000;
+    --accent-light-focus: #ec0331;
+    --accent-light-native: #e7002f;
+    --color-accent-content: var(--accent-dark-content);
+    --color-accent-graphic: var(--accent-dark-graphic);
+    --color-accent-fill: var(--accent-dark-fill);
+    --color-accent-fill-hover: var(--accent-dark-fill-hover);
+    --color-accent-fill-active: var(--accent-dark-fill-active);
+    --color-accent-fill-disabled: var(--accent-dark-fill-disabled);
+    --color-on-accent-fill: var(--accent-dark-on-fill);
+    --color-on-accent-fill-disabled: var(--accent-dark-on-fill-disabled);
+    --color-accent-subtle: var(--accent-dark-subtle);
+    --color-on-accent-subtle: var(--accent-dark-on-subtle);
+    --color-accent-selection: var(--accent-dark-selection);
+    --color-on-accent-selection: var(--accent-dark-on-selection);
+    --color-accent-focus: var(--accent-dark-focus);
+    --color-accent-native: var(--accent-dark-native);
     --color-success: #30d158;
     --color-error: #ff453a;
     --color-border: rgba(255, 255, 255, 0.12);
@@ -69,8 +112,20 @@
         --color-text: #111113;
         --color-text-secondary: #5a5a5a;
         --color-text-muted: #6a6a6a;
-        --color-accent: #fa233b;
-        --color-accent-hover: #d91d34;
+        --color-accent-content: var(--accent-light-content);
+        --color-accent-graphic: var(--accent-light-graphic);
+        --color-accent-fill: var(--accent-light-fill);
+        --color-accent-fill-hover: var(--accent-light-fill-hover);
+        --color-accent-fill-active: var(--accent-light-fill-active);
+        --color-accent-fill-disabled: var(--accent-light-fill-disabled);
+        --color-on-accent-fill: var(--accent-light-on-fill);
+        --color-on-accent-fill-disabled: var(--accent-light-on-fill-disabled);
+        --color-accent-subtle: var(--accent-light-subtle);
+        --color-on-accent-subtle: var(--accent-light-on-subtle);
+        --color-accent-selection: var(--accent-light-selection);
+        --color-on-accent-selection: var(--accent-light-on-selection);
+        --color-accent-focus: var(--accent-light-focus);
+        --color-accent-native: var(--accent-light-native);
         --color-success: #248a3d;
         --color-error: #d70015;
         --color-border: rgba(0, 0, 0, 0.1);
@@ -102,7 +157,7 @@ body {
     background:
         radial-gradient(
             circle at 65% -20%,
-            color-mix(in srgb, var(--color-accent) 7%, transparent),
+            color-mix(in srgb, var(--color-accent-seed) 7%, transparent),
             transparent 36rem
         ),
         var(--color-background);
@@ -112,8 +167,8 @@ body {
 }
 
 ::selection {
-    background: color-mix(in srgb, var(--color-accent) 42%, transparent);
-    color: var(--color-text);
+    background: var(--color-accent-selection);
+    color: var(--color-on-accent-selection);
 }
 
 h1,
@@ -143,7 +198,7 @@ button {
 
 button:focus-visible,
 a:focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--color-accent-focus);
     outline-offset: 2px;
 }
 
@@ -159,9 +214,9 @@ textarea {
 input:focus,
 select:focus,
 textarea:focus {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--color-accent-focus);
     outline-offset: 1px;
-    border-color: var(--color-accent);
+    border-color: var(--color-accent-focus);
 }
 
 select {
@@ -254,22 +309,42 @@ svg {
 }
 
 .btn-pill:disabled {
-    opacity: 0.5;
     cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
 }
 
 .btn-primary {
-    background-color: var(--color-accent);
-    color: var(--color-text);
-    box-shadow: 0 4px 16px
-        color-mix(in srgb, var(--color-accent) 35%, transparent);
+    background-color: var(--color-accent-fill);
+    color: var(--color-on-accent-fill);
+    box-shadow:
+        inset 0 0 0 1px var(--color-accent-graphic),
+        0 4px 16px color-mix(in srgb, var(--color-accent-seed) 35%, transparent);
 }
 
 .btn-primary:hover:not(:disabled) {
-    background-color: var(--color-accent-hover);
+    background-color: var(--color-accent-fill-hover);
+    color: var(--color-on-accent-fill);
     transform: scale(1.04);
-    box-shadow: 0 6px 20px
-        color-mix(in srgb, var(--color-accent) 45%, transparent);
+    box-shadow:
+        inset 0 0 0 1px var(--color-accent-graphic),
+        0 6px 20px color-mix(in srgb, var(--color-accent-seed) 45%, transparent);
+}
+
+.btn-primary:active:not(:disabled) {
+    background-color: var(--color-accent-fill-active);
+}
+
+.btn-primary:disabled {
+    background-color: var(--color-accent-fill-disabled);
+    color: var(--color-on-accent-fill-disabled);
+    box-shadow: inset 0 0 0 1px var(--color-accent-graphic);
+}
+
+.btn-secondary:disabled {
+    background-color: var(--color-surface-elevated);
+    border-color: var(--color-border);
+    color: var(--color-text-secondary);
 }
 
 .btn-secondary {
@@ -323,12 +398,13 @@ svg {
 }
 
 .icon-btn:disabled {
-    opacity: 0.5;
     cursor: not-allowed;
+    background-color: var(--color-surface);
+    color: var(--color-text-muted);
 }
 
 .icon-btn:focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--color-accent-focus);
     outline-offset: 1px;
 }
 
@@ -417,7 +493,7 @@ svg {
 .hero-section.compact.playing {
     background: linear-gradient(
         135deg,
-        color-mix(in srgb, var(--color-accent) 15%, transparent) 0%,
+        color-mix(in srgb, var(--color-accent-seed) 15%, transparent) 0%,
         var(--color-surface) 60%
     );
 }
@@ -500,7 +576,7 @@ svg {
     font-weight: var(--font-weight-semibold);
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: var(--color-accent);
+    color: var(--color-accent-content);
 }
 
 .hero-meta {
@@ -649,8 +725,8 @@ svg {
     align-items: center;
     justify-content: center;
     border-radius: var(--radius-full);
-    background: var(--color-accent);
-    color: var(--color-text);
+    background: var(--color-accent-fill);
+    color: var(--color-on-accent-fill);
     border: none;
     opacity: 0;
     transform: translateY(8px) scale(0.9);
@@ -658,7 +734,9 @@ svg {
         opacity var(--transition-fast),
         transform var(--transition-fast),
         background-color var(--transition-fast);
-    box-shadow: var(--shadow-md);
+    box-shadow:
+        inset 0 0 0 1px var(--color-accent-graphic),
+        var(--shadow-md);
     z-index: 2;
     cursor: pointer;
 }
@@ -699,7 +777,8 @@ svg {
 
 .card-play-button:hover,
 .list-row-play:hover {
-    background-color: var(--color-accent-hover);
+    background-color: var(--color-accent-fill-hover);
+    color: var(--color-on-accent-fill);
     transform: scale(1.08);
 }
 
@@ -860,17 +939,17 @@ svg {
 }
 
 .switch.on {
-    background-color: var(--color-accent);
-    border-color: var(--color-accent);
+    background-color: var(--color-accent-fill);
+    border-color: var(--color-accent-graphic);
 }
 
 .switch.on::after {
     transform: translate(1rem, -50%);
-    background-color: #fff;
+    background-color: var(--color-on-accent-fill);
 }
 
 .switch:focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--color-accent-focus);
     outline-offset: 2px;
 }
 
@@ -1018,11 +1097,11 @@ svg {
 
 .bar-track:hover .bar-fill,
 .bar-track:focus-visible .bar-fill {
-    background-color: var(--color-accent);
+    background-color: var(--color-accent-graphic);
 }
 
 .bar-track:focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--color-accent-focus);
     outline-offset: 2px;
 }
 

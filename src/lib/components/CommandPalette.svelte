@@ -1,5 +1,7 @@
 <script lang="ts">
     import { goto } from "$app/navigation";
+    import { moveCommandSelection } from "$lib/utils/commandPalette";
+    import { onMount } from "svelte";
 
     interface Props {
         onClose: () => void;
@@ -7,7 +9,13 @@
     let { onClose }: Props = $props();
     let query = $state("");
     let inputRef = $state<HTMLInputElement | null>(null);
+    let paletteRef = $state<HTMLDivElement | null>(null);
+    let backdropRef = $state<HTMLDivElement | null>(null);
     let selectedIndex = $state(0);
+    const previouslyFocused =
+        typeof document === "undefined"
+            ? null
+            : (document.activeElement as HTMLElement | null);
     const actions = [
         { label: "Home", hint: "Go to your library", href: "/" },
         {
@@ -43,42 +51,143 @@
                 .includes(query.trim().toLowerCase()),
         ),
     );
+    let hasSearchAction = $derived(query.trim().length > 0);
+    let selectableCount = $derived(
+        filteredActions.length + (hasSearchAction ? 1 : 0),
+    );
+    let activeOptionId = $derived(
+        selectableCount > 0 ? `palette-option-${selectedIndex}` : undefined,
+    );
+
     $effect(() => {
         query;
         selectedIndex = 0;
         queueMicrotask(() => inputRef?.focus());
     });
+
+    $effect(() => {
+        const optionId = activeOptionId;
+        if (!optionId) return;
+        queueMicrotask(() => {
+            paletteRef
+                ?.querySelector(`#${optionId}`)
+                ?.scrollIntoView({ block: "nearest" });
+        });
+    });
+
     function activate(href: string) {
         onClose();
         goto(href);
     }
+
+    function moveSelection(delta: number) {
+        selectedIndex = moveCommandSelection(
+            selectedIndex,
+            delta,
+            selectableCount,
+        );
+    }
+
     function handleKeydown(event: KeyboardEvent) {
-        if (event.key === "Escape") onClose();
         if (event.key === "ArrowDown") {
             event.preventDefault();
-            selectedIndex = Math.min(selectedIndex + 1, filteredActions.length);
+            moveSelection(1);
         }
         if (event.key === "ArrowUp") {
             event.preventDefault();
-            selectedIndex = Math.max(selectedIndex - 1, 0);
+            moveSelection(-1);
         }
         if (event.key === "Enter") {
             event.preventDefault();
-            if (query.trim() && selectedIndex === 0) {
+            if (hasSearchAction && selectedIndex === 0) {
                 activate(`/search?q=${encodeURIComponent(query.trim())}`);
             } else {
-                const actionIndex = selectedIndex - (query.trim() ? 1 : 0);
+                const actionIndex = selectedIndex - (hasSearchAction ? 1 : 0);
                 const action = filteredActions[actionIndex];
                 if (action) activate(action.href);
             }
         }
     }
+
+    function focusableElements(): HTMLElement[] {
+        if (!paletteRef) return [];
+        return Array.from(
+            paletteRef.querySelectorAll<HTMLElement>(
+                "button:not([disabled]):not([tabindex='-1']), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])",
+            ),
+        );
+    }
+
+    function handleModalKeydown(event: KeyboardEvent) {
+        if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            onClose();
+            return;
+        }
+
+        if (event.key !== "Tab") return;
+
+        const focusable = focusableElements();
+        if (focusable.length === 0) {
+            event.preventDefault();
+            paletteRef?.focus();
+            return;
+        }
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const current = document.activeElement;
+        if (
+            !paletteRef?.contains(current) ||
+            (!event.shiftKey && current === last) ||
+            (event.shiftKey && current === first)
+        ) {
+            event.preventDefault();
+            (event.shiftKey ? last : first).focus();
+        }
+    }
+
+    onMount(() => {
+        const inertStates = new Map<HTMLElement, boolean>();
+        const parent = backdropRef?.parentElement;
+        if (parent && backdropRef) {
+            for (const sibling of Array.from(parent.children)) {
+                if (
+                    sibling === backdropRef ||
+                    !(sibling instanceof HTMLElement)
+                )
+                    continue;
+                inertStates.set(sibling, sibling.inert);
+                sibling.inert = true;
+            }
+        }
+
+        window.addEventListener("keydown", handleModalKeydown, true);
+        queueMicrotask(() => inputRef?.focus());
+
+        return () => {
+            window.removeEventListener("keydown", handleModalKeydown, true);
+            for (const [element, wasInert] of inertStates) {
+                element.inert = wasInert;
+            }
+            queueMicrotask(() => {
+                if (previouslyFocused?.isConnected) previouslyFocused.focus();
+            });
+        };
+    });
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
-<div class="palette-backdrop" role="presentation" onclick={onClose}>
+<div
+    class="palette-backdrop"
+    role="presentation"
+    bind:this={backdropRef}
+    onclick={onClose}
+>
     <div
         class="palette"
+        bind:this={paletteRef}
         role="dialog"
         aria-modal="true"
         aria-label="Command palette"
@@ -99,14 +208,24 @@
                 bind:value={query}
                 placeholder="Search or jump to…"
                 aria-label="Search commands"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-controls="palette-options"
+                aria-expanded="true"
+                aria-activedescendant={activeOptionId}
                 onkeydown={handleKeydown}
             />
             <kbd>Esc</kbd>
         </div>
-        <div class="palette-list">
+        <div class="palette-list" id="palette-options" role="listbox">
             {#if query.trim()}<button
+                    id="palette-option-0"
                     class="palette-item search-action"
                     class:selected={selectedIndex === 0}
+                    role="option"
+                    aria-selected={selectedIndex === 0}
+                    tabindex="-1"
+                    onpointermove={() => (selectedIndex = 0)}
                     onclick={() =>
                         activate(
                             `/search?q=${encodeURIComponent(query.trim())}`,
@@ -116,9 +235,16 @@
                     ></button
                 >{/if}
             {#each filteredActions as action, index (action.href)}<button
+                    id={`palette-option-${index + (hasSearchAction ? 1 : 0)}`}
                     class="palette-item"
                     class:selected={selectedIndex ===
-                        index + (query.trim() ? 1 : 0)}
+                        index + (hasSearchAction ? 1 : 0)}
+                    role="option"
+                    aria-selected={selectedIndex ===
+                        index + (hasSearchAction ? 1 : 0)}
+                    tabindex="-1"
+                    onpointermove={() =>
+                        (selectedIndex = index + (hasSearchAction ? 1 : 0))}
                     onclick={() => activate(action.href)}
                     ><span>{action.label}</span><span class="palette-hint"
                         >{action.hint}</span
@@ -207,7 +333,7 @@
         background: var(--color-surface-elevated);
     }
     .search-action {
-        color: var(--color-accent);
+        color: var(--color-accent-content);
     }
     .palette-hint,
     .palette-empty {

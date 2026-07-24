@@ -243,10 +243,7 @@ pub fn init_db(app: &AppHandle) -> Result<(Connection, bool)> {
         // Fresh database: create the current schema in one shot.
         let tx = conn.unchecked_transaction()?;
         tx.execute_batch(SCHEMA)?;
-        tx.execute(
-            "INSERT INTO _schema_version (version) VALUES (?1)",
-            [CURRENT_SCHEMA_VERSION],
-        )?;
+        record_schema_version(&tx, CURRENT_SCHEMA_VERSION)?;
         tx.commit()?;
         Ok((conn, true))
     } else if version == CURRENT_SCHEMA_VERSION {
@@ -262,11 +259,18 @@ pub fn init_db(app: &AppHandle) -> Result<(Connection, bool)> {
 fn migrate_v7_to_v8(conn: &Connection) -> Result<()> {
     let tx = conn.unchecked_transaction()?;
     tx.execute_batch(V7_TO_V8)?;
-    tx.execute(
-        "UPDATE _schema_version SET version = ?1",
-        [CURRENT_SCHEMA_VERSION],
-    )?;
+    record_schema_version(&tx, CURRENT_SCHEMA_VERSION)?;
     tx.commit()
+}
+
+/// Upgraded databases retain their applied-version history. Recording only the
+/// newly applied version avoids rewriting distinct primary keys to one value.
+fn record_schema_version(conn: &Connection, version: i32) -> Result<()> {
+    conn.execute(
+        "INSERT INTO _schema_version (version) VALUES (?1)",
+        [version],
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -332,8 +336,13 @@ mod tests {
     fn v7_to_v8_preserves_legacy_provider_urls() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(SCHEMA_VERSION_TABLE).unwrap();
-        conn.execute("INSERT INTO _schema_version (version) VALUES (7)", [])
-            .unwrap();
+        conn.execute_batch(
+            "
+            INSERT INTO _schema_version (version)
+            VALUES (3), (4), (5), (6), (7);
+            ",
+        )
+        .unwrap();
         conn.execute_batch(
             "
             CREATE TABLE discord_artwork_cache (
@@ -382,11 +391,14 @@ mod tests {
                 456
             )
         );
-        let version: i32 = conn
-            .query_row("SELECT MAX(version) FROM _schema_version", [], |row| {
-                row.get(0)
-            })
+        let mut statement = conn
+            .prepare("SELECT version FROM _schema_version ORDER BY version")
             .unwrap();
-        assert_eq!(version, 8);
+        let versions = statement
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<i32>>>()
+            .unwrap();
+        assert_eq!(versions, vec![3, 4, 5, 6, 7, 8]);
     }
 }

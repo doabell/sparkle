@@ -12,6 +12,8 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
 
 const PROGRESS_INTERVAL_MS: u64 = 250;
+const COMMAND_REPLY_TIMEOUT: Duration = Duration::from_secs(3);
+const DEVICE_RETRY_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Returns the stable identifier of the current default output device, used
 /// to detect device switches that the stuck-position heuristic misses (a dead
@@ -123,6 +125,7 @@ pub struct AudioController {
     tx: mpsc::Sender<AudioCommand>,
     #[allow(dead_code)]
     state: Arc<Mutex<SharedState>>,
+    worker: Arc<Mutex<Option<std::thread::JoinHandle<()>>>>,
 }
 
 impl AudioController {
@@ -152,10 +155,14 @@ impl AudioController {
         }));
         let state_clone = state.clone();
         let writer = DbWriter::new(crate::db::db_path(&app_handle));
-        std::thread::spawn(move || {
+        let worker = std::thread::spawn(move || {
             audio_thread(rx, app_handle, state_clone, db, writer);
         });
-        Self { tx, state }
+        Self {
+            tx,
+            state,
+            worker: Arc::new(Mutex::new(Some(worker))),
+        }
     }
 
     /// Loads a queue and starts at `start_index`. `shuffle` is an explicit
@@ -256,7 +263,7 @@ impl AudioController {
         self.tx
             .send(AudioCommand::GetQueue(reply_tx))
             .map_err(|e| e.to_string())?;
-        reply_rx.recv().map_err(|e| e.to_string())
+        receive_audio_reply(reply_rx, COMMAND_REPLY_TIMEOUT, "queue")
     }
 
     pub fn play_queue_index(&self, order_pos: usize) -> Result<PlaybackState, String> {
@@ -271,8 +278,65 @@ impl AudioController {
         self.tx
             .send(AudioCommand::GetState(reply_tx))
             .map_err(|e| e.to_string())?;
-        reply_rx.recv().map_err(|e| e.to_string())
+        receive_audio_reply(reply_rx, COMMAND_REPLY_TIMEOUT, "playback state")
     }
+
+    /// Stops playback, persists the final meaningful listen and session, then
+    /// waits for both the audio and database writer threads to finish.
+    pub fn shutdown(&self) -> Result<(), String> {
+        let mut worker_guard = self.worker.lock().unwrap_or_else(|e| e.into_inner());
+        if worker_guard.is_none() {
+            return Ok(());
+        }
+
+        let (reply_tx, reply_rx) = mpsc::channel();
+        let send_result = self.tx.send(AudioCommand::Shutdown(reply_tx));
+        if send_result.is_err() {
+            let worker = worker_guard.take();
+            drop(worker_guard);
+            join_audio_worker(worker)?;
+            return Err("audio engine stopped before shutdown was requested".to_string());
+        }
+
+        // Database operations have their own bounded busy retries. Wait for
+        // the explicit durability barrier here so application exit cannot
+        // overtake the final session/history writes.
+        let shutdown_result = reply_rx
+            .recv()
+            .map_err(|_| "audio engine stopped before confirming shutdown".to_string())
+            .and_then(|result| result);
+
+        let worker = worker_guard.take();
+        drop(worker_guard);
+        let join_result = join_audio_worker(worker);
+        shutdown_result.and(join_result)
+    }
+}
+
+fn receive_audio_reply<T>(
+    receiver: mpsc::Receiver<T>,
+    timeout: Duration,
+    description: &str,
+) -> Result<T, String> {
+    match receiver.recv_timeout(timeout) {
+        Ok(value) => Ok(value),
+        Err(mpsc::RecvTimeoutError::Timeout) => Err(format!(
+            "audio engine timed out waiting for {description} after {} seconds",
+            timeout.as_secs()
+        )),
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err(format!(
+            "audio engine stopped before replying with {description}"
+        )),
+    }
+}
+
+fn join_audio_worker(worker: Option<std::thread::JoinHandle<()>>) -> Result<(), String> {
+    if let Some(worker) = worker {
+        worker
+            .join()
+            .map_err(|_| "audio engine thread panicked during shutdown".to_string())?;
+    }
+    Ok(())
 }
 
 enum AudioCommand {
@@ -291,6 +355,7 @@ enum AudioCommand {
     GetQueue(mpsc::Sender<QueueView>),
     PlayAt(usize),
     GetState(mpsc::Sender<PlaybackState>),
+    Shutdown(mpsc::Sender<Result<(), String>>),
 }
 
 struct SharedState {
@@ -395,16 +460,17 @@ fn now_epoch_seconds() -> i64 {
 }
 
 fn restore_session(
-    player: &Player,
+    player: Option<&Player>,
     state: &Arc<Mutex<SharedState>>,
     db: &Arc<Mutex<rusqlite::Connection>>,
     writer: &DbWriter,
     app_handle: &AppHandle,
 ) {
-    let snapshot = match {
+    let snapshot_result = {
         let conn = lock_db(db);
         load_session(&conn)
-    } {
+    };
+    let snapshot = match snapshot_result {
         Ok(s) => s,
         Err(e) => {
             log::warn!("Failed to load session: {e}");
@@ -439,11 +505,15 @@ fn restore_session(
             .queue_index
             .and_then(|idx| s.play_order.iter().position(|&i| i == idx));
     }
-    player.set_volume(slider_to_gain(snapshot.volume));
+    if let Some(player) = player {
+        player.set_volume(slider_to_gain(snapshot.volume));
+    }
 
     let index = snapshot.queue_index.unwrap_or(0);
     // Load the restored track paused so startup never produces audible output.
-    player.pause();
+    if let Some(player) = player {
+        player.pause();
+    }
     if !load_track_at_index_with_autoplay(player, state, db, writer, app_handle, index, false) {
         update_state_for_stop(state, writer);
         emit_state_changed(app_handle, state);
@@ -451,10 +521,12 @@ fn restore_session(
     }
 
     if snapshot.position_ms > 0 {
-        let pos = Duration::from_millis(snapshot.position_ms as u64);
-        if player.try_seek(pos).is_err() {
-            reload_source_at_position(player, state, snapshot.position_ms);
-            player.pause();
+        if let Some(player) = player {
+            let pos = Duration::from_millis(snapshot.position_ms as u64);
+            if player.try_seek(pos).is_err() {
+                reload_source_at_position(player, state, snapshot.position_ms);
+                player.pause();
+            }
         }
         {
             let mut s = lock_state(state);
@@ -464,7 +536,9 @@ fn restore_session(
     }
 
     // Always start paused on launch, even if the saved session was playing.
-    player.pause();
+    if let Some(player) = player {
+        player.pause();
+    }
     {
         let mut s = lock_state(state);
         s.is_playing = false;
@@ -554,26 +628,44 @@ fn audio_thread(
     db: Arc<Mutex<rusqlite::Connection>>,
     writer: DbWriter,
 ) {
-    let mut first_run = true;
+    // Session restoration is logical state first. It must not depend on an
+    // output endpoint being present (common during RDP and device switching).
+    restore_session(None, &state, &db, &writer, &app_handle);
+    let mut device_error_logged = false;
 
     'pipeline: loop {
         let handle = match DeviceSinkBuilder::open_default_sink() {
-            Ok(v) => v,
+            Ok(handle) => {
+                if device_error_logged {
+                    log::info!("Audio output device is available again");
+                    device_error_logged = false;
+                }
+                handle
+            }
             Err(e) => {
-                log::error!("audio device error: {e}");
-                std::thread::sleep(Duration::from_secs(1));
-                continue;
+                mark_output_unavailable(&state, &writer, &app_handle);
+                if device_error_logged {
+                    log::debug!("audio device still unavailable: {e}");
+                } else {
+                    log::error!("audio device unavailable: {e}");
+                    device_error_logged = true;
+                }
+                match process_commands_until_device_retry(&rx, &state, &db, &writer, &app_handle) {
+                    DeviceWaitFlow::Retry => continue,
+                    DeviceWaitFlow::Shutdown(reply) => {
+                        finish_audio_thread(None, &state, writer, Some(reply));
+                        return;
+                    }
+                    DeviceWaitFlow::Disconnected => {
+                        finish_audio_thread(None, &state, writer, None);
+                        return;
+                    }
+                }
             }
         };
         let player = Player::connect_new(handle.mixer());
         let device_name = default_output_device_id();
-
-        if first_run {
-            restore_session(&player, &state, &db, &writer, &app_handle);
-            first_run = false;
-        } else {
-            reload_current_for_device(&player, &state, &writer, &app_handle);
-        }
+        reload_current_for_device(&player, &state, &writer, &app_handle);
 
         let mut last_progress_emit = Instant::now();
         let progress_interval = Duration::from_millis(PROGRESS_INTERVAL_MS);
@@ -588,8 +680,24 @@ fn audio_thread(
         let stuck_timeout = Duration::from_secs(3);
 
         loop {
-            while let Ok(cmd) = rx.try_recv() {
-                handle_command(cmd, &player, &state, &db, &writer, &app_handle);
+            loop {
+                match rx.try_recv() {
+                    Ok(cmd) => {
+                        match handle_command(cmd, Some(&player), &state, &db, &writer, &app_handle)
+                        {
+                            CommandFlow::Continue => {}
+                            CommandFlow::Shutdown(reply) => {
+                                finish_audio_thread(Some(&player), &state, writer, Some(reply));
+                                return;
+                            }
+                        }
+                    }
+                    Err(mpsc::TryRecvError::Empty) => break,
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        finish_audio_thread(Some(&player), &state, writer, None);
+                        return;
+                    }
+                }
             }
 
             // Detect default-device changes (headphones, USB DAC, Bluetooth).
@@ -696,7 +804,7 @@ fn audio_thread(
                     s.is_playing && s.current_track.is_some()
                 };
                 if should_advance {
-                    advance(&player, &state, &db, &writer, &app_handle, true);
+                    advance(Some(&player), &state, &db, &writer, &app_handle, true);
                 }
             }
 
@@ -708,14 +816,93 @@ fn audio_thread(
     }
 }
 
-fn handle_command(
-    cmd: AudioCommand,
-    player: &Player,
+enum DeviceWaitFlow {
+    Retry,
+    Shutdown(mpsc::Sender<Result<(), String>>),
+    Disconnected,
+}
+
+fn process_commands_until_device_retry(
+    rx: &mpsc::Receiver<AudioCommand>,
     state: &Arc<Mutex<SharedState>>,
     db: &Arc<Mutex<rusqlite::Connection>>,
     writer: &DbWriter,
     app_handle: &AppHandle,
+) -> DeviceWaitFlow {
+    let retry_at = Instant::now() + DEVICE_RETRY_INTERVAL;
+    loop {
+        let remaining = retry_at.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return DeviceWaitFlow::Retry;
+        }
+        match rx.recv_timeout(remaining) {
+            Ok(cmd) => match handle_command(cmd, None, state, db, writer, app_handle) {
+                CommandFlow::Continue => {}
+                CommandFlow::Shutdown(reply) => return DeviceWaitFlow::Shutdown(reply),
+            },
+            Err(mpsc::RecvTimeoutError::Timeout) => return DeviceWaitFlow::Retry,
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                return DeviceWaitFlow::Disconnected;
+            }
+        }
+    }
+}
+
+fn mark_output_unavailable(
+    state: &Arc<Mutex<SharedState>>,
+    writer: &DbWriter,
+    app_handle: &AppHandle,
 ) {
+    let changed = {
+        let mut s = lock_state(state);
+        let changed = s.is_playing;
+        s.is_playing = false;
+        s.last_counted_position_ms = None;
+        changed
+    };
+    if changed {
+        emit_state_changed(app_handle, state);
+        save_session_to_db(state, writer);
+    }
+}
+
+fn finish_audio_thread(
+    player: Option<&Player>,
+    state: &Arc<Mutex<SharedState>>,
+    writer: DbWriter,
+    reply: Option<mpsc::Sender<Result<(), String>>>,
+) {
+    if let Some(player) = player {
+        player.pause();
+    }
+    {
+        let mut s = lock_state(state);
+        s.is_playing = false;
+        s.last_counted_position_ms = None;
+    }
+    save_session_to_db(state, &writer);
+    record_outgoing_play(state, &writer);
+    let result = writer.shutdown();
+    if let Some(reply) = reply {
+        let _ = reply.send(result);
+    } else if let Err(error) = result {
+        log::warn!("Audio shutdown could not flush database writes: {error}");
+    }
+}
+
+enum CommandFlow {
+    Continue,
+    Shutdown(mpsc::Sender<Result<(), String>>),
+}
+
+fn handle_command(
+    cmd: AudioCommand,
+    player: Option<&Player>,
+    state: &Arc<Mutex<SharedState>>,
+    db: &Arc<Mutex<rusqlite::Connection>>,
+    writer: &DbWriter,
+    app_handle: &AppHandle,
+) -> CommandFlow {
     match cmd {
         AudioCommand::LoadQueue(track_ids, start_index, shuffle_override) => {
             record_outgoing_play(state, writer);
@@ -749,8 +936,10 @@ fn handle_command(
                     emit_state_changed(app_handle, state);
                 }
             } else {
-                player.stop();
-                player.clear();
+                if let Some(player) = player {
+                    player.stop();
+                    player.clear();
+                }
                 update_state_for_stop(state, writer);
                 emit_state_changed(app_handle, state);
             }
@@ -775,14 +964,20 @@ fn handle_command(
         AudioCommand::Play => {
             let has_track = lock_state(state).current_track.is_some();
             if has_track {
-                player.play();
-                {
+                if let Some(player) = player {
+                    player.play();
                     let mut s = lock_state(state);
                     s.is_playing = true;
                     // Resuming a restored track has no start marker yet.
                     if s.play_started_at.is_none() {
                         s.play_started_at = Some(now_epoch_seconds());
                     }
+                } else {
+                    // Commands still resolve when no output exists, but the
+                    // logical state must never claim inaudible playback.
+                    let mut s = lock_state(state);
+                    s.is_playing = false;
+                    s.last_counted_position_ms = None;
                 }
                 emit_state_changed(app_handle, state);
                 save_session_to_db(state, writer);
@@ -798,7 +993,9 @@ fn handle_command(
             }
         }
         AudioCommand::Pause => {
-            player.pause();
+            if let Some(player) = player {
+                player.pause();
+            }
             {
                 let mut s = lock_state(state);
                 s.is_playing = false;
@@ -808,27 +1005,31 @@ fn handle_command(
             save_session_to_db(state, writer);
         }
         AudioCommand::Stop => {
-            player.stop();
-            player.clear();
+            if let Some(player) = player {
+                player.stop();
+                player.clear();
+            }
             update_state_for_stop(state, writer);
             emit_state_changed(app_handle, state);
         }
         AudioCommand::Seek(position_ms) => {
             let position_ms = position_ms.max(0);
-            let pos = Duration::from_millis(position_ms as u64);
-            let was_playing = !player.is_paused();
-            if was_playing {
-                player.pause();
-            }
-            let seek_ok = player.try_seek(pos).is_ok();
-            if !seek_ok {
-                let reloaded = reload_source_at_position(player, state, position_ms);
-                if !reloaded {
-                    log::warn!("Seek failed and source reload was unsuccessful");
+            if let Some(player) = player {
+                let pos = Duration::from_millis(position_ms as u64);
+                let was_playing = !player.is_paused();
+                if was_playing {
+                    player.pause();
                 }
-            }
-            if was_playing {
-                player.play();
+                let seek_ok = player.try_seek(pos).is_ok();
+                if !seek_ok {
+                    let reloaded = reload_source_at_position(player, state, position_ms);
+                    if !reloaded {
+                        log::warn!("Seek failed and source reload was unsuccessful");
+                    }
+                }
+                if was_playing {
+                    player.play();
+                }
             }
             {
                 let mut s = lock_state(state);
@@ -990,7 +1191,9 @@ fn handle_command(
         }
         AudioCommand::SetVolume(volume) => {
             let v = volume.clamp(0.0, 1.0);
-            player.set_volume(slider_to_gain(v));
+            if let Some(player) = player {
+                player.set_volume(slider_to_gain(v));
+            }
             {
                 let mut s = lock_state(state);
                 s.volume = v;
@@ -1002,19 +1205,23 @@ fn handle_command(
             let ps = build_playback_state(state);
             let _ = reply.send(ps);
         }
+        AudioCommand::Shutdown(reply) => return CommandFlow::Shutdown(reply),
     }
+    CommandFlow::Continue
 }
 
-fn seek_to_start(player: &Player, state: &Arc<Mutex<SharedState>>) {
-    let was_playing = !player.is_paused();
-    if was_playing {
-        player.pause();
-    }
-    if player.try_seek(Duration::from_millis(0)).is_err() {
-        reload_source_at_position(player, state, 0);
-    }
-    if was_playing {
-        player.play();
+fn seek_to_start(player: Option<&Player>, state: &Arc<Mutex<SharedState>>) {
+    if let Some(player) = player {
+        let was_playing = !player.is_paused();
+        if was_playing {
+            player.pause();
+        }
+        if player.try_seek(Duration::from_millis(0)).is_err() {
+            reload_source_at_position(player, state, 0);
+        }
+        if was_playing {
+            player.play();
+        }
     }
     {
         let mut s = lock_state(state);
@@ -1024,7 +1231,7 @@ fn seek_to_start(player: &Player, state: &Arc<Mutex<SharedState>>) {
 }
 
 fn advance(
-    player: &Player,
+    player: Option<&Player>,
     state: &Arc<Mutex<SharedState>>,
     db: &Arc<Mutex<rusqlite::Connection>>,
     writer: &DbWriter,
@@ -1073,8 +1280,10 @@ fn advance(
                 emit_state_changed(app_handle, state);
             }
         } else {
-            player.stop();
-            player.clear();
+            if let Some(player) = player {
+                player.stop();
+                player.clear();
+            }
             update_state_for_stop(state, writer);
             emit_state_changed(app_handle, state);
         }
@@ -1092,8 +1301,10 @@ fn advance(
             }
             emit_state_changed(app_handle, state);
         } else {
-            player.stop();
-            player.clear();
+            if let Some(player) = player {
+                player.stop();
+                player.clear();
+            }
             update_state_for_stop(state, writer);
             emit_state_changed(app_handle, state);
         }
@@ -1116,7 +1327,7 @@ fn update_state_for_stop(state: &Arc<Mutex<SharedState>>, writer: &DbWriter) {
 }
 
 fn load_track_at_index(
-    player: &Player,
+    player: Option<&Player>,
     state: &Arc<Mutex<SharedState>>,
     db: &Arc<Mutex<rusqlite::Connection>>,
     writer: &DbWriter,
@@ -1127,7 +1338,7 @@ fn load_track_at_index(
 }
 
 fn load_track_at_index_with_autoplay(
-    player: &Player,
+    player: Option<&Player>,
     state: &Arc<Mutex<SharedState>>,
     db: &Arc<Mutex<rusqlite::Connection>>,
     writer: &DbWriter,
@@ -1154,6 +1365,11 @@ fn load_track_at_index_with_autoplay(
         }
     };
 
+    // Without an output device the queue and metadata are still usable, but
+    // playback stays paused. Automatically starting later, after a device
+    // appears, would be surprising and could produce unwanted audio.
+    let autoplay = autoplay && player.is_some();
+
     // Publish the new metadata before touching the audio file. Opening and
     // decoding can take long enough to make the player bar feel stuck; the
     // audio source can catch up independently while the UI shows the next
@@ -1170,6 +1386,10 @@ fn load_track_at_index_with_autoplay(
         s.last_counted_position_ms = None;
     }
     emit_state_changed(app_handle, state);
+
+    let Some(player) = player else {
+        return true;
+    };
 
     let file = match File::open(&track.file_path) {
         Ok(f) => f,
@@ -1484,5 +1704,26 @@ mod tests {
         assert!(is_meaningful_listen(5_000, 8_000));
         assert!(!is_meaningful_listen(29_999, 180_000));
         assert!(is_meaningful_listen(30_000, 180_000));
+    }
+
+    #[test]
+    fn command_reply_wait_is_bounded() {
+        let (_reply_tx, reply_rx) = mpsc::channel::<PlaybackState>();
+
+        let error =
+            receive_audio_reply(reply_rx, Duration::from_millis(1), "test reply").unwrap_err();
+
+        assert!(error.contains("timed out waiting for test reply"));
+    }
+
+    #[test]
+    fn command_reply_reports_a_stopped_worker() {
+        let (reply_tx, reply_rx) = mpsc::channel::<PlaybackState>();
+        drop(reply_tx);
+
+        let error =
+            receive_audio_reply(reply_rx, Duration::from_secs(1), "test reply").unwrap_err();
+
+        assert!(error.contains("stopped before replying with test reply"));
     }
 }

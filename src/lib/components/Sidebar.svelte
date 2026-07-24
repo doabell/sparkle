@@ -197,9 +197,10 @@
     .logo svg {
         width: 1.5rem;
         height: 1.5rem;
-        color: var(--color-accent);
+        color: var(--color-accent-graphic);
         filter: drop-shadow(
-            0 0 12px color-mix(in srgb, var(--color-accent) 35%, transparent)
+            0 0 12px
+                color-mix(in srgb, var(--color-accent-seed) 35%, transparent)
         );
     }
 
@@ -221,7 +222,7 @@
     }
 
     li.active .icon {
-        color: var(--color-accent);
+        color: var(--color-accent-graphic);
     }
 
     li.active::before {
@@ -232,7 +233,7 @@
         transform: translateY(-50%);
         width: 3px;
         height: 1.25rem;
-        background-color: var(--color-accent);
+        background-color: var(--color-accent-graphic);
         border-radius: var(--radius-full);
     }
 
@@ -315,7 +316,7 @@
         }
 
         .menu-toggle:hover {
-            color: var(--color-accent);
+            color: var(--color-accent-graphic);
             background-color: var(--color-surface-raised);
         }
 

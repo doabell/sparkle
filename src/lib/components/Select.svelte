@@ -1,4 +1,6 @@
 <script lang="ts">
+    import { onDestroy, tick } from "svelte";
+
     interface Option {
         value: string;
         label: string;
@@ -13,48 +15,259 @@
 
     let { options, value, onchange, ariaLabel }: Props = $props();
 
-    let open = $state(false);
-    let rootRef = $state<HTMLDivElement | undefined>();
+    const componentId = $props.id();
+    const triggerId = `${componentId}-trigger`;
+    const listboxId = `${componentId}-listbox`;
 
-    let currentLabel = $derived(
-        options.find((o) => o.value === value)?.label ?? value,
+    let open = $state(false);
+    let activeIndex = $state(-1);
+    let rootRef = $state<HTMLDivElement | null>(null);
+    let triggerRef = $state<HTMLButtonElement | null>(null);
+    let listboxRef = $state<HTMLDivElement | null>(null);
+    let typeahead = "";
+    let typeaheadTimer: ReturnType<typeof setTimeout> | undefined;
+
+    let selectedIndex = $derived(
+        options.findIndex((option) => option.value === value),
+    );
+    let currentLabel = $derived(options[selectedIndex]?.label ?? value);
+    let activeOptionId = $derived(
+        activeIndex >= 0 ? `${componentId}-option-${activeIndex}` : undefined,
     );
 
-    function toggle(e: MouseEvent) {
-        e.stopPropagation();
-        open = !open;
-    }
+    $effect(() => {
+        if (!open || activeIndex < 0) return;
+        activeIndex;
+        void tick().then(() => {
+            listboxRef
+                ?.querySelector<HTMLElement>(`#${activeOptionId}`)
+                ?.scrollIntoView({ block: "nearest" });
+        });
+    });
 
-    function choose(v: string) {
-        onchange(v);
-        open = false;
-    }
-
-    function handleWindowClick(e: MouseEvent) {
-        if (!open) return;
-        if (rootRef?.contains(e.target as Node)) return;
-        open = false;
-    }
-
-    function handleKeydown(e: KeyboardEvent) {
-        if (e.key === "Escape" && open) {
-            e.stopPropagation();
-            open = false;
+    function resetTypeahead() {
+        typeahead = "";
+        if (typeaheadTimer) {
+            clearTimeout(typeaheadTimer);
+            typeaheadTimer = undefined;
         }
     }
+
+    function scheduleTypeaheadReset() {
+        if (typeaheadTimer) clearTimeout(typeaheadTimer);
+        typeaheadTimer = setTimeout(() => {
+            typeahead = "";
+            typeaheadTimer = undefined;
+        }, 500);
+    }
+
+    function normalizedLabel(label: string) {
+        return label.trim().toLocaleLowerCase();
+    }
+
+    function findTypeaheadMatch(query: string, fromIndex: number) {
+        const normalizedQuery = normalizedLabel(query);
+        if (!normalizedQuery || options.length === 0) return -1;
+
+        for (let offset = 1; offset <= options.length; offset += 1) {
+            const index =
+                (fromIndex + offset + options.length) % options.length;
+            if (
+                normalizedLabel(options[index].label).startsWith(
+                    normalizedQuery,
+                )
+            ) {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    function typeaheadMatch(key: string, fromIndex: number) {
+        const nextQuery = `${typeahead}${key}`;
+        let match = findTypeaheadMatch(nextQuery, fromIndex);
+
+        if (match >= 0) {
+            typeahead = nextQuery;
+        } else {
+            typeahead = key;
+            match = findTypeaheadMatch(typeahead, fromIndex);
+        }
+
+        scheduleTypeaheadReset();
+        return match;
+    }
+
+    function openList(preferredIndex = selectedIndex) {
+        if (options.length === 0) return;
+        activeIndex =
+            preferredIndex >= 0 && preferredIndex < options.length
+                ? preferredIndex
+                : 0;
+        open = true;
+        void tick().then(() => listboxRef?.focus());
+    }
+
+    function closeList(restoreFocus: boolean) {
+        open = false;
+        activeIndex = -1;
+        resetTypeahead();
+        if (restoreFocus) {
+            void tick().then(() => triggerRef?.focus());
+        }
+    }
+
+    function choose(index: number) {
+        const option = options[index];
+        if (!option) return;
+        onchange(option.value);
+        closeList(true);
+    }
+
+    function toggle() {
+        if (open) {
+            closeList(true);
+        } else {
+            openList();
+        }
+    }
+
+    function moveActive(delta: number) {
+        if (options.length === 0) return;
+        const current =
+            activeIndex >= 0
+                ? activeIndex
+                : selectedIndex >= 0
+                  ? selectedIndex
+                  : 0;
+        activeIndex = Math.max(
+            0,
+            Math.min(options.length - 1, current + delta),
+        );
+    }
+
+    function hasTypingModifiers(event: KeyboardEvent) {
+        return event.altKey || event.ctrlKey || event.metaKey;
+    }
+
+    function handleTriggerKeydown(event: KeyboardEvent) {
+        if (options.length === 0) return;
+
+        switch (event.key) {
+            case "ArrowDown":
+            case "ArrowUp":
+                event.preventDefault();
+                openList();
+                return;
+            case "Home":
+                event.preventDefault();
+                openList(0);
+                return;
+            case "End":
+                event.preventDefault();
+                openList(options.length - 1);
+                return;
+            case "Enter":
+            case " ":
+                event.preventDefault();
+                openList();
+                return;
+        }
+
+        if (event.key.length === 1 && !hasTypingModifiers(event)) {
+            event.preventDefault();
+            const match = typeaheadMatch(event.key, selectedIndex);
+            if (match >= 0) onchange(options[match].value);
+        }
+    }
+
+    function handleListboxKeydown(event: KeyboardEvent) {
+        switch (event.key) {
+            case "ArrowDown":
+                event.preventDefault();
+                moveActive(1);
+                return;
+            case "ArrowUp":
+                event.preventDefault();
+                moveActive(-1);
+                return;
+            case "Home":
+                event.preventDefault();
+                activeIndex = 0;
+                return;
+            case "End":
+                event.preventDefault();
+                activeIndex = options.length - 1;
+                return;
+            case "Enter":
+            case " ":
+                event.preventDefault();
+                choose(activeIndex);
+                return;
+            case "Escape":
+                event.preventDefault();
+                event.stopPropagation();
+                closeList(true);
+                return;
+        }
+
+        if (event.key.length === 1 && !hasTypingModifiers(event)) {
+            event.preventDefault();
+            const match = typeaheadMatch(event.key, activeIndex);
+            if (match >= 0) activeIndex = match;
+        }
+    }
+
+    function handleWindowPointerdown(event: PointerEvent) {
+        if (
+            open &&
+            event.target instanceof Node &&
+            !rootRef?.contains(event.target)
+        ) {
+            closeList(false);
+        }
+    }
+
+    function handleWindowKeydown(event: KeyboardEvent) {
+        if (open && event.key === "Escape") {
+            event.preventDefault();
+            closeList(true);
+        }
+    }
+
+    function handleFocusout(event: FocusEvent) {
+        if (
+            open &&
+            event.relatedTarget instanceof Node &&
+            !rootRef?.contains(event.relatedTarget)
+        ) {
+            closeList(false);
+        }
+    }
+
+    onDestroy(resetTypeahead);
 </script>
 
-<svelte:window onclick={handleWindowClick} onkeydown={handleKeydown} />
+<svelte:window
+    onpointerdown={handleWindowPointerdown}
+    onkeydown={handleWindowKeydown}
+/>
 
-<div class="select" bind:this={rootRef}>
+<div class="select" bind:this={rootRef} onfocusout={handleFocusout}>
     <button
+        bind:this={triggerRef}
+        id={triggerId}
         type="button"
         class="select-trigger"
         class:open
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label={ariaLabel}
+        aria-controls={open ? listboxId : undefined}
+        aria-label={ariaLabel ? `${ariaLabel}: ${currentLabel}` : undefined}
+        disabled={options.length === 0}
         onclick={toggle}
+        onkeydown={handleTriggerKeydown}
     >
         <span class="select-value ellipsis">{currentLabel}</span>
         <svg
@@ -72,15 +285,29 @@
     </button>
 
     {#if open}
-        <div class="select-menu" role="listbox" aria-label={ariaLabel}>
-            {#each options as option (option.value)}
+        <div
+            bind:this={listboxRef}
+            id={listboxId}
+            class="select-menu"
+            role="listbox"
+            tabindex="-1"
+            aria-label={ariaLabel}
+            aria-labelledby={ariaLabel ? undefined : triggerId}
+            aria-activedescendant={activeOptionId}
+            onkeydown={handleListboxKeydown}
+        >
+            {#each options as option, index (option.value)}
                 <button
+                    id={`${componentId}-option-${index}`}
                     type="button"
                     class="select-option"
+                    class:active={index === activeIndex}
                     class:selected={option.value === value}
                     role="option"
                     aria-selected={option.value === value}
-                    onclick={() => choose(option.value)}
+                    tabindex="-1"
+                    onpointermove={() => (activeIndex = index)}
+                    onclick={() => choose(index)}
                 >
                     <span class="ellipsis">{option.label}</span>
                     {#if option.value === value}
@@ -106,11 +333,13 @@
     .select {
         position: relative;
         display: inline-block;
+        max-width: 100%;
     }
 
     .select-trigger {
         display: inline-flex;
         align-items: center;
+        max-width: 100%;
         gap: var(--spacing-sm);
         padding: var(--spacing-xs) var(--spacing-sm) var(--spacing-xs)
             var(--spacing-md);
@@ -131,8 +360,13 @@
     }
 
     .select-trigger:focus-visible {
-        outline: 2px solid var(--color-accent);
+        outline: 2px solid var(--color-accent-focus);
         outline-offset: 1px;
+    }
+
+    .select-trigger:disabled {
+        cursor: default;
+        opacity: 0.55;
     }
 
     .select-value {
@@ -142,6 +376,7 @@
     .select-chevron {
         width: 0.875rem;
         height: 0.875rem;
+        flex-shrink: 0;
         color: var(--color-text-muted);
         transition: transform var(--transition-fast);
     }
@@ -157,8 +392,8 @@
         z-index: 60;
         width: max-content;
         min-width: 100%;
-        max-width: 20rem;
-        max-height: 16rem;
+        max-width: min(20rem, calc(100vw - 2rem));
+        max-height: min(16rem, calc(100vh - 2rem));
         overflow-y: auto;
         padding: var(--spacing-xs);
         background: rgba(var(--color-surface-rgb), 0.95);
@@ -167,6 +402,7 @@
         border: 1px solid var(--color-border);
         border-radius: var(--radius-lg);
         box-shadow: var(--shadow-lg);
+        outline: none;
         animation: select-in 120ms ease-out;
     }
 
@@ -199,12 +435,13 @@
         white-space: nowrap;
     }
 
-    .select-option:hover {
+    .select-option:hover,
+    .select-option.active {
         background-color: rgba(255, 255, 255, 0.08);
     }
 
     .select-option.selected {
-        color: var(--color-accent);
+        color: var(--color-accent-content);
         font-weight: var(--font-weight-semibold);
     }
 
@@ -212,5 +449,15 @@
         width: 0.875rem;
         height: 0.875rem;
         flex-shrink: 0;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .select-menu {
+            animation: none;
+        }
+
+        .select-chevron {
+            transition: none;
+        }
     }
 </style>

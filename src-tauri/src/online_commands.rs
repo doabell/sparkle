@@ -14,6 +14,21 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::State;
 
+type LyricsCacheLookup = (Option<Lyrics>, Vec<Lyrics>, Option<String>);
+type ArtistInfoLookup = (
+    Option<String>,
+    Option<ArtistInfo>,
+    Option<String>,
+    Option<String>,
+);
+type ArtistImageLookup = (
+    Option<CachedImage>,
+    Option<CachedImage>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
 async fn load_settings_async(db: &Arc<Mutex<rusqlite::Connection>>) -> Result<Settings, String> {
     let db = db.clone();
     tokio::task::spawn_blocking(move || {
@@ -22,7 +37,6 @@ async fn load_settings_async(db: &Arc<Mutex<rusqlite::Connection>>) -> Result<Se
     })
     .await
     .map_err(|e| e.to_string())?
-    .map_err(|e| e)
 }
 
 fn can_cache_lyrics_result(
@@ -42,7 +56,7 @@ pub async fn get_lyrics(state: State<'_, AppState>, trackId: i64) -> Result<Lyri
     //    lyrics are retained independently, like custom artwork.
     let (custom, cached, override_source) = tokio::task::spawn_blocking({
         let db = db.clone();
-        move || -> Result<(Option<Lyrics>, Vec<Lyrics>, Option<String>), String> {
+        move || -> Result<LyricsCacheLookup, String> {
             let conn = db.lock().map_err(|e| e.to_string())?;
             let custom = cache::get_lyrics_from_source(&conn, trackId, "custom")?;
             let cached = cache::get_non_custom_lyrics(&conn, trackId)?;
@@ -319,7 +333,7 @@ pub async fn get_artist_info(
     let (bio, cached, title, info_provider) = tokio::task::spawn_blocking({
         let db = db.clone();
         let cache_dir = cache_dir.clone();
-        move || -> Result<(Option<String>, Option<ArtistInfo>, Option<String>, Option<String>), String> {
+        move || -> Result<ArtistInfoLookup, String> {
             let conn = db.lock().map_err(|e| e.to_string())?;
             let (bio, info_provider): (Option<String>, Option<String>) = conn
                 .query_row(
@@ -330,7 +344,8 @@ pub async fn get_artist_info(
                 .optional()
                 .map_err(|e| e.to_string())?
                 .unwrap_or((None, None));
-            let cached = crate::providers::artist::get_cached_artist_info(&conn, &cache_dir, artistId)?;
+            let cached =
+                crate::providers::artist::get_cached_artist_info(&conn, &cache_dir, artistId)?;
             let title = crate::providers::artist::artist_query_title(&conn, artistId)?;
             Ok((bio, cached, title, info_provider))
         }
@@ -477,7 +492,7 @@ pub async fn get_artist_image(
     let (custom_image, cached, title, image_provider, info_provider) = tokio::task::spawn_blocking({
         let db = db.clone();
         let cache_dir = cache_dir.clone();
-        move || -> Result<(Option<CachedImage>, Option<CachedImage>, Option<String>, Option<String>, Option<String>), String> {
+        move || -> Result<ArtistImageLookup, String> {
             let conn = db.lock().map_err(|e| e.to_string())?;
             let custom = cache::get_custom_image(&conn, &cache_dir, "artist", artistId)?;
             let cached = crate::providers::artist::get_cached_artist_image(&conn, &cache_dir, artistId)?;
@@ -1073,16 +1088,21 @@ pub async fn get_album_art(
 
     // 3. Cache the result (including negatives, so artless albums are not
     // re-probed on every view) with a short DB lock.
-    tokio::task::spawn_blocking({
+    let cached = tokio::task::spawn_blocking({
         let db = db.clone();
         let cache_dir = cache_dir.clone();
         move || -> Result<CachedImage, String> {
             let conn = db.lock().map_err(|e| e.to_string())?;
-            crate::providers::album_art::cache_album_art(&conn, &cache_dir, albumId, &image)
+            let cached =
+                crate::providers::album_art::cache_album_art(&conn, &cache_dir, albumId, &image)?;
+            crate::discord::invalidate_album_artwork(&conn, albumId)?;
+            Ok(cached)
         }
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())??;
+    state.discord.refresh();
+    Ok(cached)
 }
 
 /// Raw bytes are only needed for the native media session. Webview callers
@@ -1124,6 +1144,7 @@ pub fn get_online_settings(state: State<'_, AppState>) -> Result<OnlineSettings,
         reduce_motion: settings.reduce_motion,
         brave_api_key: settings.brave_api_key,
         accent_color: settings.accent_color,
+        accent_foreground_preference: settings.accent_foreground_preference,
         discord_enabled: settings.discord_enabled,
         discord_app_id: settings.discord_app_id,
         discord_catbox_user_hash: settings.discord_catbox_user_hash,
@@ -1160,7 +1181,8 @@ pub fn set_online_settings(
     full.lyrics_font = settings.lyrics_font;
     full.reduce_motion = settings.reduce_motion;
     full.brave_api_key = settings.brave_api_key;
-    full.accent_color = settings.accent_color;
+    full.accent_color = settings::normalize_accent_color(&settings.accent_color);
+    full.accent_foreground_preference = settings.accent_foreground_preference;
     full.discord_enabled = settings.discord_enabled;
     full.discord_app_id = settings.discord_app_id;
     full.discord_catbox_user_hash = settings.discord_catbox_user_hash;
@@ -1259,14 +1281,16 @@ mod tests {
 
     #[test]
     fn manual_artwork_search_uses_all_enabled_online_providers() {
-        let mut settings = Settings::default();
-        settings.artist_image_sources = vec![
-            "custom".to_string(),
-            "wikipedia:ja".to_string(),
-            "shazam".to_string(),
-            "brave".to_string(),
-            "duckduckgo".to_string(),
-        ];
+        let settings = Settings {
+            artist_image_sources: vec![
+                "custom".to_string(),
+                "wikipedia:ja".to_string(),
+                "shazam".to_string(),
+                "brave".to_string(),
+                "duckduckgo".to_string(),
+            ],
+            ..Settings::default()
+        };
 
         assert_eq!(
             manual_image_search_sources(&settings),
@@ -1281,15 +1305,17 @@ mod tests {
 
     #[test]
     fn manual_lyrics_search_uses_all_enabled_online_providers() {
-        let mut settings = Settings::default();
-        settings.lyrics_sources = vec![
-            "embedded".to_string(),
-            "lrc".to_string(),
-            "lrclib".to_string(),
-            "netease".to_string(),
-            "kashinavi".to_string(),
-            "qq".to_string(),
-        ];
+        let settings = Settings {
+            lyrics_sources: vec![
+                "embedded".to_string(),
+                "lrc".to_string(),
+                "lrclib".to_string(),
+                "netease".to_string(),
+                "kashinavi".to_string(),
+                "qq".to_string(),
+            ],
+            ..Settings::default()
+        };
 
         assert_eq!(
             manual_lyrics_search_sources(&settings),

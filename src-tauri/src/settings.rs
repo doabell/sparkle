@@ -1,4 +1,4 @@
-use crate::models::RepeatMode;
+use crate::models::{AccentForegroundPreference, RepeatMode};
 use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
@@ -15,6 +15,7 @@ const LYRICS_FONT_KEY: &str = "lyrics_font";
 const REDUCE_MOTION_KEY: &str = "reduce_motion";
 const BRAVE_API_KEY_KEY: &str = "brave_api_key";
 const ACCENT_COLOR_KEY: &str = "accent_color";
+const ACCENT_FOREGROUND_PREFERENCE_KEY: &str = "accent_foreground_preference";
 const DISCORD_ENABLED_KEY: &str = "discord_enabled";
 const DISCORD_APP_ID_KEY: &str = "discord_app_id";
 const DISCORD_CATBOX_USER_HASH_KEY: &str = "discord_catbox_user_hash";
@@ -114,6 +115,16 @@ fn default_accent_color() -> String {
     "#fa243c".to_string()
 }
 
+pub fn normalize_accent_color(value: &str) -> String {
+    let trimmed = value.trim();
+    let digits = trimmed.strip_prefix('#').unwrap_or(trimmed);
+    if digits.len() == 6 && digits.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        format!("#{}", digits.to_ascii_lowercase())
+    } else {
+        default_accent_color()
+    }
+}
+
 fn default_discord_enabled() -> bool {
     true
 }
@@ -187,6 +198,8 @@ pub struct Settings {
     pub brave_api_key: String,
     #[serde(default = "default_accent_color")]
     pub accent_color: String,
+    #[serde(default)]
+    pub accent_foreground_preference: AccentForegroundPreference,
     #[serde(default = "default_discord_enabled")]
     pub discord_enabled: bool,
     #[serde(default = "default_discord_app_id")]
@@ -235,6 +248,7 @@ impl Default for Settings {
             reduce_motion: default_reduce_motion(),
             brave_api_key: default_brave_api_key(),
             accent_color: default_accent_color(),
+            accent_foreground_preference: AccentForegroundPreference::Auto,
             discord_enabled: default_discord_enabled(),
             discord_app_id: default_discord_app_id(),
             discord_catbox_user_hash: default_discord_catbox_user_hash(),
@@ -293,6 +307,11 @@ pub fn load_settings(conn: &Connection) -> Result<Settings, String> {
         }
     }
     lyrics_sources.dedup();
+    let stored_accent_color: String = load_json(conn, ACCENT_COLOR_KEY, default_accent_color())?;
+    let accent_color = normalize_accent_color(&stored_accent_color);
+    if accent_color != stored_accent_color {
+        save_json(conn, ACCENT_COLOR_KEY, &accent_color)?;
+    }
     Ok(Settings {
         monitored_folders: load_json(conn, MONITORED_FOLDERS_KEY, default_monitored_folders())?,
         artist_split_regex: load_json(conn, ARTIST_SPLIT_REGEX_KEY, default_artist_split_regex())?,
@@ -306,7 +325,12 @@ pub fn load_settings(conn: &Connection) -> Result<Settings, String> {
         lyrics_font: load_json(conn, LYRICS_FONT_KEY, default_lyrics_font())?,
         reduce_motion: load_json(conn, REDUCE_MOTION_KEY, default_reduce_motion())?,
         brave_api_key: load_json(conn, BRAVE_API_KEY_KEY, default_brave_api_key())?,
-        accent_color: load_json(conn, ACCENT_COLOR_KEY, default_accent_color())?,
+        accent_color,
+        accent_foreground_preference: load_json(
+            conn,
+            ACCENT_FOREGROUND_PREFERENCE_KEY,
+            AccentForegroundPreference::Auto,
+        )?,
         discord_enabled: load_json(conn, DISCORD_ENABLED_KEY, default_discord_enabled())?,
         discord_app_id: load_json(conn, DISCORD_APP_ID_KEY, default_discord_app_id())?,
         discord_catbox_user_hash: load_json(
@@ -381,7 +405,16 @@ pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<(), Strin
     save_json(conn, LYRICS_FONT_KEY, &settings.lyrics_font)?;
     save_json(conn, REDUCE_MOTION_KEY, &settings.reduce_motion)?;
     save_json(conn, BRAVE_API_KEY_KEY, &settings.brave_api_key)?;
-    save_json(conn, ACCENT_COLOR_KEY, &settings.accent_color)?;
+    save_json(
+        conn,
+        ACCENT_COLOR_KEY,
+        &normalize_accent_color(&settings.accent_color),
+    )?;
+    save_json(
+        conn,
+        ACCENT_FOREGROUND_PREFERENCE_KEY,
+        &settings.accent_foreground_preference,
+    )?;
     save_json(conn, DISCORD_ENABLED_KEY, &settings.discord_enabled)?;
     save_json(conn, DISCORD_APP_ID_KEY, &settings.discord_app_id)?;
     save_json(
@@ -465,6 +498,8 @@ mod tests {
         let mut settings = Settings::default();
         settings.monitored_folders.push("C:\\Music".to_string());
         settings.artist_split_regex = "foo".to_string();
+        settings.accent_color = "FA243C".to_string();
+        settings.accent_foreground_preference = AccentForegroundPreference::Light;
         settings.debug_logging_enabled = true;
         settings.discord_artwork_s3_endpoint = "https://s3.example.test".to_string();
         settings.discord_artwork_s3_bucket = "artwork".to_string();
@@ -484,7 +519,11 @@ mod tests {
         assert_eq!(loaded.lyrics_font, settings.lyrics_font);
         assert_eq!(loaded.reduce_motion, settings.reduce_motion);
         assert_eq!(loaded.brave_api_key, settings.brave_api_key);
-        assert_eq!(loaded.accent_color, settings.accent_color);
+        assert_eq!(loaded.accent_color, "#fa243c");
+        assert_eq!(
+            loaded.accent_foreground_preference,
+            settings.accent_foreground_preference
+        );
         assert_eq!(loaded.discord_enabled, settings.discord_enabled);
         assert_eq!(loaded.discord_app_id, settings.discord_app_id);
         assert_eq!(
@@ -513,5 +552,51 @@ mod tests {
         assert_eq!(loaded.artist_info_sources, settings.artist_info_sources);
         assert_eq!(loaded.artist_image_sources, settings.artist_image_sources);
         assert_eq!(loaded.album_art_sources, settings.album_art_sources);
+    }
+
+    #[test]
+    fn legacy_accent_settings_are_normalized_without_a_schema_migration() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+            [],
+        )
+        .unwrap();
+        save_json(&conn, ACCENT_COLOR_KEY, &"FA243C").unwrap();
+        save_json(&conn, ACCENT_FOREGROUND_PREFERENCE_KEY, &"unknown").unwrap();
+
+        let loaded = load_settings(&conn).unwrap();
+        assert_eq!(loaded.accent_color, "#fa243c");
+        assert_eq!(
+            loaded.accent_foreground_preference,
+            AccentForegroundPreference::Auto
+        );
+
+        let stored: String = load_json(&conn, ACCENT_COLOR_KEY, String::new()).unwrap();
+        assert_eq!(stored, "#fa243c");
+    }
+
+    #[test]
+    fn missing_accent_preference_defaults_to_automatic() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+            [],
+        )
+        .unwrap();
+
+        let loaded = load_settings(&conn).unwrap();
+        assert_eq!(
+            loaded.accent_foreground_preference,
+            AccentForegroundPreference::Auto
+        );
+        assert_eq!(
+            serde_json::to_string(&AccentForegroundPreference::Light).unwrap(),
+            "\"light\""
+        );
+        assert_eq!(
+            serde_json::to_string(&AccentForegroundPreference::Dark).unwrap(),
+            "\"dark\""
+        );
     }
 }
