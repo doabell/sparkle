@@ -36,6 +36,7 @@ const CATBOX_URL_PREFIX: &str = "https://files.catbox.moe/";
 const ARTWORK_MAX_DIMENSION: u32 = 256;
 const JPEG_QUALITY: u8 = 85;
 const RETRY_INTERVAL: Duration = Duration::from_secs(10);
+const TEST_ARTWORK_CACHE_KEY: &str = "sparkle-artwork-test";
 
 /// A small, asynchronous bridge from the audio thread to Discord's local IPC.
 /// Networking and image encoding happen on the worker so playback transitions
@@ -87,95 +88,252 @@ struct PresenceFields {
     timestamp_end: Option<i64>,
 }
 
-struct ArtworkCache {
-    entries: HashMap<String, String>,
+#[derive(Clone, Debug, Default)]
+struct ArtworkUrls {
+    catbox_url: Option<String>,
+    s3_url: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ArtworkStoreKind {
+    Disabled,
+    Catbox,
+    S3,
+}
+
+impl ArtworkStoreKind {
+    fn from_setting(value: &str) -> Self {
+        match value.trim() {
+            "disabled" => Self::Disabled,
+            "s3" => Self::S3,
+            _ => Self::Catbox,
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::Disabled => "disabled",
+            Self::Catbox => "catbox",
+            Self::S3 => "s3",
+        }
+    }
 }
 
 struct ArtworkStoreState {
+    kind: ArtworkStoreKind,
     s3_store: Option<S3ArtworkStore>,
-    s3_requested: bool,
+}
+
+impl ArtworkStoreState {
+    fn accepts_url(&self, url: &str) -> bool {
+        match self.kind {
+            ArtworkStoreKind::Disabled => false,
+            ArtworkStoreKind::Catbox => is_catbox_url(url),
+            ArtworkStoreKind::S3 => self
+                .s3_store
+                .as_ref()
+                .map(|store| store.owns_public_url(url))
+                .unwrap_or(false),
+        }
+    }
+}
+
+impl ArtworkUrls {
+    fn url_for(&self, kind: ArtworkStoreKind) -> Option<&str> {
+        match kind {
+            ArtworkStoreKind::Disabled => None,
+            ArtworkStoreKind::Catbox => self.catbox_url.as_deref(),
+            ArtworkStoreKind::S3 => self.s3_url.as_deref(),
+        }
+    }
+
+    fn any_url(&self) -> Option<&str> {
+        self.catbox_url.as_deref().or(self.s3_url.as_deref())
+    }
+
+    fn set(&mut self, kind: ArtworkStoreKind, url: String) {
+        match kind {
+            ArtworkStoreKind::Disabled => {}
+            ArtworkStoreKind::Catbox => self.catbox_url = Some(url),
+            ArtworkStoreKind::S3 => self.s3_url = Some(url),
+        }
+    }
+}
+
+struct ArtworkCache {
+    entries: HashMap<String, ArtworkUrls>,
 }
 
 impl ArtworkCache {
     fn load(conn: &Connection) -> Result<Self, String> {
         let mut statement = conn
-            .prepare("SELECT cache_key, url FROM discord_artwork_cache")
+            .prepare("SELECT cache_key, catbox_url, s3_url FROM discord_artwork_cache")
             .map_err(|err| err.to_string())?;
         let rows = statement
             .query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
             })
             .map_err(|err| err.to_string())?;
         let mut entries = HashMap::new();
         for row in rows {
-            let (key, url) = row.map_err(|err| err.to_string())?;
-            if !key.is_empty() && is_artwork_url(&url) {
-                entries.insert(key, url);
+            let (key, catbox_url, s3_url) = row.map_err(|err| err.to_string())?;
+            let urls = ArtworkUrls {
+                catbox_url: catbox_url.filter(|url| is_artwork_url(url)),
+                s3_url: s3_url.filter(|url| is_artwork_url(url)),
+            };
+            if !key.is_empty() && urls.any_url().is_some() {
+                entries.insert(key, urls);
             }
         }
         Ok(Self { entries })
     }
 
+    #[cfg(test)]
     fn lookup(&self, keys: &[String]) -> Option<String> {
         keys.iter().find_map(|key| {
             self.entries
                 .get(key)
+                .and_then(|urls| urls.any_url())
                 .filter(|url| is_artwork_url(url))
-                .cloned()
+                .map(str::to_string)
         })
     }
 
-    fn contains_key(&self, key: &str) -> bool {
-        self.entries.contains_key(key)
+    fn lookup_for_store(
+        &self,
+        keys: &[String],
+        artwork_store: &ArtworkStoreState,
+    ) -> Option<String> {
+        keys.iter().find_map(|key| {
+            self.entries
+                .get(key)
+                .and_then(|urls| urls.url_for(artwork_store.kind))
+                .filter(|url| is_artwork_url(url))
+                .filter(|url| artwork_store.accepts_url(url))
+                .map(str::to_string)
+        })
     }
 
-    fn store(&mut self, conn: &Connection, keys: &[String], url: String) -> Result<(), String> {
+    fn contains_key_for_store(&self, key: &str, kind: ArtworkStoreKind) -> bool {
+        self.entries
+            .get(key)
+            .and_then(|urls| urls.url_for(kind))
+            .filter(|url| is_artwork_url(url))
+            .is_some()
+    }
+
+    fn store(
+        &mut self,
+        conn: &Connection,
+        keys: &[String],
+        kind: ArtworkStoreKind,
+        url: String,
+    ) -> Result<(), String> {
+        let (catbox_url, s3_url) = match kind {
+            ArtworkStoreKind::Disabled => {
+                return Err("artwork storage is disabled".to_string());
+            }
+            ArtworkStoreKind::Catbox => (Some(url.as_str()), None),
+            ArtworkStoreKind::S3 => (None, Some(url.as_str())),
+        };
         let tx = conn
             .unchecked_transaction()
             .map_err(|err| err.to_string())?;
         let mut statement = tx
             .prepare(
-                "INSERT INTO discord_artwork_cache (cache_key, url) VALUES (?1, ?2) \
-                 ON CONFLICT(cache_key) DO UPDATE SET url = excluded.url, updated_at = unixepoch()",
+                "INSERT INTO discord_artwork_cache (cache_key, catbox_url, s3_url) \
+                 VALUES (?1, ?2, ?3) \
+                 ON CONFLICT(cache_key) DO UPDATE SET \
+                   catbox_url = COALESCE(excluded.catbox_url, discord_artwork_cache.catbox_url), \
+                   s3_url = COALESCE(excluded.s3_url, discord_artwork_cache.s3_url), \
+                   updated_at = unixepoch()",
             )
             .map_err(|err| err.to_string())?;
         for key in keys {
             statement
-                .execute([key, &url])
+                .execute(rusqlite::params![key, catbox_url, s3_url])
                 .map_err(|err| err.to_string())?;
         }
         drop(statement);
         tx.commit().map_err(|err| err.to_string())?;
         for key in keys {
-            self.entries.insert(key.clone(), url.clone());
+            self.entries
+                .entry(key.clone())
+                .or_default()
+                .set(kind, url.clone());
         }
         Ok(())
     }
 }
 
 fn load_artwork_store(conn: &Connection) -> ArtworkStoreState {
-    let result =
-        settings::load_settings(conn).and_then(|settings| S3ArtworkStore::from_settings(&settings));
-    match result {
-        Ok(Some(store)) => {
-            log::info!(target: "sparkle::discord::s3", "event=store_configured");
-            ArtworkStoreState {
-                s3_store: Some(store),
-                s3_requested: true,
-            }
-        }
-        Ok(None) => ArtworkStoreState {
-            s3_store: None,
-            s3_requested: false,
-        },
+    let settings = match settings::load_settings(conn) {
+        Ok(settings) => settings,
         Err(err) => {
-            log::warn!(target: "sparkle::discord::s3", "event=configuration_invalid error={err}");
-            // Do not silently send uploads to Catbox when S3 was requested.
-            ArtworkStoreState {
+            log::error!(
+                target: "sparkle::discord::artwork",
+                "event=settings_load_failed store=catbox error={err}"
+            );
+            return ArtworkStoreState {
+                kind: ArtworkStoreKind::Catbox,
                 s3_store: None,
-                s3_requested: true,
-            }
+            };
         }
+    };
+    let raw_kind = settings.discord_artwork_store.trim();
+    let kind = ArtworkStoreKind::from_setting(raw_kind);
+    if !matches!(raw_kind, "disabled" | "catbox" | "s3") {
+        log::warn!(
+            target: "sparkle::discord::artwork",
+            "event=invalid_store_setting store=catbox requested={raw_kind}"
+        );
+    }
+    log::info!(
+        target: "sparkle::discord::artwork",
+        "event=store_selected store={}",
+        kind.name()
+    );
+    match kind {
+        ArtworkStoreKind::S3 => match S3ArtworkStore::from_settings(&settings) {
+            Ok(Some(store)) => {
+                log::info!(
+                    target: "sparkle::discord::s3",
+                    "event=store_configured store=s3"
+                );
+                ArtworkStoreState {
+                    kind,
+                    s3_store: Some(store),
+                }
+            }
+            Ok(None) => {
+                log::warn!(
+                    target: "sparkle::discord::s3",
+                    "event=configuration_invalid store=s3 error=endpoint and bucket are required"
+                );
+                ArtworkStoreState {
+                    kind,
+                    s3_store: None,
+                }
+            }
+            Err(err) => {
+                log::warn!(
+                    target: "sparkle::discord::s3",
+                    "event=configuration_invalid store=s3 error={err}"
+                );
+                ArtworkStoreState {
+                    kind,
+                    s3_store: None,
+                }
+            }
+        },
+        ArtworkStoreKind::Disabled | ArtworkStoreKind::Catbox => ArtworkStoreState {
+            kind,
+            s3_store: None,
+        },
     }
 }
 
@@ -203,7 +361,11 @@ fn worker(rx: Receiver<DiscordCommand>, db_path: PathBuf, image_cache_dir: PathB
         }
     };
     let mut artwork_store = load_artwork_store(&conn);
-    log::info!(target: "sparkle::discord::presence", "event=worker_started");
+    log::info!(
+        target: "sparkle::discord::presence",
+        "event=worker_started store={}",
+        artwork_store.kind.name()
+    );
     let mut latest_playback = None;
 
     loop {
@@ -272,7 +434,11 @@ fn apply_playback(
     let settings = match settings::load_settings(conn) {
         Ok(settings) => settings,
         Err(err) => {
-            log::warn!(target: "sparkle::discord::presence", "event=settings_load_failed error={err}");
+            log::warn!(
+                target: "sparkle::discord::presence",
+                "event=settings_load_failed store={} error={err}",
+                artwork_store.kind.name()
+            );
             return;
         }
     };
@@ -305,88 +471,129 @@ fn apply_playback(
         return;
     };
 
-    let artwork_url = if let Some(url) = persistent_artwork_url(artwork_cache, track.album_id) {
+    let store_name = artwork_store.kind.name();
+    let artwork_url = if artwork_store.kind == ArtworkStoreKind::Disabled {
+        log::debug!(
+            target: "sparkle::discord::artwork",
+            "event=artwork_disabled store=disabled"
+        );
+        None
+    } else if let Some(url) =
+        persistent_artwork_url_for_store(artwork_cache, track.album_id, artwork_store)
+    {
         // This is durable user-owned metadata: use it without touching the
         // disposable album-art cache or doing any image work.
-        log::debug!(target: "sparkle::discord::artwork", "event=persistent_hit");
+        log::debug!(
+            target: "sparkle::discord::artwork",
+            "event=persistent_hit store={store_name}"
+        );
         Some(url)
     } else {
         match artwork_for_track(conn, image_cache_dir, track) {
-            Ok(Some(artwork)) => match artwork_cache.lookup(&artwork.cache_keys) {
-                Some(url) => {
-                    // Older entries only have content hashes. Once one is reused,
-                    // add the durable album key so clearing/re-fetching image
-                    // cache data cannot cause another artwork upload.
-                    if !artwork_cache.contains_key(&artwork.persistent_key) {
-                        if let Err(err) =
-                            artwork_cache.store(conn, &artwork.cache_keys, url.clone())
+            Ok(Some(artwork)) => {
+                match artwork_cache.lookup_for_store(&artwork.cache_keys, artwork_store) {
+                    Some(url) => {
+                        // Older entries only have content hashes. Once one is reused,
+                        // add the durable album key so clearing/re-fetching image
+                        // cache data cannot cause another artwork upload.
+                        if !artwork_cache
+                            .contains_key_for_store(&artwork.persistent_key, artwork_store.kind)
                         {
-                            log::warn!(target: "sparkle::discord::artwork", "event=persistent_key_store_failed error={err}");
-                        }
-                    }
-                    log::debug!(target: "sparkle::discord::artwork", "event=cache_hit");
-                    Some(url)
-                }
-                None => {
-                    log::info!(
-                        target: "sparkle::discord::artwork",
-                        "event=upload_started bytes={} content_hashes={}",
-                        artwork.jpeg.len(),
-                        artwork.cache_keys.len()
-                    );
-                    let store_name = if artwork_store.s3_requested {
-                        "s3"
-                    } else {
-                        "catbox"
-                    };
-                    let upload_result = match artwork_store.s3_store.as_mut() {
-                        Some(s3_store) => {
-                            log::debug!(target: "sparkle::discord::s3", "event=listing_for_hash");
-                            s3_store.find_or_upload(artwork.jpeg, &artwork.cache_keys)
-                        }
-                        None if artwork_store.s3_requested => {
-                            Err("S3 artwork store is unavailable".to_string())
-                        }
-                        None => upload_to_catbox(
-                            artwork.jpeg,
-                            &artwork.cache_keys[0],
-                            settings.discord_catbox_user_hash.trim(),
-                        ),
-                    };
-                    match upload_result {
-                        Ok(url) => {
-                            log::info!(
-                                target: "sparkle::discord::artwork",
-                                "event=upload_succeeded store={}",
-                                store_name
-                            );
-                            if let Err(err) =
-                                artwork_cache.store(conn, &artwork.cache_keys, url.clone())
-                            {
-                                log::warn!(target: "sparkle::discord::artwork", "event=cache_store_failed error={err}");
-                            } else {
-                                log::debug!(
+                            if let Err(err) = artwork_cache.store(
+                                conn,
+                                &artwork.cache_keys,
+                                artwork_store.kind,
+                                url.clone(),
+                            ) {
+                                log::warn!(
                                     target: "sparkle::discord::artwork",
-                                    "event=cache_stored keys={}",
-                                    artwork.cache_keys.len()
+                                    "event=persistent_key_store_failed store={store_name} error={err}"
                                 );
                             }
-                            Some(url)
                         }
-                        Err(err) => {
-                            log::warn!(
-                                target: "sparkle::discord::artwork",
-                                "event=upload_failed store={} error={err}",
-                                store_name
-                            );
-                            None
+                        log::debug!(
+                            target: "sparkle::discord::artwork",
+                            "event=cache_hit store={store_name}"
+                        );
+                        Some(url)
+                    }
+                    None => {
+                        log::info!(
+                            target: "sparkle::discord::artwork",
+                            "event=upload_started store={store_name} bytes={} content_hashes={}",
+                            artwork.jpeg.len(),
+                            artwork.cache_keys.len()
+                        );
+                        let upload_result = match artwork_store.kind {
+                            ArtworkStoreKind::S3 => match artwork_store.s3_store.as_mut() {
+                                Some(s3_store) => {
+                                    log::debug!(
+                                        target: "sparkle::discord::s3",
+                                        "event=listing_for_hash store=s3"
+                                    );
+                                    s3_store.find_or_upload(artwork.jpeg, &artwork.cache_keys)
+                                }
+                                None => Err("S3 artwork store is unavailable".to_string()),
+                            },
+                            ArtworkStoreKind::Catbox => upload_to_catbox(
+                                artwork.jpeg,
+                                &artwork.cache_keys[0],
+                                settings.discord_catbox_user_hash.trim(),
+                            ),
+                            ArtworkStoreKind::Disabled => {
+                                Err("artwork storage is disabled".to_string())
+                            }
+                        };
+                        match upload_result {
+                            Ok(url) => {
+                                log::info!(
+                                    target: "sparkle::discord::artwork",
+                                    "event=upload_succeeded store={}",
+                                    store_name
+                                );
+                                if let Err(err) = artwork_cache.store(
+                                    conn,
+                                    &artwork.cache_keys,
+                                    artwork_store.kind,
+                                    url.clone(),
+                                ) {
+                                    log::warn!(
+                                        target: "sparkle::discord::artwork",
+                                        "event=cache_store_failed store={store_name} error={err}"
+                                    );
+                                } else {
+                                    log::debug!(
+                                        target: "sparkle::discord::artwork",
+                                        "event=cache_stored store={store_name} keys={}",
+                                        artwork.cache_keys.len()
+                                    );
+                                }
+                                Some(url)
+                            }
+                            Err(err) => {
+                                log::warn!(
+                                    target: "sparkle::discord::artwork",
+                                    "event=upload_failed store={} error={err}",
+                                    store_name
+                                );
+                                None
+                            }
                         }
                     }
                 }
-            },
-            Ok(None) => None,
+            }
+            Ok(None) => {
+                log::debug!(
+                    target: "sparkle::discord::artwork",
+                    "event=artwork_unavailable store={store_name}"
+                );
+                None
+            }
             Err(err) => {
-                log::warn!(target: "sparkle::discord::artwork", "event=artwork_prepare_failed error={err}");
+                log::warn!(
+                    target: "sparkle::discord::artwork",
+                    "event=artwork_prepare_failed store={store_name} error={err}"
+                );
                 None
             }
         }
@@ -517,8 +724,17 @@ fn album_artwork_key(album_id: i64) -> String {
     format!("album:{album_id}")
 }
 
+#[cfg(test)]
 fn persistent_artwork_url(cache: &ArtworkCache, album_id: Option<i64>) -> Option<String> {
     album_id.and_then(|id| cache.lookup(&[album_artwork_key(id)]))
+}
+
+fn persistent_artwork_url_for_store(
+    cache: &ArtworkCache,
+    album_id: Option<i64>,
+    artwork_store: &ArtworkStoreState,
+) -> Option<String> {
+    album_id.and_then(|id| cache.lookup_for_store(&[album_artwork_key(id)], artwork_store))
 }
 
 fn artwork_cache_keys(album_id: i64, normalized_jpeg: &[u8], original: &[u8]) -> Vec<String> {
@@ -542,6 +758,70 @@ fn md5_hex(input: &[u8]) -> String {
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect()
+}
+
+pub(crate) fn test_artwork_storage(settings: &settings::Settings) -> Result<String, String> {
+    let kind = ArtworkStoreKind::from_setting(&settings.discord_artwork_store);
+    log::info!(
+        target: "sparkle::discord::artwork",
+        "event=test_started store={}",
+        kind.name()
+    );
+    if kind == ArtworkStoreKind::Disabled {
+        let err = "artwork storage is disabled".to_string();
+        log::info!(
+            target: "sparkle::discord::artwork",
+            "event=test_skipped store=disabled"
+        );
+        return Err(err);
+    }
+
+    let jpeg = test_artwork_jpeg()?;
+    let result = match kind {
+        ArtworkStoreKind::S3 => {
+            let mut store = S3ArtworkStore::from_settings(settings)?
+                .ok_or_else(|| "S3 endpoint and bucket are required".to_string())?;
+            store.test_access_and_upload(jpeg)
+        }
+        ArtworkStoreKind::Catbox => upload_to_catbox(
+            jpeg,
+            TEST_ARTWORK_CACHE_KEY,
+            settings.discord_catbox_user_hash.trim(),
+        ),
+        ArtworkStoreKind::Disabled => unreachable!(),
+    };
+    match result {
+        Ok(url) => {
+            log::info!(
+                target: "sparkle::discord::artwork",
+                "event=test_succeeded store={}",
+                kind.name()
+            );
+            Ok(url)
+        }
+        Err(err) => {
+            log::warn!(
+                target: "sparkle::discord::artwork",
+                "event=test_failed store={} error={err}",
+                kind.name()
+            );
+            Err(err)
+        }
+    }
+}
+
+fn test_artwork_jpeg() -> Result<Vec<u8>, String> {
+    let image = image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+        1,
+        1,
+        image::Rgb([250, 36, 60]),
+    ));
+    let mut jpeg = Vec::new();
+    let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, JPEG_QUALITY);
+    image
+        .write_with_encoder(encoder)
+        .map_err(|err| err.to_string())?;
+    Ok(jpeg)
 }
 
 fn upload_to_catbox(jpeg: Vec<u8>, cache_key: &str, user_hash: &str) -> Result<String, String> {
@@ -691,13 +971,94 @@ mod tests {
     }
 
     #[test]
+    fn artwork_store_modes_are_explicit() {
+        assert_eq!(
+            ArtworkStoreKind::from_setting("disabled"),
+            ArtworkStoreKind::Disabled
+        );
+        assert_eq!(
+            ArtworkStoreKind::from_setting("catbox"),
+            ArtworkStoreKind::Catbox
+        );
+        assert_eq!(ArtworkStoreKind::from_setting("s3"), ArtworkStoreKind::S3);
+        assert_eq!(
+            ArtworkStoreKind::from_setting("unknown"),
+            ArtworkStoreKind::Catbox
+        );
+    }
+
+    #[test]
+    fn disabled_artwork_storage_does_not_upload() {
+        let mut settings = crate::settings::Settings::default();
+        settings.discord_artwork_store = "disabled".to_string();
+        assert_eq!(
+            test_artwork_storage(&settings),
+            Err("artwork storage is disabled".to_string())
+        );
+    }
+
+    #[test]
+    fn cache_urls_are_scoped_to_the_selected_store() {
+        let catbox_url = "https://files.catbox.moe/existing.jpg".to_string();
+        let s3_url = "https://cdn.example.test/artwork/existing.jpg".to_string();
+        let cache = ArtworkCache {
+            entries: HashMap::from([(
+                "hash".to_string(),
+                ArtworkUrls {
+                    catbox_url: Some(catbox_url.clone()),
+                    s3_url: Some(s3_url.clone()),
+                },
+            )]),
+        };
+        let catbox = ArtworkStoreState {
+            kind: ArtworkStoreKind::Catbox,
+            s3_store: None,
+        };
+        let mut s3_settings = crate::settings::Settings::default();
+        s3_settings.discord_artwork_s3_endpoint = "http://minio.example.test:9000".to_string();
+        s3_settings.discord_artwork_s3_bucket = "sparkle".to_string();
+        s3_settings.discord_artwork_s3_public_url = "https://cdn.example.test".to_string();
+        s3_settings.discord_artwork_s3_prefix = "artwork".to_string();
+        let s3 = ArtworkStoreState {
+            kind: ArtworkStoreKind::S3,
+            s3_store: Some(
+                S3ArtworkStore::from_settings(&s3_settings)
+                    .unwrap()
+                    .expect("S3 settings should build a store"),
+            ),
+        };
+        let disabled = ArtworkStoreState {
+            kind: ArtworkStoreKind::Disabled,
+            s3_store: None,
+        };
+        assert_eq!(
+            cache.lookup_for_store(&["hash".to_string()], &catbox),
+            Some(catbox_url)
+        );
+        assert_eq!(
+            cache.lookup_for_store(&["hash".to_string()], &s3),
+            Some(s3_url)
+        );
+        assert_eq!(
+            cache.lookup_for_store(&["hash".to_string()], &disabled),
+            None
+        );
+    }
+
+    #[test]
     fn catbox_artwork_is_pinned_to_the_album() {
         let first = artwork_cache_keys(42, b"normalized-one", b"original-one");
         let second = artwork_cache_keys(42, b"normalized-two", b"original-two");
         let persistent_key = album_artwork_key(42);
         let url = "https://files.catbox.moe/existing.jpg".to_string();
         let cache = ArtworkCache {
-            entries: HashMap::from([(persistent_key.clone(), url.clone())]),
+            entries: HashMap::from([(
+                persistent_key.clone(),
+                ArtworkUrls {
+                    catbox_url: Some(url.clone()),
+                    ..Default::default()
+                },
+            )]),
         };
 
         assert!(first.contains(&persistent_key));
@@ -709,7 +1070,13 @@ mod tests {
     fn catbox_artwork_can_be_reused_without_a_local_image() {
         let url = "https://files.catbox.moe/existing.jpg".to_string();
         let cache = ArtworkCache {
-            entries: HashMap::from([(album_artwork_key(42), url.clone())]),
+            entries: HashMap::from([(
+                album_artwork_key(42),
+                ArtworkUrls {
+                    catbox_url: Some(url.clone()),
+                    ..Default::default()
+                },
+            )]),
         };
 
         assert_eq!(persistent_artwork_url(&cache, Some(42)), Some(url));
@@ -732,8 +1099,10 @@ mod tests {
             );
             CREATE TABLE discord_artwork_cache (
                 cache_key TEXT NOT NULL PRIMARY KEY,
-                url TEXT NOT NULL,
-                updated_at INTEGER NOT NULL DEFAULT 0
+                catbox_url TEXT,
+                s3_url TEXT,
+                updated_at INTEGER NOT NULL DEFAULT 0,
+                CHECK (catbox_url IS NOT NULL OR s3_url IS NOT NULL)
             );
             ",
         )
@@ -741,7 +1110,7 @@ mod tests {
         let persistent_key = album_artwork_key(42);
         let url = "https://files.catbox.moe/existing.jpg";
         conn.execute(
-            "INSERT INTO discord_artwork_cache (cache_key, url) VALUES (?1, ?2)",
+            "INSERT INTO discord_artwork_cache (cache_key, catbox_url) VALUES (?1, ?2)",
             [&persistent_key, url],
         )
         .unwrap();
@@ -758,6 +1127,51 @@ mod tests {
         let store = ArtworkCache::load(&conn).unwrap();
         assert_eq!(store.lookup(&[persistent_key]), Some(url.to_string()));
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn artwork_cache_store_preserves_catbox_and_s3_urls() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "
+            CREATE TABLE discord_artwork_cache (
+                cache_key TEXT NOT NULL PRIMARY KEY,
+                catbox_url TEXT,
+                s3_url TEXT,
+                updated_at INTEGER NOT NULL DEFAULT 0,
+                CHECK (catbox_url IS NOT NULL OR s3_url IS NOT NULL)
+            );
+            ",
+        )
+        .unwrap();
+        let key = "artwork-hash".to_string();
+        let catbox_url = "https://files.catbox.moe/catbox.jpg".to_string();
+        let s3_url = "https://cdn.example.test/artwork/hash.jpg".to_string();
+        let mut cache = ArtworkCache {
+            entries: HashMap::new(),
+        };
+
+        cache
+            .store(
+                &conn,
+                std::slice::from_ref(&key),
+                ArtworkStoreKind::Catbox,
+                catbox_url.clone(),
+            )
+            .unwrap();
+        cache
+            .store(
+                &conn,
+                std::slice::from_ref(&key),
+                ArtworkStoreKind::S3,
+                s3_url.clone(),
+            )
+            .unwrap();
+
+        let loaded = ArtworkCache::load(&conn).unwrap();
+        let urls = loaded.entries.get(&key).unwrap();
+        assert_eq!(urls.catbox_url, Some(catbox_url));
+        assert_eq!(urls.s3_url, Some(s3_url));
     }
 
     #[test]
@@ -786,7 +1200,10 @@ mod tests {
         let cache = ArtworkCache {
             entries: HashMap::from([(
                 cache_key,
-                "https://files.catbox.moe/existing.jpg".to_string(),
+                ArtworkUrls {
+                    catbox_url: Some("https://files.catbox.moe/existing.jpg".to_string()),
+                    ..Default::default()
+                },
             )]),
         };
         assert_eq!(

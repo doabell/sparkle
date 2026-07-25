@@ -1127,6 +1127,7 @@ pub fn get_online_settings(state: State<'_, AppState>) -> Result<OnlineSettings,
         discord_enabled: settings.discord_enabled,
         discord_app_id: settings.discord_app_id,
         discord_catbox_user_hash: settings.discord_catbox_user_hash,
+        discord_artwork_store: settings.discord_artwork_store,
         discord_artwork_s3_endpoint: settings.discord_artwork_s3_endpoint,
         discord_artwork_s3_bucket: settings.discord_artwork_s3_bucket,
         discord_artwork_s3_public_url: settings.discord_artwork_s3_public_url,
@@ -1163,6 +1164,7 @@ pub fn set_online_settings(
     full.discord_enabled = settings.discord_enabled;
     full.discord_app_id = settings.discord_app_id;
     full.discord_catbox_user_hash = settings.discord_catbox_user_hash;
+    full.discord_artwork_store = settings.discord_artwork_store;
     full.discord_artwork_s3_endpoint = settings.discord_artwork_s3_endpoint;
     full.discord_artwork_s3_bucket = settings.discord_artwork_s3_bucket;
     full.discord_artwork_s3_public_url = settings.discord_artwork_s3_public_url;
@@ -1180,6 +1182,18 @@ pub fn set_online_settings(
     use tauri::Emitter;
     let _ = app.emit("online-settings-changed", ());
     Ok(())
+}
+
+#[tauri::command]
+pub async fn test_artwork_storage(state: State<'_, AppState>) -> Result<String, String> {
+    let db = state.db.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = db.lock().map_err(|e| e.to_string())?;
+        let settings = settings::load_settings(&conn)?;
+        crate::discord::test_artwork_storage(&settings)
+    })
+    .await
+    .map_err(|err| err.to_string())?
 }
 
 #[tauri::command]

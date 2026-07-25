@@ -2,7 +2,7 @@ use rusqlite::{Connection, Result};
 use std::fs;
 use tauri::{AppHandle, Manager};
 
-const CURRENT_SCHEMA_VERSION: i32 = 7;
+const CURRENT_SCHEMA_VERSION: i32 = 8;
 
 /// The full schema, created fresh on first launch. The database was reset
 /// for v1 (July 2026): lyrics, artist info, and image bytes live as files
@@ -156,8 +156,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_play_history_event
 -- cause repeat uploads to the configured artwork store.
 CREATE TABLE IF NOT EXISTS discord_artwork_cache (
     cache_key TEXT NOT NULL PRIMARY KEY,
-    url TEXT NOT NULL,
-    updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    catbox_url TEXT,
+    s3_url TEXT,
+    updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    CHECK (catbox_url IS NOT NULL OR s3_url IS NOT NULL)
 );
 
 CREATE TABLE IF NOT EXISTS settings (
@@ -178,6 +180,31 @@ CREATE INDEX IF NOT EXISTS idx_artist_albums_album ON artist_albums(album_id);
 
 const SCHEMA_VERSION_TABLE: &str =
     "CREATE TABLE IF NOT EXISTS _schema_version (version INTEGER PRIMARY KEY);";
+
+/// v7 stored one URL per artwork key without recording its provider. Catbox's
+/// returned filename cannot be derived from the artwork hash, so preserve
+/// known Catbox URLs exactly and retain other public URLs as S3 entries.
+const V7_TO_V8: &str = r#"
+ALTER TABLE discord_artwork_cache RENAME TO discord_artwork_cache_v7;
+
+CREATE TABLE discord_artwork_cache (
+    cache_key TEXT NOT NULL PRIMARY KEY,
+    catbox_url TEXT,
+    s3_url TEXT,
+    updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    CHECK (catbox_url IS NOT NULL OR s3_url IS NOT NULL)
+);
+
+INSERT INTO discord_artwork_cache (cache_key, catbox_url, s3_url, updated_at)
+SELECT
+    cache_key,
+    CASE WHEN url LIKE 'https://files.catbox.moe/%' THEN url END,
+    CASE WHEN url NOT LIKE 'https://files.catbox.moe/%' THEN url END,
+    updated_at
+FROM discord_artwork_cache_v7;
+
+DROP TABLE discord_artwork_cache_v7;
+"#;
 
 pub fn db_path(app: &AppHandle) -> std::path::PathBuf {
     let dir = app
@@ -224,9 +251,22 @@ pub fn init_db(app: &AppHandle) -> Result<(Connection, bool)> {
         Ok((conn, true))
     } else if version == CURRENT_SCHEMA_VERSION {
         Ok((conn, false))
+    } else if version == CURRENT_SCHEMA_VERSION - 1 {
+        migrate_v7_to_v8(&conn)?;
+        Ok((conn, false))
     } else {
         Err(rusqlite::Error::InvalidQuery)
     }
+}
+
+fn migrate_v7_to_v8(conn: &Connection) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute_batch(V7_TO_V8)?;
+    tx.execute(
+        "UPDATE _schema_version SET version = ?1",
+        [CURRENT_SCHEMA_VERSION],
+    )?;
+    tx.commit()
 }
 
 #[cfg(test)]
@@ -286,5 +326,67 @@ mod tests {
             .filter_map(|r| r.ok())
             .collect();
         assert!(cols.iter().any(|c| c == "lyrics_source"));
+    }
+
+    #[test]
+    fn v7_to_v8_preserves_legacy_provider_urls() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(SCHEMA_VERSION_TABLE).unwrap();
+        conn.execute("INSERT INTO _schema_version (version) VALUES (7)", [])
+            .unwrap();
+        conn.execute_batch(
+            "
+            CREATE TABLE discord_artwork_cache (
+                cache_key TEXT NOT NULL PRIMARY KEY,
+                url TEXT NOT NULL,
+                updated_at INTEGER NOT NULL DEFAULT 0
+            );
+            INSERT INTO discord_artwork_cache (cache_key, url, updated_at)
+            VALUES
+                ('album:42', 'https://files.catbox.moe/legacy.jpg', 123),
+                ('hash', 'https://cdn.example.test/artwork/hash.jpg', 456);
+            ",
+        )
+        .unwrap();
+
+        migrate_v7_to_v8(&conn).unwrap();
+
+        let mut statement = conn
+            .prepare(
+                "SELECT cache_key, catbox_url, s3_url, updated_at
+                 FROM discord_artwork_cache ORDER BY cache_key",
+            )
+            .unwrap();
+        let mut rows = statement
+            .query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })
+            .unwrap();
+        let first: (String, Option<String>, Option<String>, i64) = rows.next().unwrap().unwrap();
+        let second: (String, Option<String>, Option<String>, i64) = rows.next().unwrap().unwrap();
+        assert_eq!(
+            first,
+            (
+                "album:42".to_string(),
+                Some("https://files.catbox.moe/legacy.jpg".to_string()),
+                None,
+                123
+            )
+        );
+        assert_eq!(
+            second,
+            (
+                "hash".to_string(),
+                None,
+                Some("https://cdn.example.test/artwork/hash.jpg".to_string()),
+                456
+            )
+        );
+        let version: i32 = conn
+            .query_row("SELECT MAX(version) FROM _schema_version", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(version, 8);
     }
 }

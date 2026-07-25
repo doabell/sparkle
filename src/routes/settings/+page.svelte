@@ -3,6 +3,7 @@
     import {
         getOnlineSettings,
         setOnlineSettings,
+        testArtworkStorage as testArtworkStorageApi,
         clearLyricsCache,
         clearArtistInfoCache,
         clearImagesCache,
@@ -38,6 +39,12 @@
         custom_metadata: true,
         history: true,
     };
+
+    const ARTWORK_STORE_OPTIONS = [
+        { value: "disabled", label: "Disabled — no artwork upload" },
+        { value: "catbox", label: "Catbox" },
+        { value: "s3", label: "S3-compatible storage" },
+    ];
 
     const SONG_INDEX_LANGUAGE_OPTIONS = [
         { value: "auto", label: "Automatic (system)" },
@@ -209,6 +216,8 @@
     let lastSavedJson = "";
     let lastSplitKey = "";
     let rulesNeedRescan = $state(false);
+    let artworkStorageTestBusy = $state(false);
+    let artworkStorageTestUrl = $state<string | null>(null);
 
     $effect(() => {
         if (!settings) return;
@@ -237,6 +246,27 @@
         } catch (e) {
             saveState = "dirty";
             addToast(String(e), "error");
+        }
+    }
+
+    function chooseArtworkStore(value: string) {
+        if (!settings) return;
+        settings.discord_artwork_store = value;
+        artworkStorageTestUrl = null;
+    }
+
+    async function testArtworkStorage() {
+        if (!settings || settings.discord_artwork_store === "disabled") return;
+        artworkStorageTestBusy = true;
+        artworkStorageTestUrl = null;
+        try {
+            const url = await testArtworkStorageApi();
+            artworkStorageTestUrl = url;
+            addToast("Artwork storage access and upload succeeded", "success");
+        } catch (e) {
+            addToast(String(e), "error");
+        } finally {
+            artworkStorageTestBusy = false;
         }
     }
 
@@ -353,6 +383,13 @@
             }
             if (!loaded.discord_catbox_user_hash) {
                 loaded.discord_catbox_user_hash = "";
+            }
+            if (
+                !["disabled", "catbox", "s3"].includes(
+                    loaded.discord_artwork_store,
+                )
+            ) {
+                loaded.discord_artwork_store = "catbox";
             }
             if (typeof loaded.discord_artwork_s3_endpoint !== "string") {
                 loaded.discord_artwork_s3_endpoint = "";
@@ -1218,170 +1255,232 @@
 
                 <div class="field">
                     {@render fieldLabel(
-                        "Catbox user hash",
-                        "discord-catbox-user-hash",
+                        "Artwork storage",
+                        "discord-artwork-store",
                     )}
-                    <input
-                        id="discord-catbox-user-hash"
-                        type="password"
-                        bind:value={settings.discord_catbox_user_hash}
-                        spellcheck="false"
-                        autocomplete="off"
-                    />
+                    <div
+                        class="select-field"
+                        role="group"
+                        aria-labelledby="discord-artwork-store"
+                    >
+                        <Select
+                            options={ARTWORK_STORE_OPTIONS}
+                            value={settings.discord_artwork_store}
+                            onchange={chooseArtworkStore}
+                            ariaLabel="Discord artwork storage"
+                        />
+                    </div>
                     {@render hint(
-                        "Optional legacy Catbox user hash. Sparkle reuses cached artwork URLs and only uploads on cache misses.",
+                        "Choose exactly where new Discord artwork uploads go. Disabled never uploads; S3 requires a working endpoint and bucket.",
                     )}
                 </div>
 
-                <div class="s3-section">
-                    <div>
-                        <h3>S3-compatible artwork storage</h3>
+                {#if settings.discord_artwork_store === "catbox"}
+                    <div class="field">
+                        {@render fieldLabel(
+                            "Catbox user hash",
+                            "discord-catbox-user-hash",
+                        )}
+                        <input
+                            id="discord-catbox-user-hash"
+                            type="password"
+                            bind:value={settings.discord_catbox_user_hash}
+                            spellcheck="false"
+                            autocomplete="off"
+                        />
+                        {@render hint(
+                            "Optional legacy Catbox user hash. Sparkle reuses cached artwork URLs and only uploads on cache misses.",
+                        )}
+                    </div>
+                {/if}
+
+                {#if settings.discord_artwork_store === "s3"}
+                    <div class="s3-section">
+                        <div>
+                            <h3>S3-compatible artwork storage</h3>
+                            <p class="hint">
+                                Configure an S3-compatible bucket, MinIO, or CDN
+                                so artwork uploads are shared by content hash
+                                instead of going through Catbox. Endpoint and
+                                bucket are required to enable it.
+                            </p>
+                        </div>
+
+                        <div class="field">
+                            {@render fieldLabel(
+                                "S3 endpoint",
+                                "discord-artwork-s3-endpoint",
+                            )}
+                            <input
+                                id="discord-artwork-s3-endpoint"
+                                type="url"
+                                bind:value={
+                                    settings.discord_artwork_s3_endpoint
+                                }
+                                placeholder="https://s3.example.com"
+                                spellcheck="false"
+                                autocomplete="off"
+                            />
+                            {@render hint(
+                                "The S3-compatible API endpoint, for example http://localhost:9000 for MinIO.",
+                            )}
+                        </div>
+
+                        <div class="field">
+                            {@render fieldLabel(
+                                "S3 bucket",
+                                "discord-artwork-s3-bucket",
+                            )}
+                            <input
+                                id="discord-artwork-s3-bucket"
+                                type="text"
+                                bind:value={settings.discord_artwork_s3_bucket}
+                                placeholder="sparkle-artwork"
+                                spellcheck="false"
+                                autocomplete="off"
+                            />
+                        </div>
+
+                        <div class="field">
+                            {@render fieldLabel(
+                                "Public artwork URL",
+                                "discord-artwork-s3-public-url",
+                            )}
+                            <input
+                                id="discord-artwork-s3-public-url"
+                                type="url"
+                                bind:value={
+                                    settings.discord_artwork_s3_public_url
+                                }
+                                placeholder="https://cdn.example.com/sparkle"
+                                spellcheck="false"
+                                autocomplete="off"
+                            />
+                            {@render hint(
+                                "The URL Discord can reach. Leave empty to use the endpoint and bucket path.",
+                            )}
+                        </div>
+
+                        <div class="field">
+                            {@render fieldLabel(
+                                "S3 access key",
+                                "discord-artwork-s3-access-key",
+                            )}
+                            <input
+                                id="discord-artwork-s3-access-key"
+                                type="text"
+                                bind:value={
+                                    settings.discord_artwork_s3_access_key
+                                }
+                                spellcheck="false"
+                                autocomplete="off"
+                            />
+                        </div>
+
+                        <div class="field">
+                            {@render fieldLabel(
+                                "S3 secret key",
+                                "discord-artwork-s3-secret-key",
+                            )}
+                            <input
+                                id="discord-artwork-s3-secret-key"
+                                type="password"
+                                bind:value={
+                                    settings.discord_artwork_s3_secret_key
+                                }
+                                spellcheck="false"
+                                autocomplete="new-password"
+                            />
+                        </div>
+
+                        <div class="field">
+                            {@render fieldLabel(
+                                "S3 session token",
+                                "discord-artwork-s3-session-token",
+                            )}
+                            <input
+                                id="discord-artwork-s3-session-token"
+                                type="password"
+                                bind:value={
+                                    settings.discord_artwork_s3_session_token
+                                }
+                                spellcheck="false"
+                                autocomplete="new-password"
+                            />
+                            {@render hint(
+                                "Optional temporary-session credential. Access and secret keys must be supplied with it.",
+                            )}
+                        </div>
+
+                        <div class="field">
+                            {@render fieldLabel(
+                                "S3 region",
+                                "discord-artwork-s3-region",
+                            )}
+                            <input
+                                id="discord-artwork-s3-region"
+                                type="text"
+                                bind:value={settings.discord_artwork_s3_region}
+                                placeholder="us-east-1"
+                                spellcheck="false"
+                                autocomplete="off"
+                            />
+                        </div>
+
+                        <div class="field">
+                            {@render fieldLabel(
+                                "S3 object prefix",
+                                "discord-artwork-s3-prefix",
+                            )}
+                            <input
+                                id="discord-artwork-s3-prefix"
+                                type="text"
+                                bind:value={settings.discord_artwork_s3_prefix}
+                                placeholder="sparkle/"
+                                spellcheck="false"
+                                autocomplete="off"
+                            />
+                            {@render hint(
+                                "Defaults to sparkle/. Files are stored as &lt;hash&gt;.jpg under this prefix.",
+                            )}
+                        </div>
+
                         <p class="hint">
-                            Configure an S3-compatible bucket, MinIO, or CDN so
-                            artwork uploads are shared by content hash instead
-                            of going through Catbox. Endpoint and bucket are
-                            required to enable it.
+                            Credentials are stored in Sparkle’s local settings
+                            and excluded from backups. Endpoint and bucket are
+                            required when S3 is selected.
                         </p>
                     </div>
+                {/if}
 
-                    <div class="field">
-                        {@render fieldLabel(
-                            "S3 endpoint",
-                            "discord-artwork-s3-endpoint",
-                        )}
-                        <input
-                            id="discord-artwork-s3-endpoint"
-                            type="url"
-                            bind:value={settings.discord_artwork_s3_endpoint}
-                            placeholder="https://s3.example.com"
-                            spellcheck="false"
-                            autocomplete="off"
-                        />
+                {#if settings.discord_artwork_store !== "disabled"}
+                    <div class="storage-test">
+                        <button
+                            class="btn-pill btn-secondary"
+                            disabled={artworkStorageTestBusy ||
+                                saveState === "dirty" ||
+                                saveState === "saving"}
+                            onclick={testArtworkStorage}
+                        >
+                            {artworkStorageTestBusy
+                                ? "Testing…"
+                                : settings.discord_artwork_store === "s3"
+                                  ? "Test S3 access & upload"
+                                  : "Test Catbox access & upload"}
+                        </button>
                         {@render hint(
-                            "The S3-compatible API endpoint, for example http://localhost:9000 for MinIO.",
+                            "This performs a real list/access check and uploads a small test image. The test object is left in the selected store.",
                         )}
+                        {#if artworkStorageTestUrl}
+                            <a
+                                class="storage-test-url"
+                                href={artworkStorageTestUrl}
+                                target="_blank"
+                                rel="noreferrer">Open test upload</a
+                            >
+                        {/if}
                     </div>
-
-                    <div class="field">
-                        {@render fieldLabel(
-                            "S3 bucket",
-                            "discord-artwork-s3-bucket",
-                        )}
-                        <input
-                            id="discord-artwork-s3-bucket"
-                            type="text"
-                            bind:value={settings.discord_artwork_s3_bucket}
-                            placeholder="sparkle-artwork"
-                            spellcheck="false"
-                            autocomplete="off"
-                        />
-                    </div>
-
-                    <div class="field">
-                        {@render fieldLabel(
-                            "Public artwork URL",
-                            "discord-artwork-s3-public-url",
-                        )}
-                        <input
-                            id="discord-artwork-s3-public-url"
-                            type="url"
-                            bind:value={settings.discord_artwork_s3_public_url}
-                            placeholder="https://cdn.example.com/sparkle"
-                            spellcheck="false"
-                            autocomplete="off"
-                        />
-                        {@render hint(
-                            "The URL Discord can reach. Leave empty to use the endpoint and bucket path.",
-                        )}
-                    </div>
-
-                    <div class="field">
-                        {@render fieldLabel(
-                            "S3 access key",
-                            "discord-artwork-s3-access-key",
-                        )}
-                        <input
-                            id="discord-artwork-s3-access-key"
-                            type="text"
-                            bind:value={settings.discord_artwork_s3_access_key}
-                            spellcheck="false"
-                            autocomplete="off"
-                        />
-                    </div>
-
-                    <div class="field">
-                        {@render fieldLabel(
-                            "S3 secret key",
-                            "discord-artwork-s3-secret-key",
-                        )}
-                        <input
-                            id="discord-artwork-s3-secret-key"
-                            type="password"
-                            bind:value={settings.discord_artwork_s3_secret_key}
-                            spellcheck="false"
-                            autocomplete="new-password"
-                        />
-                    </div>
-
-                    <div class="field">
-                        {@render fieldLabel(
-                            "S3 session token",
-                            "discord-artwork-s3-session-token",
-                        )}
-                        <input
-                            id="discord-artwork-s3-session-token"
-                            type="password"
-                            bind:value={
-                                settings.discord_artwork_s3_session_token
-                            }
-                            spellcheck="false"
-                            autocomplete="new-password"
-                        />
-                        {@render hint(
-                            "Optional temporary-session credential. Access and secret keys must be supplied with it.",
-                        )}
-                    </div>
-
-                    <div class="field">
-                        {@render fieldLabel(
-                            "S3 region",
-                            "discord-artwork-s3-region",
-                        )}
-                        <input
-                            id="discord-artwork-s3-region"
-                            type="text"
-                            bind:value={settings.discord_artwork_s3_region}
-                            placeholder="us-east-1"
-                            spellcheck="false"
-                            autocomplete="off"
-                        />
-                    </div>
-
-                    <div class="field">
-                        {@render fieldLabel(
-                            "S3 object prefix",
-                            "discord-artwork-s3-prefix",
-                        )}
-                        <input
-                            id="discord-artwork-s3-prefix"
-                            type="text"
-                            bind:value={settings.discord_artwork_s3_prefix}
-                            placeholder="sparkle/"
-                            spellcheck="false"
-                            autocomplete="off"
-                        />
-                        {@render hint(
-                            "Defaults to sparkle/. Files are stored as &lt;hash&gt;.jpg under this prefix.",
-                        )}
-                    </div>
-
-                    <p class="hint">
-                        Credentials are stored in Sparkle’s local settings and
-                        excluded from backups. Leave the endpoint and bucket
-                        empty to keep using legacy Catbox uploads when no S3
-                        environment configuration is present.
-                    </p>
-                </div>
+                {/if}
             {/if}
         </div>
 
@@ -1823,6 +1922,24 @@
         margin: 0 0 var(--spacing-xs);
         color: var(--color-text);
         font-size: var(--font-size-md);
+    }
+
+    .storage-test {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--spacing-sm);
+        padding-top: var(--spacing-md);
+        border-top: 1px solid var(--color-border);
+    }
+
+    .storage-test-url {
+        max-width: 100%;
+        overflow: hidden;
+        color: var(--color-accent);
+        font-size: var(--font-size-sm);
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     label {

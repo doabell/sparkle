@@ -145,6 +145,7 @@ export interface OnlineSettings {
     discord_enabled: boolean;
     discord_app_id: string;
     discord_catbox_user_hash: string;
+    discord_artwork_store: string;
     discord_artwork_s3_endpoint: string;
     discord_artwork_s3_bucket: string;
     discord_artwork_s3_public_url: string;
@@ -895,6 +896,10 @@ export async function setOnlineSettings(
     settings: OnlineSettings,
 ): Promise<void> {
     return invoke("set_online_settings", { settings });
+}
+
+export async function testArtworkStorage(): Promise<string> {
+    return invoke("test_artwork_storage");
 }
 
 export async function clearLyricsCache(): Promise<void> {

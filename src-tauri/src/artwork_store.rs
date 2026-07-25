@@ -98,10 +98,11 @@ impl S3ArtworkStore {
     /// Builds a store from persisted settings, retaining environment variables
     /// as a deployment-friendly fallback when the UI settings are empty.
     ///
-    /// S3 is deliberately opt-in. A missing endpoint and bucket means the
-    /// application is using its legacy Catbox path; a partially configured
-    /// store is treated as a configuration error so it cannot silently cause
-    /// new uploads to go somewhere unexpected.
+    /// S3 is deliberately opt-in. A missing endpoint and bucket means S3 is
+    /// not configured; the caller decides whether that is acceptable for the
+    /// selected artwork mode. A partially configured store is treated as a
+    /// configuration error so it cannot silently cause new uploads to go
+    /// somewhere unexpected.
     pub(crate) fn from_settings(settings: &Settings) -> Result<Option<Self>, String> {
         let values = S3Values::from_settings(settings);
         if values.is_configured() {
@@ -234,6 +235,27 @@ impl S3ArtworkStore {
             .expect("S3 object listing is initialized")
             .insert(object_key.clone());
         Ok(self.public_url(&object_key))
+    }
+
+    /// Lists the configured prefix and uploads a deterministic test object.
+    /// This is intentionally separate from normal artwork hashing so the
+    /// Settings action verifies both read/list and write permissions.
+    pub(crate) fn test_access_and_upload(&mut self, jpeg: Vec<u8>) -> Result<String, String> {
+        if self.existing_keys.is_none() {
+            self.existing_keys = Some(self.list_existing_keys()?);
+        }
+        let object_key = self.config.object_key("sparkle-test");
+        self.put_object(&object_key, jpeg)?;
+        self.existing_keys
+            .as_mut()
+            .expect("S3 object listing is initialized")
+            .insert(object_key.clone());
+        Ok(self.public_url(&object_key))
+    }
+
+    pub(crate) fn owns_public_url(&self, url: &str) -> bool {
+        let base = self.config.public_url.as_str().trim_end_matches('/');
+        url.starts_with(&format!("{base}/"))
     }
 
     fn list_existing_keys(&self) -> Result<HashSet<String>, String> {
@@ -464,5 +486,22 @@ mod tests {
             .unwrap()
             .expect("settings should enable S3");
         assert_eq!(store.config.prefix, "artwork/");
+    }
+
+    #[test]
+    fn public_url_ownership_is_scoped_to_the_configured_base() {
+        let store = S3ArtworkStore::new(
+            Url::parse("http://minio.example.test:9000").unwrap(),
+            "sparkle".to_string(),
+            Url::parse("https://cdn.example.test/artwork").unwrap(),
+            None,
+            None,
+            None,
+            DEFAULT_REGION.to_string(),
+            normalize_prefix("images"),
+        )
+        .unwrap();
+        assert!(store.owns_public_url("https://cdn.example.test/artwork/images/a.jpg"));
+        assert!(!store.owns_public_url("https://cdn.example.test/other/images/a.jpg"));
     }
 }
