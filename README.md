@@ -6,6 +6,9 @@
 
 Sparkle is a local-first Windows music player for your own library. It pairs native playback with a polished, album-focused interface and useful listening insights.
 
+> [!CAUTION]
+> Sparkle is highly personalized. It works for me; it might not work for you.
+
 ## Highlights
 
 - Browse songs, albums, artists, genres, playlists, and search results.
