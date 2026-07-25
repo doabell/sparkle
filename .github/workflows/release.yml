@@ -59,7 +59,7 @@ jobs:
               with:
                   tagName: ${{ github.ref_name }}
                   releaseName: Sparkle v__VERSION__
-                  releaseBody: First public preview. See CHANGELOG.md for details.
+                  releaseBody: See CHANGELOG.md for release notes.
                   releaseDraft: true
                   prerelease: false
                   uploadUpdaterJson: false

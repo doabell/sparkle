@@ -1,5 +1,9 @@
 # Sparkle
 
+[![CI](https://github.com/doabell/sparkle/actions/workflows/ci.yml/badge.svg)](https://github.com/doabell/sparkle/actions/workflows/ci.yml)
+[![MIT License](https://img.shields.io/github/license/doabell/sparkle)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/doabell/sparkle)](https://github.com/doabell/sparkle/releases/latest)
+
 Sparkle is a local-first Windows music player for your own library. It pairs native playback with a polished, album-focused interface and useful listening insights.
 
 ## Highlights
@@ -44,7 +48,7 @@ either provider's cached filename or cause a repeat upload.
 
 ## Install
 
-Sparkle 0.1.0 targets Windows 10/11 x64 and is distributed as an MSI from [GitHub Releases](https://github.com/doabell/sparkle/releases). This preview is not code-signed, so Windows may show an unknown-publisher warning.
+Sparkle targets Windows 10/11 x64 and is distributed as an MSI from [GitHub Releases](https://github.com/doabell/sparkle/releases). This preview is not code-signed, so Windows may show an unknown-publisher warning.
 
 Other platforms are not released or tested yet.
 
