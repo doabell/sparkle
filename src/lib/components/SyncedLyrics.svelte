@@ -61,41 +61,15 @@
         return index;
     });
 
-    let initialScrollDone = $state(false);
-    let scrollBehavior = $state<"auto" | "smooth">("auto");
-
-    $effect(() => {
-        // Reset the scroll behavior when a new set of lyrics loads so the first
-        // active line is positioned instantly instead of animating from the top.
-        syncedText;
-        initialScrollDone = false;
-        scrollBehavior = "auto";
-    });
-
-    $effect(() => {
-        const idx = activeIndex;
-        if (idx !== -1 && !initialScrollDone) {
-            initialScrollDone = true;
-            scrollBehavior = "smooth";
-        }
-    });
-
-    const scrollIntoCenter: Action<
-        HTMLElement,
-        { active: boolean; behavior: "auto" | "smooth"; initialDone: boolean }
-    > = (node, params) => {
-        let prevInitialDone = params.initialDone;
+    const scrollIntoCenter: Action<HTMLElement, { active: boolean }> = (
+        node,
+        params,
+    ) => {
         let wasActive = false;
 
         function update(p: typeof params) {
-            const initialDoneChanged = p.initialDone !== prevInitialDone;
-            prevInitialDone = p.initialDone;
-
-            if (
-                p.active &&
-                (!wasActive || (p.initialDone && !initialDoneChanged))
-            ) {
-                node.scrollIntoView({ behavior: p.behavior, block: "center" });
+            if (p.active && !wasActive) {
+                node.scrollIntoView({ behavior: "auto", block: "center" });
             }
             wasActive = p.active;
         }
@@ -117,11 +91,7 @@
                     type="button"
                     class="lyrics-line"
                     class:active={index === activeIndex}
-                    use:scrollIntoCenter={{
-                        active: index === activeIndex,
-                        behavior: scrollBehavior,
-                        initialDone: initialScrollDone,
-                    }}
+                    use:scrollIntoCenter={{ active: index === activeIndex }}
                     onclick={() => handleLineClick(line.timeMs)}
                     disabled={!onSeek}
                 >
@@ -172,10 +142,7 @@
        full-width punctuation (、；。), instead of refusing to break near
        them (kinsoku prohibitions leave ugly gaps or overflow). */
         line-break: anywhere;
-        transition:
-            color var(--transition-base),
-            transform var(--transition-base),
-            font-size var(--transition-base);
+        transition: none;
         cursor: pointer;
     }
 

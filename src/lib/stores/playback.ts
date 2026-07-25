@@ -1,4 +1,4 @@
-import { writable } from "svelte/store";
+import { readable, writable } from "svelte/store";
 import { listen } from "@tauri-apps/api/event";
 import {
     getPlaybackState,
@@ -170,6 +170,45 @@ function createPlaybackStore() {
 }
 
 export const playback = createPlaybackStore();
+
+// The native engine intentionally publishes coarse progress updates to keep
+// event traffic low. Lyrics need a clock that stays responsive between those
+// corrections, so expose an interpolated position without changing the
+// canonical playback state used by seeking, persistence, and controls.
+export const interpolatedPositionMs = readable(0, (set) => {
+    if (typeof window === "undefined") return () => {};
+
+    let state: PlaybackState = initialState;
+    let samplePositionMs = 0;
+    let sampleAtMs = 0;
+
+    const unsubscribe = playback.subscribe((next) => {
+        state = next;
+        samplePositionMs = next.position_ms;
+        sampleAtMs = performance.now();
+        set(next.position_ms);
+    });
+
+    let frame = 0;
+    const update = (nowMs: number) => {
+        const elapsedMs = state.is_playing
+            ? Math.max(0, nowMs - sampleAtMs)
+            : 0;
+        const positionMs = samplePositionMs + elapsedMs;
+        set(
+            state.duration_ms > 0
+                ? Math.min(positionMs, state.duration_ms)
+                : positionMs,
+        );
+        frame = requestAnimationFrame(update);
+    };
+    frame = requestAnimationFrame(update);
+
+    return () => {
+        cancelAnimationFrame(frame);
+        unsubscribe();
+    };
+});
 
 export const {
     play,

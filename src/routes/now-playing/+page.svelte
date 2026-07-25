@@ -2,6 +2,7 @@
     import { onMount } from "svelte";
     import {
         playback,
+        interpolatedPositionMs,
         seek,
         updateCurrentTrackLrcOffset,
         updateCurrentTrackLyricsSource,
@@ -481,7 +482,7 @@
             <SyncedLyrics
                 syncedText={lyrics.synced_text}
                 plainText={lyrics.plain_text}
-                currentTimeMs={$playback.position_ms}
+                currentTimeMs={$interpolatedPositionMs}
                 {offsetMs}
                 onSeek={handleSeek}
             />
