@@ -208,6 +208,22 @@ pub struct OnlineSettings {
     #[serde(default)]
     pub discord_catbox_user_hash: String,
     #[serde(default)]
+    pub discord_artwork_s3_endpoint: String,
+    #[serde(default)]
+    pub discord_artwork_s3_bucket: String,
+    #[serde(default)]
+    pub discord_artwork_s3_public_url: String,
+    #[serde(default)]
+    pub discord_artwork_s3_access_key: String,
+    #[serde(default)]
+    pub discord_artwork_s3_secret_key: String,
+    #[serde(default)]
+    pub discord_artwork_s3_session_token: String,
+    #[serde(default)]
+    pub discord_artwork_s3_region: String,
+    #[serde(default)]
+    pub discord_artwork_s3_prefix: String,
+    #[serde(default)]
     pub debug_logging_enabled: bool,
 }
 

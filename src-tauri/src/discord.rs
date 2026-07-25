@@ -1,9 +1,10 @@
 // Portions of the Discord presence integration were adapted from DiscordBee:
 // https://github.com/sll552/DiscordBee
 // Those adapted portions are licensed under Apache-2.0 and have been modified
-// substantially for Sparkle. Sparkle's Catbox artwork integration and related
+// substantially for Sparkle. Sparkle's artwork storage integration and related
 // changes are original Sparkle work. See THIRD_PARTY_NOTICES.md.
 
+use crate::artwork_store::S3ArtworkStore;
 use crate::cache;
 use crate::models::{PlaybackState, Track};
 use crate::settings;
@@ -38,7 +39,7 @@ const RETRY_INTERVAL: Duration = Duration::from_secs(10);
 
 /// A small, asynchronous bridge from the audio thread to Discord's local IPC.
 /// Networking and image encoding happen on the worker so playback transitions
-/// never wait for Discord or Catbox.
+/// never wait for Discord or artwork storage.
 #[derive(Clone)]
 pub struct DiscordPresence {
     tx: Sender<DiscordCommand>,
@@ -86,11 +87,16 @@ struct PresenceFields {
     timestamp_end: Option<i64>,
 }
 
-struct CatboxCache {
+struct ArtworkCache {
     entries: HashMap<String, String>,
 }
 
-impl CatboxCache {
+struct ArtworkStoreState {
+    s3_store: Option<S3ArtworkStore>,
+    s3_requested: bool,
+}
+
+impl ArtworkCache {
     fn load(conn: &Connection) -> Result<Self, String> {
         let mut statement = conn
             .prepare("SELECT cache_key, url FROM discord_artwork_cache")
@@ -103,7 +109,7 @@ impl CatboxCache {
         let mut entries = HashMap::new();
         for row in rows {
             let (key, url) = row.map_err(|err| err.to_string())?;
-            if !key.is_empty() && is_catbox_url(&url) {
+            if !key.is_empty() && is_artwork_url(&url) {
                 entries.insert(key, url);
             }
         }
@@ -114,7 +120,7 @@ impl CatboxCache {
         keys.iter().find_map(|key| {
             self.entries
                 .get(key)
-                .filter(|url| is_catbox_url(url))
+                .filter(|url| is_artwork_url(url))
                 .cloned()
         })
     }
@@ -147,6 +153,32 @@ impl CatboxCache {
     }
 }
 
+fn load_artwork_store(conn: &Connection) -> ArtworkStoreState {
+    let result =
+        settings::load_settings(conn).and_then(|settings| S3ArtworkStore::from_settings(&settings));
+    match result {
+        Ok(Some(store)) => {
+            log::info!(target: "sparkle::discord::s3", "event=store_configured");
+            ArtworkStoreState {
+                s3_store: Some(store),
+                s3_requested: true,
+            }
+        }
+        Ok(None) => ArtworkStoreState {
+            s3_store: None,
+            s3_requested: false,
+        },
+        Err(err) => {
+            log::warn!(target: "sparkle::discord::s3", "event=configuration_invalid error={err}");
+            // Do not silently send uploads to Catbox when S3 was requested.
+            ArtworkStoreState {
+                s3_store: None,
+                s3_requested: true,
+            }
+        }
+    }
+}
+
 fn worker(rx: Receiver<DiscordCommand>, db_path: PathBuf, image_cache_dir: PathBuf) {
     let conn = match crate::db::open_connection(&db_path) {
         Ok(conn) => conn,
@@ -156,20 +188,21 @@ fn worker(rx: Receiver<DiscordCommand>, db_path: PathBuf, image_cache_dir: PathB
         }
     };
     let mut client = None;
-    let mut catbox_cache = match CatboxCache::load(&conn) {
+    let mut artwork_cache = match ArtworkCache::load(&conn) {
         Ok(cache) => {
             log::info!(
-                target: "sparkle::discord::catbox",
+                target: "sparkle::discord::artwork",
                 "event=cache_loaded entries={}",
                 cache.entries.len()
             );
             cache
         }
         Err(err) => {
-            log::error!(target: "sparkle::discord::catbox", "event=cache_load_failed error={err}");
+            log::error!(target: "sparkle::discord::artwork", "event=cache_load_failed error={err}");
             return;
         }
     };
+    let mut artwork_store = load_artwork_store(&conn);
     log::info!(target: "sparkle::discord::presence", "event=worker_started");
     let mut latest_playback = None;
 
@@ -181,18 +214,21 @@ fn worker(rx: Receiver<DiscordCommand>, db_path: PathBuf, image_cache_dir: PathB
                     apply_playback(
                         &conn,
                         &image_cache_dir,
-                        &mut catbox_cache,
+                        &mut artwork_cache,
+                        &mut artwork_store,
                         &mut client,
                         playback,
                     );
                 }
             }
             Ok(DiscordCommand::Refresh) => {
+                artwork_store = load_artwork_store(&conn);
                 if let Some(playback) = latest_playback.as_ref() {
                     apply_playback(
                         &conn,
                         &image_cache_dir,
-                        &mut catbox_cache,
+                        &mut artwork_cache,
+                        &mut artwork_store,
                         &mut client,
                         playback,
                     );
@@ -210,7 +246,8 @@ fn worker(rx: Receiver<DiscordCommand>, db_path: PathBuf, image_cache_dir: PathB
                         apply_playback(
                             &conn,
                             &image_cache_dir,
-                            &mut catbox_cache,
+                            &mut artwork_cache,
+                            &mut artwork_store,
                             &mut client,
                             playback,
                         );
@@ -227,7 +264,8 @@ fn worker(rx: Receiver<DiscordCommand>, db_path: PathBuf, image_cache_dir: PathB
 fn apply_playback(
     conn: &Connection,
     image_cache_dir: &Path,
-    catbox_cache: &mut CatboxCache,
+    artwork_cache: &mut ArtworkCache,
+    artwork_store: &mut ArtworkStoreState,
     client: &mut Option<ConnectedDiscordClient>,
     playback: &PlaybackState,
 ) {
@@ -262,53 +300,73 @@ fn apply_playback(
     }
 
     // Upload artwork only after Discord is connected, so an offline session
-    // cannot turn every cache miss into a Catbox upload.
+    // cannot turn every cache miss into a remote upload.
     let Some(discord) = ensure_client(client, app_id) else {
         return;
     };
 
-    let artwork_url = if let Some(url) = persistent_catbox_url(catbox_cache, track.album_id) {
+    let artwork_url = if let Some(url) = persistent_artwork_url(artwork_cache, track.album_id) {
         // This is durable user-owned metadata: use it without touching the
         // disposable album-art cache or doing any image work.
-        log::debug!(target: "sparkle::discord::catbox", "event=persistent_hit");
+        log::debug!(target: "sparkle::discord::artwork", "event=persistent_hit");
         Some(url)
     } else {
         match artwork_for_track(conn, image_cache_dir, track) {
-            Ok(Some(artwork)) => match catbox_cache.lookup(&artwork.cache_keys) {
+            Ok(Some(artwork)) => match artwork_cache.lookup(&artwork.cache_keys) {
                 Some(url) => {
                     // Older entries only have content hashes. Once one is reused,
                     // add the durable album key so clearing/re-fetching image
-                    // cache data cannot cause another Catbox upload.
-                    if !catbox_cache.contains_key(&artwork.persistent_key) {
-                        if let Err(err) = catbox_cache.store(conn, &artwork.cache_keys, url.clone())
+                    // cache data cannot cause another artwork upload.
+                    if !artwork_cache.contains_key(&artwork.persistent_key) {
+                        if let Err(err) =
+                            artwork_cache.store(conn, &artwork.cache_keys, url.clone())
                         {
-                            log::warn!(target: "sparkle::discord::catbox", "event=persistent_key_store_failed error={err}");
+                            log::warn!(target: "sparkle::discord::artwork", "event=persistent_key_store_failed error={err}");
                         }
                     }
-                    log::debug!(target: "sparkle::discord::catbox", "event=cache_hit");
+                    log::debug!(target: "sparkle::discord::artwork", "event=cache_hit");
                     Some(url)
                 }
                 None => {
                     log::info!(
-                        target: "sparkle::discord::catbox",
-                        "event=upload_started bytes={} cache_keys={}",
+                        target: "sparkle::discord::artwork",
+                        "event=upload_started bytes={} content_hashes={}",
                         artwork.jpeg.len(),
                         artwork.cache_keys.len()
                     );
-                    match upload_to_catbox(
-                        artwork.jpeg,
-                        &artwork.cache_keys[0],
-                        settings.discord_catbox_user_hash.trim(),
-                    ) {
+                    let store_name = if artwork_store.s3_requested {
+                        "s3"
+                    } else {
+                        "catbox"
+                    };
+                    let upload_result = match artwork_store.s3_store.as_mut() {
+                        Some(s3_store) => {
+                            log::debug!(target: "sparkle::discord::s3", "event=listing_for_hash");
+                            s3_store.find_or_upload(artwork.jpeg, &artwork.cache_keys)
+                        }
+                        None if artwork_store.s3_requested => {
+                            Err("S3 artwork store is unavailable".to_string())
+                        }
+                        None => upload_to_catbox(
+                            artwork.jpeg,
+                            &artwork.cache_keys[0],
+                            settings.discord_catbox_user_hash.trim(),
+                        ),
+                    };
+                    match upload_result {
                         Ok(url) => {
-                            log::info!(target: "sparkle::discord::catbox", "event=upload_succeeded");
+                            log::info!(
+                                target: "sparkle::discord::artwork",
+                                "event=upload_succeeded store={}",
+                                store_name
+                            );
                             if let Err(err) =
-                                catbox_cache.store(conn, &artwork.cache_keys, url.clone())
+                                artwork_cache.store(conn, &artwork.cache_keys, url.clone())
                             {
-                                log::warn!(target: "sparkle::discord::catbox", "event=cache_store_failed error={err}");
+                                log::warn!(target: "sparkle::discord::artwork", "event=cache_store_failed error={err}");
                             } else {
                                 log::debug!(
-                                    target: "sparkle::discord::catbox",
+                                    target: "sparkle::discord::artwork",
                                     "event=cache_stored keys={}",
                                     artwork.cache_keys.len()
                                 );
@@ -316,7 +374,11 @@ fn apply_playback(
                             Some(url)
                         }
                         Err(err) => {
-                            log::warn!(target: "sparkle::discord::catbox", "event=upload_failed error={err}");
+                            log::warn!(
+                                target: "sparkle::discord::artwork",
+                                "event=upload_failed store={} error={err}",
+                                store_name
+                            );
                             None
                         }
                     }
@@ -324,7 +386,7 @@ fn apply_playback(
             },
             Ok(None) => None,
             Err(err) => {
-                log::warn!(target: "sparkle::discord::catbox", "event=artwork_prepare_failed error={err}");
+                log::warn!(target: "sparkle::discord::artwork", "event=artwork_prepare_failed error={err}");
                 None
             }
         }
@@ -455,7 +517,7 @@ fn album_artwork_key(album_id: i64) -> String {
     format!("album:{album_id}")
 }
 
-fn persistent_catbox_url(cache: &CatboxCache, album_id: Option<i64>) -> Option<String> {
+fn persistent_artwork_url(cache: &ArtworkCache, album_id: Option<i64>) -> Option<String> {
     album_id.and_then(|id| cache.lookup(&[album_artwork_key(id)]))
 }
 
@@ -474,7 +536,7 @@ fn artwork_cache_keys(album_id: i64, normalized_jpeg: &[u8], original: &[u8]) ->
 }
 
 fn md5_hex(input: &[u8]) -> String {
-    // This is not used for security: the Catbox cache uses MD5(base64 artwork)
+    // This is not used for security: the artwork cache uses MD5(base64 artwork)
     // as its stable lookup key.
     Md5::digest(input)
         .iter()
@@ -612,6 +674,10 @@ fn is_catbox_url(url: &str) -> bool {
     url.starts_with(CATBOX_URL_PREFIX)
 }
 
+fn is_artwork_url(url: &str) -> bool {
+    url.starts_with("https://") || url.starts_with("http://")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -630,7 +696,7 @@ mod tests {
         let second = artwork_cache_keys(42, b"normalized-two", b"original-two");
         let persistent_key = album_artwork_key(42);
         let url = "https://files.catbox.moe/existing.jpg".to_string();
-        let cache = CatboxCache {
+        let cache = ArtworkCache {
             entries: HashMap::from([(persistent_key.clone(), url.clone())]),
         };
 
@@ -642,12 +708,12 @@ mod tests {
     #[test]
     fn catbox_artwork_can_be_reused_without_a_local_image() {
         let url = "https://files.catbox.moe/existing.jpg".to_string();
-        let cache = CatboxCache {
+        let cache = ArtworkCache {
             entries: HashMap::from([(album_artwork_key(42), url.clone())]),
         };
 
-        assert_eq!(persistent_catbox_url(&cache, Some(42)), Some(url));
-        assert_eq!(persistent_catbox_url(&cache, None), None);
+        assert_eq!(persistent_artwork_url(&cache, Some(42)), Some(url));
+        assert_eq!(persistent_artwork_url(&cache, None), None);
     }
 
     #[test]
@@ -689,7 +755,7 @@ mod tests {
         cache::clear_artist_info(&conn, &root).unwrap();
         cache::clear_images(&conn, &root).unwrap();
 
-        let store = CatboxCache::load(&conn).unwrap();
+        let store = ArtworkCache::load(&conn).unwrap();
         assert_eq!(store.lookup(&[persistent_key]), Some(url.to_string()));
         let _ = fs::remove_dir_all(root);
     }
@@ -717,7 +783,7 @@ mod tests {
         let cache_keys = artwork_cache_keys(42, &normalized, &source);
 
         assert_eq!(cache_keys.first(), Some(&cache_key));
-        let cache = CatboxCache {
+        let cache = ArtworkCache {
             entries: HashMap::from([(
                 cache_key,
                 "https://files.catbox.moe/existing.jpg".to_string(),

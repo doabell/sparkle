@@ -1,3 +1,4 @@
+mod artwork_store;
 mod audio_engine;
 mod backup;
 mod cache;
