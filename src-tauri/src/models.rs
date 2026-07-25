@@ -60,18 +60,13 @@ pub struct Track {
     pub lyrics_source: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum RepeatMode {
+    #[default]
     Off,
     All,
     One,
-}
-
-impl Default for RepeatMode {
-    fn default() -> Self {
-        RepeatMode::Off
-    }
 }
 
 impl RepeatMode {
@@ -186,6 +181,16 @@ pub fn detect_image_mime_type(data: &[u8]) -> String {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum AccentForegroundPreference {
+    Light,
+    Dark,
+    #[default]
+    #[serde(other)]
+    Auto,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct OnlineSettings {
     pub scan_on_startup: bool,
@@ -201,6 +206,8 @@ pub struct OnlineSettings {
     pub brave_api_key: String,
     #[serde(default)]
     pub accent_color: String,
+    #[serde(default)]
+    pub accent_foreground_preference: AccentForegroundPreference,
     #[serde(default)]
     pub discord_enabled: bool,
     #[serde(default)]

@@ -4401,7 +4401,6 @@ dependencies = [
  "discord-rich-presence",
  "encoding_rs",
  "flate2",
- "futures-util",
  "image",
  "lofty",
  "log",

@@ -20,15 +20,17 @@ pub struct TrackMetadata {
     pub embedded_lyrics: Option<String>,
 }
 
+type TrackMetadataRow = (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<i64>,
+    Option<String>,
+    Option<String>,
+);
+
 pub fn fetch_track_metadata(conn: &Connection, track_id: i64) -> Result<TrackMetadata, String> {
-    let row: (
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<i64>,
-        Option<String>,
-        Option<String>,
-    ) = conn
+    let row: TrackMetadataRow = conn
         .query_row(
             "SELECT t.title, al.title AS album_title, a.name, t.duration_ms, t.file_path, t.embedded_lyrics \
              FROM tracks t \

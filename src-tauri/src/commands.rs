@@ -37,6 +37,14 @@ const LIVE_MIX_DEFINITIONS: &[(&str, &str, &str)] = &[
     ),
 ];
 
+type PlaylistRow = (
+    i64,
+    String,
+    Option<String>,
+    Option<String>,
+    Result<i64, String>,
+);
+
 fn live_mix_kind(smart_query: Option<&str>) -> Option<&str> {
     smart_query
         .and_then(|value| value.strip_prefix("mix:"))
@@ -431,6 +439,9 @@ pub fn set_album_art_file(
         None,
         Some(&data),
     )?;
+    crate::discord::invalidate_album_artwork(&conn, albumId)?;
+    drop(conn);
+    state.discord.refresh();
     Ok(())
 }
 
@@ -453,9 +464,12 @@ pub fn clear_album_custom_art(state: State<'_, AppState>, albumId: i64) -> Resul
         [albumId],
     )
     .map_err(|e| e.to_string())?;
+    crate::discord::invalidate_album_artwork(&conn, albumId)?;
+    drop(conn);
     if let Some(p) = path {
         let _ = std::fs::remove_file(crate::cache::images_dir(&state.cache_dir, "album").join(p));
     }
+    state.discord.refresh();
     Ok(())
 }
 
@@ -879,13 +893,7 @@ pub fn get_playlists(state: State<'_, AppState>) -> Result<Vec<Playlist>, String
         .map_err(|e| e.to_string())?;
 
     // Collect rows before reusing the connection.
-    let mut tuples: Vec<(
-        i64,
-        String,
-        Option<String>,
-        Option<String>,
-        Result<i64, String>,
-    )> = Vec::new();
+    let mut tuples: Vec<PlaylistRow> = Vec::new();
     for row in rows {
         tuples.push(row.map_err(|e| e.to_string())?);
     }
@@ -1479,7 +1487,7 @@ fn lyric_snippet(plain: Option<&str>, synced: Option<&str>, query: &str) -> Stri
     let needle = query.to_lowercase();
     let candidate = plain
         .map(|p| p.to_string())
-        .or_else(|| synced.map(|s| crate::providers::lyrics::strip_lrc_timestamps(s)))
+        .or_else(|| synced.map(crate::providers::lyrics::strip_lrc_timestamps))
         .unwrap_or_default();
     for line in candidate.lines() {
         let line = line.trim();

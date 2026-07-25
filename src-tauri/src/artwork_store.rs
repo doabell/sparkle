@@ -1,8 +1,10 @@
 use crate::settings::Settings;
-use futures_util::StreamExt;
 use object_store::aws::AmazonS3Builder;
 use object_store::path::Path;
-use object_store::{Attribute, AttributeValue, Attributes, ObjectStore, PutOptions, PutPayload};
+use object_store::{
+    Attribute, AttributeValue, Attributes, Error as ObjectStoreError, ObjectStore, ObjectStoreExt,
+    PutOptions, PutPayload,
+};
 use reqwest::Url;
 use std::collections::HashSet;
 use std::env;
@@ -23,19 +25,29 @@ const DEFAULT_PREFIX: &str = "sparkle/";
 /// S3-compatible artwork storage for the Discord presence worker.
 ///
 /// The worker is a synchronous thread, so the async object_store client is
-/// driven by a small runtime owned by this store. The object listing is cached
-/// for the lifetime of the worker; each content hash is therefore listed once
-/// and uploaded at most once per process.
+/// driven by a small runtime owned by this store. Only deterministic artwork
+/// keys are probed; the configured prefix is never enumerated.
 pub(crate) struct S3ArtworkStore {
     config: S3Config,
     store: Arc<dyn ObjectStore>,
     runtime: Runtime,
-    existing_keys: Option<HashSet<String>>,
+    known_keys: HashSet<String>,
 }
 
 #[derive(Clone, Debug)]
 struct S3Config {
     public_url: Url,
+    prefix: String,
+}
+
+struct S3BuildConfig {
+    endpoint: Url,
+    bucket: String,
+    public_url: Url,
+    access_key: Option<String>,
+    secret_key: Option<String>,
+    session_token: Option<String>,
+    region: String,
     prefix: String,
 }
 
@@ -141,7 +153,7 @@ impl S3ArtworkStore {
         let prefix = normalize_prefix(&values.prefix.unwrap_or_else(|| DEFAULT_PREFIX.to_string()));
         let region = values.region.unwrap_or_else(|| DEFAULT_REGION.to_string());
 
-        Self::new(
+        Self::new(S3BuildConfig {
             endpoint,
             bucket,
             public_url,
@@ -150,20 +162,21 @@ impl S3ArtworkStore {
             session_token,
             region,
             prefix,
-        )
+        })
         .map(Some)
     }
 
-    fn new(
-        endpoint: Url,
-        bucket: String,
-        public_url: Url,
-        access_key: Option<String>,
-        secret_key: Option<String>,
-        session_token: Option<String>,
-        region: String,
-        prefix: String,
-    ) -> Result<Self, String> {
+    fn new(config: S3BuildConfig) -> Result<Self, String> {
+        let S3BuildConfig {
+            endpoint,
+            bucket,
+            public_url,
+            access_key,
+            secret_key,
+            session_token,
+            region,
+            prefix,
+        } = config;
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -202,55 +215,52 @@ impl S3ArtworkStore {
             config: S3Config { public_url, prefix },
             store: Arc::new(store),
             runtime,
-            existing_keys: None,
+            known_keys: HashSet::new(),
         })
     }
 
     /// Returns a public URL for an existing object or uploads the object under
-    /// the first stable content hash when the listing has no match.
+    /// the first stable content hash when bounded HEAD probes find no match.
     pub(crate) fn find_or_upload(
         &mut self,
         jpeg: Vec<u8>,
         content_hashes: &[String],
     ) -> Result<String, String> {
-        if self.existing_keys.is_none() {
-            self.existing_keys = Some(self.list_existing_keys()?);
-        }
-        let existing_keys = self
-            .existing_keys
-            .as_ref()
-            .expect("S3 object listing is initialized");
-        if let Some(object_key) = existing_object_key(existing_keys, &self.config, content_hashes) {
-            return Ok(self.public_url(&object_key));
+        let object_keys = candidate_object_keys(&self.config, content_hashes);
+        if object_keys.is_empty() {
+            return Err("artwork has no valid content hash".to_string());
         }
 
-        let hash = content_hashes
-            .iter()
-            .find(|hash| is_content_hash(hash))
-            .ok_or_else(|| "artwork has no valid content hash".to_string())?;
-        let object_key = self.config.object_key(hash);
-        self.put_object(&object_key, jpeg)?;
-        self.existing_keys
-            .as_mut()
-            .expect("S3 object listing is initialized")
-            .insert(object_key.clone());
-        Ok(self.public_url(&object_key))
+        for object_key in &object_keys {
+            if self.known_keys.contains(object_key) || self.object_exists(object_key)? {
+                self.known_keys.insert(object_key.clone());
+                return Ok(self.public_url(object_key));
+            }
+        }
+
+        let object_key = &object_keys[0];
+        self.put_object(object_key, jpeg)?;
+        self.known_keys.insert(object_key.clone());
+        Ok(self.public_url(object_key))
     }
 
-    /// Lists the configured prefix and uploads a deterministic test object.
-    /// This is intentionally separate from normal artwork hashing so the
-    /// Settings action verifies both read/list and write permissions.
+    /// Uploads and then HEADs a deterministic test object. This verifies both
+    /// write and read access without requiring permission to list the bucket.
+    /// The probe is deleted before this returns, including when verification
+    /// fails after the upload.
     pub(crate) fn test_access_and_upload(&mut self, jpeg: Vec<u8>) -> Result<String, String> {
-        if self.existing_keys.is_none() {
-            self.existing_keys = Some(self.list_existing_keys()?);
-        }
         let object_key = self.config.object_key("sparkle-test");
-        self.put_object(&object_key, jpeg)?;
-        self.existing_keys
-            .as_mut()
-            .expect("S3 object listing is initialized")
-            .insert(object_key.clone());
-        Ok(self.public_url(&object_key))
+        let test_result = self.put_object(&object_key, jpeg).and_then(|()| {
+            if self.object_exists(&object_key)? {
+                Ok(self.public_url(&object_key))
+            } else {
+                Err("S3 test object was not readable after upload".to_string())
+            }
+        });
+        let cleanup_result = self.delete_object(&object_key);
+        self.known_keys.remove(&object_key);
+
+        finish_test_with_cleanup(test_result, cleanup_result, &object_key)
     }
 
     pub(crate) fn owns_public_url(&self, url: &str) -> bool {
@@ -258,22 +268,15 @@ impl S3ArtworkStore {
         url.starts_with(&format!("{base}/"))
     }
 
-    fn list_existing_keys(&self) -> Result<HashSet<String>, String> {
+    fn object_exists(&self, object_key: &str) -> Result<bool, String> {
         let store = Arc::clone(&self.store);
-        let prefix =
-            (!self.config.prefix.is_empty()).then(|| Path::from(self.config.prefix.clone()));
-        let configured_prefix = self.config.prefix.clone();
+        let location = Path::from(object_key.to_string());
         self.runtime.block_on(async move {
-            let mut entries = store.list(prefix.as_ref());
-            let mut keys = HashSet::new();
-            while let Some(result) = entries.next().await {
-                let entry = result.map_err(|err| format!("S3 list failed: {err}"))?;
-                let key = entry.location.to_string();
-                if key.starts_with(&configured_prefix) {
-                    keys.insert(key);
-                }
+            match store.head(&location).await {
+                Ok(_) => Ok(true),
+                Err(ObjectStoreError::NotFound { .. }) => Ok(false),
+                Err(err) => Err(format!("S3 HEAD failed for {object_key}: {err}")),
             }
-            Ok(keys)
         })
     }
 
@@ -295,8 +298,37 @@ impl S3ArtworkStore {
         })
     }
 
+    fn delete_object(&self, object_key: &str) -> Result<(), String> {
+        let store = Arc::clone(&self.store);
+        let location = Path::from(object_key.to_string());
+        self.runtime.block_on(async move {
+            match store.delete(&location).await {
+                Ok(()) | Err(ObjectStoreError::NotFound { .. }) => Ok(()),
+                Err(err) => Err(format!("S3 DELETE failed: {err}")),
+            }
+        })
+    }
+
     fn public_url(&self, object_key: &str) -> String {
         append_path(&self.config.public_url, &encode_path(object_key)).to_string()
+    }
+}
+
+fn finish_test_with_cleanup<T>(
+    test_result: Result<T, String>,
+    cleanup_result: Result<(), String>,
+    object_key: &str,
+) -> Result<T, String> {
+    match (test_result, cleanup_result) {
+        (result, Ok(())) => result,
+        (Ok(_), Err(cleanup_error)) => Err(format!(
+            "S3 access test succeeded, but cleanup failed for test object \
+             '{object_key}': {cleanup_error}. Delete it manually from the configured bucket."
+        )),
+        (Err(test_error), Err(cleanup_error)) => Err(format!(
+            "{test_error}; cleanup also failed for test object '{object_key}': \
+             {cleanup_error}. Delete it manually from the configured bucket."
+        )),
     }
 }
 
@@ -306,16 +338,15 @@ impl S3Config {
     }
 }
 
-fn existing_object_key(
-    existing_keys: &HashSet<String>,
-    config: &S3Config,
-    content_hashes: &[String],
-) -> Option<String> {
-    content_hashes
-        .iter()
-        .filter(|hash| is_content_hash(hash))
-        .map(|hash| config.object_key(hash))
-        .find(|key| existing_keys.contains(key))
+fn candidate_object_keys(config: &S3Config, content_hashes: &[String]) -> Vec<String> {
+    let mut keys = Vec::with_capacity(content_hashes.len());
+    for hash in content_hashes.iter().filter(|hash| is_content_hash(hash)) {
+        let key = config.object_key(hash);
+        if !keys.contains(&key) {
+            keys.push(key);
+        }
+    }
+    keys
 }
 
 fn is_content_hash(value: &str) -> bool {
@@ -403,11 +434,24 @@ fn hex_digit(value: u8) -> char {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use object_store::memory::InMemory;
 
     fn config(prefix: &str) -> S3Config {
         S3Config {
             public_url: Url::parse("https://cdn.example.test").unwrap(),
             prefix: normalize_prefix(prefix),
+        }
+    }
+
+    fn memory_store(prefix: &str) -> S3ArtworkStore {
+        S3ArtworkStore {
+            config: config(prefix),
+            store: Arc::new(InMemory::new()),
+            runtime: tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap(),
+            known_keys: HashSet::new(),
         }
     }
 
@@ -421,16 +465,16 @@ mod tests {
     }
 
     #[test]
-    fn existing_lookup_ignores_album_keys_and_reuses_any_content_hash() {
+    fn candidate_lookup_ignores_album_keys_and_deduplicates_content_hashes() {
         let config = config("");
-        let existing = HashSet::from(["abcdefabcdefabcdefabcdefabcdefab.jpg".to_string()]);
         let hashes = vec![
             "album:42".to_string(),
             "abcdefabcdefabcdefabcdefabcdefab".to_string(),
+            "abcdefabcdefabcdefabcdefabcdefab".to_string(),
         ];
         assert_eq!(
-            existing_object_key(&existing, &config, &hashes),
-            Some("abcdefabcdefabcdefabcdefabcdefab.jpg".to_string())
+            candidate_object_keys(&config, &hashes),
+            vec!["abcdefabcdefabcdefabcdefabcdefab.jpg".to_string()]
         );
     }
 
@@ -458,29 +502,115 @@ mod tests {
     }
 
     #[test]
-    fn public_path_style_store_can_be_built_without_network_access() {
-        let store = S3ArtworkStore::new(
-            Url::parse("http://minio.example.test:9000").unwrap(),
-            "sparkle".to_string(),
-            Url::parse("https://cdn.example.test").unwrap(),
-            None,
-            None,
-            None,
-            DEFAULT_REGION.to_string(),
-            normalize_prefix("artwork"),
+    fn head_probe_reuses_an_existing_content_object_without_overwriting_it() {
+        let hash = "abcdefabcdefabcdefabcdefabcdefab".to_string();
+        let mut store = memory_store("artwork");
+        let object_key = store.config.object_key(&hash);
+        store
+            .put_object(&object_key, b"existing-object".to_vec())
+            .unwrap();
+
+        let url = store
+            .find_or_upload(b"replacement".to_vec(), &[hash])
+            .unwrap();
+
+        assert_eq!(
+            url,
+            "https://cdn.example.test/artwork/abcdefabcdefabcdefabcdefabcdefab.jpg"
+        );
+        let backend = Arc::clone(&store.store);
+        let location = Path::from(object_key);
+        let stored = store
+            .runtime
+            .block_on(async move { backend.get(&location).await.unwrap().bytes().await.unwrap() });
+        assert_eq!(stored.as_ref(), b"existing-object");
+    }
+
+    #[test]
+    fn settings_test_upload_is_verified_and_deleted() {
+        let mut store = memory_store("artwork");
+        let url = store
+            .test_access_and_upload(b"test-object".to_vec())
+            .unwrap();
+
+        assert_eq!(url, "https://cdn.example.test/artwork/sparkle-test.jpg");
+        assert!(!store.known_keys.contains("artwork/sparkle-test.jpg"));
+        assert!(!store
+            .object_exists("artwork/sparkle-test.jpg")
+            .expect("check that the S3 test object was deleted"));
+    }
+
+    #[test]
+    fn cleanup_failure_is_actionable_after_a_successful_probe() {
+        let error = finish_test_with_cleanup(
+            Ok("https://cdn.example.test/artwork/sparkle-test.jpg"),
+            Err("S3 DELETE failed: access denied".to_string()),
+            "artwork/sparkle-test.jpg",
         )
+        .unwrap_err();
+
+        assert!(error.starts_with("S3 access test succeeded, but cleanup failed"));
+        assert!(error.contains("artwork/sparkle-test.jpg"));
+        assert!(error.contains("S3 DELETE failed: access denied"));
+        assert!(error.contains("Delete it manually from the configured bucket"));
+    }
+
+    #[test]
+    fn cleanup_failure_does_not_mask_the_probe_failure() {
+        let error = finish_test_with_cleanup::<String>(
+            Err("S3 HEAD failed: timed out".to_string()),
+            Err("S3 DELETE failed: access denied".to_string()),
+            "artwork/sparkle-test.jpg",
+        )
+        .unwrap_err();
+
+        assert!(error.starts_with("S3 HEAD failed: timed out"));
+        assert!(error.contains("cleanup also failed"));
+        assert!(error.contains("artwork/sparkle-test.jpg"));
+        assert!(error.contains("S3 DELETE failed: access denied"));
+    }
+
+    #[test]
+    fn successful_cleanup_preserves_the_probe_failure() {
+        let error = finish_test_with_cleanup::<String>(
+            Err("S3 test object was not readable after upload".to_string()),
+            Ok(()),
+            "artwork/sparkle-test.jpg",
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            error,
+            "S3 test object was not readable after upload".to_string()
+        );
+    }
+
+    #[test]
+    fn public_path_style_store_can_be_built_without_network_access() {
+        let store = S3ArtworkStore::new(S3BuildConfig {
+            endpoint: Url::parse("http://minio.example.test:9000").unwrap(),
+            bucket: "sparkle".to_string(),
+            public_url: Url::parse("https://cdn.example.test").unwrap(),
+            access_key: None,
+            secret_key: None,
+            session_token: None,
+            region: DEFAULT_REGION.to_string(),
+            prefix: normalize_prefix("artwork"),
+        })
         .unwrap();
         assert_eq!(store.config.prefix, "artwork/");
     }
 
     #[test]
     fn persisted_settings_build_an_s3_store_without_network_access() {
-        let mut settings = Settings::default();
-        settings.discord_artwork_s3_endpoint = "http://minio.example.test:9000".to_string();
-        settings.discord_artwork_s3_bucket = "sparkle".to_string();
-        settings.discord_artwork_s3_access_key = "access".to_string();
-        settings.discord_artwork_s3_secret_key = "secret".to_string();
-        settings.discord_artwork_s3_prefix = "artwork".to_string();
+        let settings = Settings {
+            discord_artwork_s3_endpoint: "http://minio.example.test:9000".to_string(),
+            discord_artwork_s3_bucket: "sparkle".to_string(),
+            discord_artwork_s3_access_key: "access".to_string(),
+            discord_artwork_s3_secret_key: "secret".to_string(),
+            discord_artwork_s3_prefix: "artwork".to_string(),
+            ..Default::default()
+        };
 
         let store = S3ArtworkStore::from_settings(&settings)
             .unwrap()
@@ -490,16 +620,16 @@ mod tests {
 
     #[test]
     fn public_url_ownership_is_scoped_to_the_configured_base() {
-        let store = S3ArtworkStore::new(
-            Url::parse("http://minio.example.test:9000").unwrap(),
-            "sparkle".to_string(),
-            Url::parse("https://cdn.example.test/artwork").unwrap(),
-            None,
-            None,
-            None,
-            DEFAULT_REGION.to_string(),
-            normalize_prefix("images"),
-        )
+        let store = S3ArtworkStore::new(S3BuildConfig {
+            endpoint: Url::parse("http://minio.example.test:9000").unwrap(),
+            bucket: "sparkle".to_string(),
+            public_url: Url::parse("https://cdn.example.test/artwork").unwrap(),
+            access_key: None,
+            secret_key: None,
+            session_token: None,
+            region: DEFAULT_REGION.to_string(),
+            prefix: normalize_prefix("images"),
+        })
         .unwrap();
         assert!(store.owns_public_url("https://cdn.example.test/artwork/images/a.jpg"));
         assert!(!store.owns_public_url("https://cdn.example.test/other/images/a.jpg"));

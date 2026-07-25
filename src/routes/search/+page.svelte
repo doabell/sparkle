@@ -369,7 +369,7 @@
     }
 
     .search-box:focus-within {
-        border-color: var(--color-accent);
+        border-color: var(--color-accent-focus);
     }
 
     .search-box svg {
@@ -442,7 +442,7 @@
 
     .history-chip:hover {
         background-color: var(--color-surface-raised);
-        border-color: var(--color-accent);
+        border-color: var(--color-accent-graphic);
     }
 
     .history-chip svg {

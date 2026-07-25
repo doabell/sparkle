@@ -129,6 +129,8 @@ export interface ImageSearchResults {
     timed_out_sources: string[];
 }
 
+export type AccentForegroundPreference = "auto" | "light" | "dark";
+
 export interface OnlineSettings {
     scan_on_startup: boolean;
     lyrics_sources: string[];
@@ -142,6 +144,7 @@ export interface OnlineSettings {
     reduce_motion: boolean;
     brave_api_key: string;
     accent_color: string;
+    accent_foreground_preference: AccentForegroundPreference;
     discord_enabled: boolean;
     discord_app_id: string;
     discord_catbox_user_hash: string;

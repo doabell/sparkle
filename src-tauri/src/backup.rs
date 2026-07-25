@@ -728,7 +728,7 @@ fn resolve_track(track: &BackupTrackRef, local_tracks: &[LocalTrack]) -> Option<
                 (Some(expected), Some(actual)) => (expected - actual).abs() <= 2_000,
                 _ => true,
             }
-            && artist.as_ref().map_or(true, |expected| {
+            && artist.as_ref().is_none_or(|expected| {
                 candidate
                     .artist_names
                     .iter()
@@ -778,9 +778,10 @@ fn resolve_artwork_owner(
             let mut matches = Vec::new();
             for id in candidates {
                 let names = artist_names_for_album(conn, id)?;
-                if expected_artist.as_ref().map_or(true, |expected| {
-                    names.iter().any(|name| normalized(name) == *expected)
-                }) {
+                if expected_artist
+                    .as_ref()
+                    .is_none_or(|expected| names.iter().any(|name| normalized(name) == *expected))
+                {
                     matches.push(id);
                 }
             }

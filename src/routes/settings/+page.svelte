@@ -18,6 +18,7 @@
         pickBackupToImport,
         revealInExplorer,
         type AppStatus,
+        type AccentForegroundPreference,
         type OnlineSettings,
         type CacheStat,
         type BackupManifest,
@@ -28,7 +29,15 @@
     import { addToast } from "$lib/stores/toast";
     import { songIndexLanguage } from "$lib/stores/songIndex";
     import { getFontStack } from "$lib/utils/fonts";
-    import { applyAccent, normalizeHex } from "$lib/utils/theme";
+    import {
+        DEFAULT_ACCENT_COLOR,
+        applyAccent,
+        cacheAccent,
+        createAccentTheme,
+        normalizeAccentForegroundPreference,
+        normalizeHex,
+        type AccentPalette,
+    } from "$lib/utils/theme";
     import type { SongIndexLanguage } from "$lib/utils/songIndex";
 
     const DEFAULT_SPLIT_REGEX = ";";
@@ -50,6 +59,15 @@
         { value: "auto", label: "Automatic (system)" },
         { value: "en", label: "English / Latin" },
         { value: "ja", label: "日本語 (Japanese)" },
+    ];
+
+    const ACCENT_FOREGROUND_OPTIONS: {
+        value: AccentForegroundPreference;
+        label: string;
+    }[] = [
+        { value: "auto", label: "Automatic" },
+        { value: "light", label: "Light (white)" },
+        { value: "dark", label: "Dark (black)" },
     ];
 
     const SHORTCUTS: { keys: string; action: string }[] = [
@@ -176,6 +194,16 @@
     ];
 
     let settings = $state<OnlineSettings | null>(null);
+    let accentInput = $state(DEFAULT_ACCENT_COLOR);
+    let accentInputInvalid = $derived(normalizeHex(accentInput) === null);
+    let accentTheme = $derived(
+        createAccentTheme(
+            settings?.accent_color ?? DEFAULT_ACCENT_COLOR,
+            normalizeAccentForegroundPreference(
+                settings?.accent_foreground_preference,
+            ),
+        ),
+    );
     let clearing = $state<string | null>(null);
     let cacheStats = $state<CacheStat[]>([]);
     let cacheDir = $state<string | null>(null);
@@ -233,6 +261,10 @@
         saveState = "saving";
         try {
             await setOnlineSettings(settings);
+            cacheAccent(
+                settings.accent_color,
+                settings.accent_foreground_preference,
+            );
             lastSavedJson = json;
             saveState = "saved";
             const splitKey = JSON.stringify([
@@ -257,12 +289,18 @@
 
     async function testArtworkStorage() {
         if (!settings || settings.discord_artwork_store === "disabled") return;
+        const store = settings.discord_artwork_store;
         artworkStorageTestBusy = true;
         artworkStorageTestUrl = null;
         try {
             const url = await testArtworkStorageApi();
-            artworkStorageTestUrl = url;
-            addToast("Artwork storage access and upload succeeded", "success");
+            artworkStorageTestUrl = store === "s3" ? null : url;
+            addToast(
+                store === "s3"
+                    ? "S3 upload, verification, and cleanup succeeded"
+                    : "Artwork storage access and upload succeeded",
+                "success",
+            );
         } catch (e) {
             addToast(String(e), "error");
         } finally {
@@ -321,6 +359,7 @@
             );
             if (summary.settings) {
                 const restoredSettings = await getOnlineSettings();
+                normalizeLoadedAppearance(restoredSettings);
                 settings = restoredSettings;
                 lastSavedJson = JSON.stringify(restoredSettings);
             }
@@ -357,6 +396,16 @@
         return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
     }
 
+    function normalizeLoadedAppearance(loaded: OnlineSettings) {
+        loaded.accent_color =
+            normalizeHex(loaded.accent_color ?? "") ?? DEFAULT_ACCENT_COLOR;
+        loaded.accent_foreground_preference =
+            normalizeAccentForegroundPreference(
+                loaded.accent_foreground_preference,
+            );
+        accentInput = loaded.accent_color;
+    }
+
     onMount(async () => {
         try {
             const loaded = await getOnlineSettings();
@@ -375,6 +424,7 @@
             if (!loaded.brave_api_key) {
                 loaded.brave_api_key = "";
             }
+            normalizeLoadedAppearance(loaded);
             if (typeof loaded.discord_enabled !== "boolean") {
                 loaded.discord_enabled = true;
             }
@@ -482,23 +532,68 @@
 
     $effect(() => {
         if (settings?.accent_color) {
-            applyAccent(settings.accent_color);
+            applyAccent(
+                settings.accent_color,
+                normalizeAccentForegroundPreference(
+                    settings.accent_foreground_preference,
+                ),
+            );
         }
     });
 
     function chooseAccent(color: string) {
         if (!settings) return;
-        settings.accent_color = color;
+        const normalized = normalizeHex(color) ?? DEFAULT_ACCENT_COLOR;
+        settings.accent_color = normalized;
+        accentInput = normalized;
     }
 
     function handleAccentInput(e: Event) {
         if (!settings) return;
-        const normalized = normalizeHex(
-            (e.currentTarget as HTMLInputElement).value,
-        );
+        accentInput = (e.currentTarget as HTMLInputElement).value;
+        const normalized = normalizeHex(accentInput);
         if (normalized) {
             settings.accent_color = normalized;
         }
+    }
+
+    function normalizeAccentInput() {
+        const normalized = normalizeHex(accentInput);
+        if (normalized) accentInput = normalized;
+    }
+
+    function chooseAccentForeground(value: string) {
+        if (!settings) return;
+        settings.accent_foreground_preference =
+            normalizeAccentForegroundPreference(value);
+    }
+
+    function swatchForeground(color: string) {
+        return createAccentTheme(color).dark.onFill;
+    }
+
+    function accentPreviewStyle(
+        palette: AccentPalette,
+        mode: "dark" | "light",
+    ) {
+        const background = mode === "dark" ? "#171719" : "#ffffff";
+        const surface = mode === "dark" ? "#242426" : "#e9e9ed";
+        const text = mode === "dark" ? "#ffffff" : "#111113";
+        const muted = mode === "dark" ? "#b3b3b3" : "#5a5a5a";
+        return [
+            `--preview-background: ${background}`,
+            `--preview-surface: ${surface}`,
+            `--preview-text: ${text}`,
+            `--preview-muted: ${muted}`,
+            `--preview-fill: ${palette.fill}`,
+            `--preview-fill-hover: ${palette.fillHover}`,
+            `--preview-fill-disabled: ${palette.fillDisabled}`,
+            `--preview-on-fill: ${palette.onFill}`,
+            `--preview-on-fill-disabled: ${palette.onFillDisabled}`,
+            `--preview-subtle: ${palette.subtle}`,
+            `--preview-on-subtle: ${palette.onSubtle}`,
+            `--preview-focus: ${palette.focus}`,
+        ].join("; ");
     }
 
     function applyUiFont(fontName: string) {
@@ -1100,29 +1195,141 @@
                 >
                     {#each ACCENT_PRESETS as color (color)}
                         <button
+                            type="button"
                             class="accent-swatch"
                             class:active={settings.accent_color?.toLowerCase() ===
                                 color.toLowerCase()}
                             style:background-color={color}
+                            style:color={swatchForeground(color)}
                             onclick={() => chooseAccent(color)}
                             aria-label={`Theme color ${color}`}
                             aria-pressed={settings.accent_color?.toLowerCase() ===
                                 color.toLowerCase()}
-                        ></button>
+                        >
+                            {#if settings.accent_color?.toLowerCase() === color.toLowerCase()}
+                                <span aria-hidden="true">✓</span>
+                            {/if}
+                        </button>
                     {/each}
+                    <label class="accent-picker">
+                        <input
+                            type="color"
+                            value={settings.accent_color}
+                            oninput={(event) =>
+                                chooseAccent(
+                                    (event.currentTarget as HTMLInputElement)
+                                        .value,
+                                )}
+                            aria-label="Choose a custom theme color"
+                        />
+                        <span>Custom</span>
+                    </label>
                     <input
                         type="text"
                         class="accent-hex"
-                        value={settings.accent_color}
-                        onchange={handleAccentInput}
+                        value={accentInput}
+                        oninput={handleAccentInput}
+                        onblur={normalizeAccentInput}
                         spellcheck="false"
                         aria-label="Custom theme color (hex)"
-                        placeholder="#fa243c"
+                        aria-invalid={accentInputInvalid}
+                        aria-describedby="accent-help accent-error"
+                        placeholder={DEFAULT_ACCENT_COLOR}
+                    />
+                    <button
+                        type="button"
+                        class="btn-pill btn-secondary accent-reset"
+                        onclick={() => chooseAccent(DEFAULT_ACCENT_COLOR)}
+                        disabled={!accentInputInvalid &&
+                            accentInput === DEFAULT_ACCENT_COLOR &&
+                            settings.accent_color === DEFAULT_ACCENT_COLOR}
+                    >
+                        Reset
+                    </button>
+                </div>
+                <p class="hint" id="accent-help">
+                    Your exact color is kept as the seed. Sparkle derives
+                    accessible text, controls, focus rings, and chart colors for
+                    both light and dark mode.
+                </p>
+                <p
+                    class="accent-error"
+                    id="accent-error"
+                    role={accentInputInvalid ? "alert" : undefined}
+                >
+                    {accentInputInvalid
+                        ? "Enter a six-digit hex color, such as #fa243c."
+                        : ""}
+                </p>
+            </div>
+
+            <div class="field">
+                <span class="field-label" id="accent-foreground-label"
+                    >Filled-control text</span
+                >
+                <div
+                    class="select-field"
+                    role="group"
+                    aria-labelledby="accent-foreground-label"
+                >
+                    <Select
+                        options={ACCENT_FOREGROUND_OPTIONS}
+                        value={settings.accent_foreground_preference}
+                        onchange={chooseAccentForeground}
+                        ariaLabel="Filled-control text preference"
                     />
                 </div>
                 {@render hint(
-                    "Accent color used across the app. Pick a preset or enter any hex color.",
+                    "Automatic preserves the chosen color when possible. Light or Dark keeps that foreground and gently adjusts the rendered fill until it passes contrast.",
                 )}
+            </div>
+
+            <div class="field">
+                <span class="field-label">Theme preview</span>
+                <div class="accent-preview-grid">
+                    <div
+                        class="accent-preview"
+                        style={accentPreviewStyle(accentTheme.dark, "dark")}
+                        role="img"
+                        aria-label="Dark theme accent preview"
+                    >
+                        <span class="accent-preview-mode">Dark</span>
+                        <strong>Custom color</strong>
+                        <span class="accent-preview-link">Accent text</span>
+                        <div class="accent-preview-controls">
+                            <span class="accent-preview-button">Play</span>
+                            <span class="accent-preview-button hover-sample"
+                                >Hover</span
+                            >
+                            <span class="accent-preview-chip">Selected</span>
+                            <span class="accent-preview-focus">Focus</span>
+                            <span class="accent-preview-button disabled"
+                                >Disabled</span
+                            >
+                        </div>
+                    </div>
+                    <div
+                        class="accent-preview"
+                        style={accentPreviewStyle(accentTheme.light, "light")}
+                        role="img"
+                        aria-label="Light theme accent preview"
+                    >
+                        <span class="accent-preview-mode">Light</span>
+                        <strong>Custom color</strong>
+                        <span class="accent-preview-link">Accent text</span>
+                        <div class="accent-preview-controls">
+                            <span class="accent-preview-button">Play</span>
+                            <span class="accent-preview-button hover-sample"
+                                >Hover</span
+                            >
+                            <span class="accent-preview-chip">Selected</span>
+                            <span class="accent-preview-focus">Focus</span>
+                            <span class="accent-preview-button disabled"
+                                >Disabled</span
+                            >
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="field">
@@ -1465,11 +1672,13 @@
                             {artworkStorageTestBusy
                                 ? "Testing…"
                                 : settings.discord_artwork_store === "s3"
-                                  ? "Test S3 access & upload"
+                                  ? "Test S3 upload & cleanup"
                                   : "Test Catbox access & upload"}
                         </button>
                         {@render hint(
-                            "This performs a real list/access check and uploads a small test image. The test object is left in the selected store.",
+                            settings.discord_artwork_store === "s3"
+                                ? "Uploads and verifies a small test image, then deletes it automatically."
+                                : "Uploads a small test image to Catbox. The test image remains available.",
                         )}
                         {#if artworkStorageTestUrl}
                             <a
@@ -1799,7 +2008,7 @@
 
     .backup-option input {
         margin-top: 0.18rem;
-        accent-color: var(--color-accent);
+        accent-color: var(--color-accent-native);
     }
 
     .backup-option span {
@@ -1936,7 +2145,7 @@
     .storage-test-url {
         max-width: 100%;
         overflow: hidden;
-        color: var(--color-accent);
+        color: var(--color-accent-content);
         font-size: var(--font-size-sm);
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -1962,7 +2171,7 @@
     }
 
     .pill-list:focus-within {
-        border-color: var(--color-accent);
+        border-color: var(--color-accent-focus);
     }
 
     .pill {
@@ -2108,7 +2317,7 @@
 
     .rescan-note {
         font-size: var(--font-size-sm);
-        color: var(--color-accent);
+        color: var(--color-accent-content);
     }
 
     .rescan-link {
@@ -2124,11 +2333,17 @@
     }
 
     .accent-swatch {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         width: 1.75rem;
         height: 1.75rem;
         border-radius: var(--radius-full);
         border: 2px solid transparent;
         cursor: pointer;
+        font-size: 0.75rem;
+        font-weight: var(--font-weight-bold);
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
         transition:
             transform var(--transition-fast),
             border-color var(--transition-fast);
@@ -2142,10 +2357,146 @@
         border-color: var(--color-text);
     }
 
+    .accent-picker {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+        min-height: 2rem;
+        padding: 0.2rem var(--spacing-sm) 0.2rem 0.2rem;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-full);
+        background: var(--color-surface-elevated);
+        cursor: pointer;
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-semibold);
+    }
+
+    .accent-picker:hover {
+        background: var(--color-surface-raised);
+    }
+
+    .accent-picker input[type="color"] {
+        width: 1.5rem;
+        height: 1.5rem;
+        min-width: 1.5rem;
+        padding: 0;
+        border: 0;
+        border-radius: var(--radius-full);
+        background: transparent;
+        cursor: pointer;
+        overflow: hidden;
+    }
+
+    .accent-picker input[type="color"]::-webkit-color-swatch-wrapper {
+        padding: 0;
+    }
+
+    .accent-picker input[type="color"]::-webkit-color-swatch {
+        border: 0;
+        border-radius: var(--radius-full);
+    }
+
     .accent-hex {
-        width: 6.5rem;
+        width: 7rem;
         font-family: var(--font-family-monospace, monospace);
         font-size: var(--font-size-sm);
+    }
+
+    .accent-hex[aria-invalid="true"] {
+        border-color: var(--color-error);
+    }
+
+    .accent-reset {
+        min-height: 2rem;
+        padding: var(--spacing-xs) var(--spacing-md);
+        font-size: var(--font-size-xs);
+    }
+
+    .accent-error {
+        min-height: 1.1rem;
+        margin: 0;
+        color: var(--color-error);
+        font-size: var(--font-size-xs);
+    }
+
+    .accent-preview-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--spacing-md);
+    }
+
+    .accent-preview {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-sm);
+        min-width: 0;
+        padding: var(--spacing-md);
+        border: 1px solid
+            color-mix(in srgb, var(--preview-text) 14%, transparent);
+        border-radius: var(--radius-lg);
+        background: var(--preview-background);
+        color: var(--preview-text);
+    }
+
+    .accent-preview-mode {
+        color: var(--preview-muted);
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-semibold);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+    }
+
+    .accent-preview-link {
+        color: var(--preview-text);
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-semibold);
+    }
+
+    .accent-preview-controls {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: var(--spacing-sm);
+        padding-top: var(--spacing-xs);
+    }
+
+    .accent-preview-button,
+    .accent-preview-chip,
+    .accent-preview-focus {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 1.75rem;
+        padding: var(--spacing-xs) var(--spacing-sm);
+        border-radius: var(--radius-full);
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-semibold);
+    }
+
+    .accent-preview-button {
+        background: var(--preview-fill);
+        color: var(--preview-on-fill);
+    }
+
+    .accent-preview-button.hover-sample {
+        background: var(--preview-fill-hover);
+    }
+
+    .accent-preview-button.disabled {
+        background: var(--preview-fill-disabled);
+        color: var(--preview-on-fill-disabled);
+    }
+
+    .accent-preview-chip {
+        background: var(--preview-subtle);
+        color: var(--preview-on-subtle);
+    }
+
+    .accent-preview-focus {
+        color: var(--preview-text);
+        background: var(--preview-surface);
+        outline: 2px solid var(--preview-focus);
+        outline-offset: 1px;
     }
 
     .field-label {
@@ -2356,20 +2707,24 @@
     }
 
     .toggle input:checked + .toggle-slider {
-        background-color: var(--color-accent);
-        border-color: var(--color-accent);
+        background-color: var(--color-accent-fill);
+        border-color: var(--color-accent-graphic);
     }
 
     .toggle input:checked + .toggle-slider::after {
         transform: translateX(1.125rem);
-        background-color: white;
+        background-color: var(--color-on-accent-fill);
     }
 
     .toggle input:focus + .toggle-slider {
-        box-shadow: 0 0 0 2px var(--color-accent-focus, rgba(255, 90, 90, 0.4));
+        box-shadow: 0 0 0 2px var(--color-accent-focus);
     }
 
     @media (max-width: 480px) {
+        .accent-preview-grid {
+            grid-template-columns: 1fr;
+        }
+
         .backup-grid {
             grid-template-columns: 1fr;
         }

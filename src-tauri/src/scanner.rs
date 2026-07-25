@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const SUPPORTED_EXTENSIONS: [&str; 8] = ["mp3", "flac", "ogg", "m4a", "aac", "alac", "wav", "opus"];
+const SUPPORTED_EXTENSIONS: [&str; 7] = ["mp3", "flac", "ogg", "m4a", "aac", "alac", "opus"];
 
 struct FileResult {
     added: bool,
@@ -157,7 +157,7 @@ fn prune_stale_tracks(
     seen_paths: &HashSet<String>,
     cache_root: &Path,
 ) -> Result<usize, String> {
-    let mut stale: Vec<i64> = Vec::new();
+    let mut stale: HashSet<i64> = HashSet::new();
     for folder in folders {
         let pattern = format!("{}%", escape_like(&folder.path));
         let mut stmt = tx
@@ -170,12 +170,17 @@ fn prune_stale_tracks(
             .map_err(|e| e.to_string())?;
         for row in rows {
             let (id, path) = row.map_err(|e| e.to_string())?;
-            if !seen_paths.contains(&path) {
-                stale.push(id);
+            // The SQL prefix is only a coarse filter. Requiring a path
+            // separator boundary prevents a folder such as `C:\Music` from
+            // claiming tracks under `C:\Music Backup`.
+            if path_is_within_folder(&path, &folder.path) && !seen_paths.contains(&path) {
+                stale.insert(id);
             }
         }
     }
     let removed = stale.len();
+    let mut stale: Vec<i64> = stale.into_iter().collect();
+    stale.sort_unstable();
     for id in stale {
         tx.execute("DELETE FROM track_artists WHERE track_id = ?", [id])
             .map_err(|e| e.to_string())?;
@@ -262,7 +267,11 @@ fn list_enabled_folders(conn: &Connection) -> Result<Vec<Folder>, String> {
 fn collect_audio_files(folder: &str) -> Result<Vec<String>, String> {
     let mut files = Vec::new();
     let mut stack = vec![PathBuf::from(folder)];
+    let mut visited_directories = HashSet::new();
     while let Some(dir) = stack.pop() {
+        if !mark_directory_visited(&dir, &mut visited_directories)? {
+            continue;
+        }
         let entries = std::fs::read_dir(&dir).map_err(|e| format!("{}: {}", dir.display(), e))?;
         for entry in entries {
             let entry = entry.map_err(|e| e.to_string())?;
@@ -275,6 +284,47 @@ fn collect_audio_files(folder: &str) -> Result<Vec<String>, String> {
         }
     }
     Ok(files)
+}
+
+fn mark_directory_visited(
+    directory: &Path,
+    visited_directories: &mut HashSet<PathBuf>,
+) -> Result<bool, String> {
+    let canonical_directory =
+        std::fs::canonicalize(directory).map_err(|e| format!("{}: {}", directory.display(), e))?;
+    Ok(visited_directories.insert(canonical_directory))
+}
+
+fn path_is_within_folder(path: &str, folder: &str) -> bool {
+    let path = comparable_path(path);
+    let folder = comparable_path(folder);
+
+    if path == folder {
+        return true;
+    }
+
+    let separator = std::path::MAIN_SEPARATOR;
+    if folder.ends_with(separator) {
+        path.starts_with(&folder)
+    } else {
+        path.strip_prefix(&folder)
+            .is_some_and(|remainder| remainder.starts_with(separator))
+    }
+}
+
+fn comparable_path(path: &str) -> String {
+    #[cfg(windows)]
+    let comparable = path.replace('/', "\\").to_lowercase();
+    #[cfg(not(windows))]
+    let comparable = path.to_string();
+
+    let separator = std::path::MAIN_SEPARATOR;
+    let trimmed = comparable.trim_end_matches(separator);
+    if trimmed.is_empty() {
+        separator.to_string()
+    } else {
+        trimmed.to_string()
+    }
 }
 
 fn is_audio_file(path: &Path) -> bool {
@@ -616,4 +666,112 @@ pub fn recompute_artist_stats(conn: &mut Connection) -> Result<(), String> {
     .map_err(|e| e.to_string())?;
 
     tx.commit().map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn unique_test_directory(label: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "sparkle-scanner-{label}-{}-{nonce}",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn folder_membership_requires_a_path_component_boundary() {
+        let separator = std::path::MAIN_SEPARATOR;
+        let folder = format!("library{separator}Music");
+        let child = format!("{folder}{separator}Artist{separator}song.flac");
+        let sibling = format!("library{separator}Music Backup{separator}song.flac");
+
+        assert!(path_is_within_folder(&child, &folder));
+        assert!(!path_is_within_folder(&sibling, &folder));
+    }
+
+    #[test]
+    fn wav_is_not_advertised_as_a_supported_scan_format() {
+        assert!(is_audio_file(Path::new("song.flac")));
+        assert!(!is_audio_file(Path::new("song.wav")));
+    }
+
+    #[test]
+    fn stale_pruning_does_not_delete_from_a_prefix_sibling() {
+        let mut conn = Connection::open_in_memory().expect("open scanner test database");
+        conn.execute_batch(
+            "
+            CREATE TABLE tracks (id INTEGER PRIMARY KEY, file_path TEXT NOT NULL);
+            CREATE TABLE track_artists (track_id INTEGER NOT NULL);
+            CREATE TABLE playlist_tracks (track_id INTEGER NOT NULL);
+            CREATE TABLE play_queue (track_id INTEGER NOT NULL);
+            CREATE TABLE lyrics (track_id INTEGER NOT NULL);
+            ",
+        )
+        .expect("create scanner test tables");
+
+        let separator = std::path::MAIN_SEPARATOR;
+        let folder_path = format!("library{separator}Music");
+        let stale_path = format!("{folder_path}{separator}stale.flac");
+        let sibling_path = format!("library{separator}Music Backup{separator}outside.flac");
+        conn.execute(
+            "INSERT INTO tracks (id, file_path) VALUES (1, ?1), (2, ?2)",
+            rusqlite::params![stale_path, sibling_path],
+        )
+        .expect("insert scanner test tracks");
+
+        let tx = conn.transaction().expect("start scanner test transaction");
+        let folders = [Folder {
+            id: 1,
+            path: folder_path,
+            enabled: true,
+            scanned_at: None,
+        }];
+        let cache_root = unique_test_directory("prune");
+        std::fs::create_dir_all(&cache_root).expect("create scanner cache test directory");
+        let removed = prune_stale_tracks(&tx, &folders, &HashSet::new(), &cache_root)
+            .expect("prune stale scanner tracks");
+
+        assert_eq!(removed, 1);
+        assert_eq!(
+            tx.query_row("SELECT file_path FROM tracks WHERE id = 2", [], |row| {
+                row.get::<_, String>(0)
+            })
+            .expect("prefix sibling track remains"),
+            sibling_path
+        );
+        drop(tx);
+        std::fs::remove_dir(&cache_root).expect("remove scanner cache test directory");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn folder_membership_handles_windows_case_and_separator_variants() {
+        assert!(path_is_within_folder(
+            "C:/MUSIC/Artist/song.flac",
+            r"c:\music"
+        ));
+        assert!(!path_is_within_folder(
+            r"C:\Music Backup\song.flac",
+            r"C:\Music"
+        ));
+    }
+
+    #[test]
+    fn canonical_directory_identity_deduplicates_alias_paths() {
+        let root = unique_test_directory("directory-identity");
+        std::fs::create_dir_all(&root).expect("create temporary scanner directory");
+
+        let mut visited = HashSet::new();
+
+        assert!(mark_directory_visited(&root, &mut visited).expect("visit temporary directory"));
+        assert!(!mark_directory_visited(&root.join("."), &mut visited)
+            .expect("visit dot-directory alias"));
+
+        std::fs::remove_dir(&root).expect("remove temporary scanner directory");
+    }
 }

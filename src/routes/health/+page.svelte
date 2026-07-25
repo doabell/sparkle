@@ -273,9 +273,7 @@
                         >{health.lossless_tracks.toLocaleString()}</span
                     >
                     <strong>Lossless</strong>
-                    <small
-                        >{share(health.lossless_tracks)}% · FLAC, ALAC, WAV</small
-                    >
+                    <small>{share(health.lossless_tracks)}% · FLAC, ALAC</small>
                 </button>
                 <button class="sound-card" onclick={() => showTracks("lossy")}>
                     <span class="sound-value"
@@ -399,7 +397,7 @@
         gap: var(--spacing-md);
     }
     .eyebrow {
-        color: var(--color-accent);
+        color: var(--color-accent-content);
         font-size: var(--font-size-xs);
         font-weight: var(--font-weight-bold);
         letter-spacing: 0.1em;
@@ -465,7 +463,7 @@
         flex: 0 0 5.5rem;
         border-radius: 50%;
         background: conic-gradient(
-            var(--color-accent) var(--score),
+            var(--color-accent-graphic) var(--score),
             var(--color-border) 0
         );
         position: relative;
@@ -508,7 +506,7 @@
         background:
             radial-gradient(
                 circle at 90% 0%,
-                color-mix(in srgb, var(--color-accent) 14%, transparent),
+                color-mix(in srgb, var(--color-accent-seed) 14%, transparent),
                 transparent 42%
             ),
             var(--color-surface);
@@ -546,11 +544,7 @@
 
     button.sound-card:hover {
         transform: translateY(-2px);
-        border-color: color-mix(
-            in srgb,
-            var(--color-accent) 60%,
-            var(--color-border)
-        );
+        border-color: var(--color-accent-graphic);
         background-color: var(--color-surface-elevated);
     }
 
@@ -656,7 +650,7 @@
 
     .issue:hover,
     .issue.selected {
-        border-color: var(--color-accent);
+        border-color: var(--color-accent-graphic);
         background: var(--color-surface-raised);
         transform: translateY(-1px);
     }

@@ -427,7 +427,7 @@
     }
 
     .track-row.current .index-number {
-        color: var(--color-accent);
+        color: var(--color-accent-content);
     }
 
     .track-row:hover .index-number,
@@ -459,7 +459,7 @@
     }
 
     .play-button:hover {
-        color: var(--color-accent);
+        color: var(--color-accent-graphic);
         transform: scale(1.1);
     }
 
@@ -534,7 +534,7 @@
     }
 
     .track-title.current {
-        color: var(--color-accent);
+        color: var(--color-accent-content);
     }
 
     .track-artist {
@@ -554,7 +554,7 @@
 
     .track-snippet {
         font-size: var(--font-size-xs);
-        color: var(--color-accent);
+        color: var(--color-accent-content);
         font-style: italic;
     }
 

@@ -199,7 +199,7 @@
     .scroll-index button:hover,
     .scroll-index button:focus-visible,
     .scroll-index button.active {
-        color: var(--color-accent);
+        color: var(--color-accent-content);
         background-color: transparent;
     }
 

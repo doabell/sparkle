@@ -97,11 +97,11 @@ pub fn get_non_custom_lyrics(conn: &Connection, track_id: i64) -> Result<Vec<Lyr
             plain_text: row.get(2)?,
         })
     });
-    let result = rows
+    let lyrics = rows
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string());
-    result
+        .map_err(|e| e.to_string())?;
+    Ok(lyrics)
 }
 
 pub fn set_lyrics(
@@ -219,9 +219,8 @@ pub fn set_artist_info(
         .map_err(|e| e.to_string())?
         .flatten();
     let name = artist_info_file_name(artist_id, source);
-    match summary {
-        Some(text) => write_file(&dir, &name, text)?,
-        None => {}
+    if let Some(text) = summary {
+        write_file(&dir, &name, text)?;
     }
     if let Some(old) = old {
         if old != name || summary.is_none() {

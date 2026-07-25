@@ -1,5 +1,6 @@
 <script lang="ts">
     import "../app.css";
+    import { browser } from "$app/environment";
     import { page } from "$app/stores";
     import { afterNavigate, beforeNavigate } from "$app/navigation";
     import Sidebar from "$lib/components/Sidebar.svelte";
@@ -12,7 +13,13 @@
     import { getCurrentWindow } from "@tauri-apps/api/window";
     import { getOnlineSettings } from "$lib/api";
     import { getFontStack } from "$lib/utils/fonts";
-    import { applyAccent } from "$lib/utils/theme";
+    import {
+        DEFAULT_ACCENT_COLOR,
+        applyAccent,
+        applyCachedAccent,
+        cacheAccent,
+        normalizeAccentForegroundPreference,
+    } from "$lib/utils/theme";
     import { createContentScrollRestorer } from "$lib/utils/scrollRestore";
     import { windowPageTitle } from "$lib/stores/windowPageTitle";
     import { getRouteTitle, getWindowTitle } from "$lib/utils/windowTitle";
@@ -33,6 +40,7 @@
     } from "$lib/stores/playback";
 
     const SEEK_STEP_MS = 5000;
+    if (browser) applyCachedAccent();
     const VOLUME_STEP = 0.05;
 
     // Back only makes sense on detail pages drilled into from a list — never
@@ -213,7 +221,7 @@
         $playback.is_playing ? pause() : play();
     }
 
-    async function loadUiFont() {
+    async function loadUiSettings() {
         try {
             const settings = await getOnlineSettings();
             document.documentElement.style.setProperty(
@@ -223,9 +231,14 @@
             document.documentElement.dataset.motion = settings.reduce_motion
                 ? "reduced"
                 : "full";
-            applyAccent(settings.accent_color || "#fa243c");
+            const accentColor = settings.accent_color || DEFAULT_ACCENT_COLOR;
+            const accentPreference = normalizeAccentForegroundPreference(
+                settings.accent_foreground_preference,
+            );
+            applyAccent(accentColor, accentPreference);
+            cacheAccent(accentColor, accentPreference);
         } catch (err) {
-            console.error("Failed to load UI font setting:", err);
+            console.error("Failed to load UI settings:", err);
         }
     }
 
@@ -281,7 +294,7 @@
     }
 
     onMount(() => {
-        loadUiFont();
+        loadUiSettings();
 
         const unlisteners: (() => void)[] = [];
 
@@ -367,7 +380,10 @@
     .app {
         display: grid;
         grid-template-columns: var(--sidebar-width) 1fr;
-        grid-template-areas: "sidebar content";
+        grid-template-rows: minmax(0, 1fr) auto;
+        grid-template-areas:
+            "sidebar content"
+            "sidebar player";
         height: 100vh;
         width: 100vw;
         color: var(--color-text);
@@ -377,8 +393,7 @@
     .content {
         grid-area: content;
         overflow-y: auto;
-        padding: var(--spacing-xl) var(--spacing-2xl)
-            calc(var(--spacing-2xl) + var(--player-height));
+        padding: var(--spacing-xl) var(--spacing-2xl) var(--spacing-2xl);
     }
 
     /* Detail pages without a hero reserve room for the floating back button. */
@@ -387,10 +402,9 @@
     }
 
     .player-wrapper {
-        position: fixed;
-        left: var(--sidebar-width);
-        right: 0;
-        bottom: 0;
+        grid-area: player;
+        position: relative;
+        min-width: 0;
         z-index: 50;
     }
 
@@ -442,11 +456,9 @@
     @media (max-width: 767px) {
         .app {
             grid-template-columns: 1fr;
-            grid-template-areas: "content";
-        }
-
-        .player-wrapper {
-            left: 0;
+            grid-template-areas:
+                "content"
+                "player";
         }
 
         .back-fab {
@@ -454,8 +466,7 @@
         }
 
         .content {
-            padding: var(--spacing-2xl) var(--spacing-md)
-                calc(var(--spacing-md) + var(--player-height));
+            padding: var(--spacing-2xl) var(--spacing-md) var(--spacing-md);
         }
     }
 </style>

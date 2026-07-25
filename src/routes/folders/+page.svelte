@@ -424,7 +424,7 @@
     .scan-progress-fill {
         height: 100%;
         border-radius: inherit;
-        background: var(--color-accent);
+        background: var(--color-accent-graphic);
         transition: width 180ms ease;
     }
 

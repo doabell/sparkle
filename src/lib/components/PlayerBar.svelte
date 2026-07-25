@@ -647,7 +647,7 @@
     }
 
     .art:hover {
-        box-shadow: 0 0 0 2px var(--color-accent);
+        box-shadow: 0 0 0 2px var(--color-accent-graphic);
         transform: scale(1.04);
     }
 
@@ -684,7 +684,7 @@
     }
 
     .track-info .title:hover {
-        color: var(--color-accent);
+        color: var(--color-accent-content);
     }
 
     .artist {
@@ -763,7 +763,7 @@
     }
 
     .control-btn:hover {
-        color: var(--color-accent);
+        color: var(--color-accent-graphic);
         transform: scale(1.08);
     }
 
@@ -780,7 +780,7 @@
     }
 
     .mode-btn.active {
-        color: var(--color-accent);
+        color: var(--color-accent-graphic);
     }
 
     .mode-btn.active::after {
@@ -792,7 +792,7 @@
         width: 4px;
         height: 4px;
         border-radius: var(--radius-full);
-        background-color: var(--color-accent);
+        background-color: var(--color-accent-graphic);
     }
 
     .mode-btn svg {
@@ -818,7 +818,7 @@
     }
 
     .queue-toggle.active {
-        color: var(--color-accent);
+        color: var(--color-accent-graphic);
     }
 
     .queue-toggle svg {
@@ -842,10 +842,12 @@
 
     .play-btn:hover {
         transform: scale(1.06);
-        background-color: var(--color-accent);
-        color: var(--color-text);
-        box-shadow: 0 6px 20px
-            color-mix(in srgb, var(--color-accent) 35%, transparent);
+        background-color: var(--color-accent-fill-hover);
+        color: var(--color-on-accent-fill);
+        box-shadow:
+            inset 0 0 0 1px var(--color-accent-graphic),
+            0 6px 20px
+                color-mix(in srgb, var(--color-accent-seed) 35%, transparent);
     }
 
     .play-btn:active {
@@ -952,7 +954,7 @@
     .volume .bar-track:hover .bar-fill,
     .progress .bar-track:focus-visible .bar-fill,
     .volume .bar-track:focus-visible .bar-fill {
-        background-color: var(--color-accent);
+        background-color: var(--color-accent-graphic);
     }
 
     @media (max-width: 767px) {
