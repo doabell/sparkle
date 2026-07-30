@@ -340,7 +340,7 @@ pub fn run() {
                 Ok(settings) => set_debug_logging_enabled(settings.debug_logging_enabled),
                 Err(err) => log::warn!("event=debug_logging_setting_unavailable error={err}"),
             }
-            let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+            let app_data_dir = db::data_dir(app.handle());
             let cache_dir = app_data_dir.join("cache");
             // The cache is never wiped automatically — not on startup, not on
             // a fresh database. Custom artist images live here, and losing

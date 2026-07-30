@@ -1,6 +1,7 @@
 <script lang="ts">
     import {
         playback,
+        interpolatedPositionMs,
         play,
         pause,
         nextTrack,
@@ -56,7 +57,7 @@
         if (lyricLines.length === 0) return "";
         const track = $playback.current_track;
         if (!track || track.id !== lyricTrackId) return "";
-        const adjusted = $playback.position_ms - (track.lrc_offset_ms ?? 0);
+        const adjusted = $interpolatedPositionMs - (track.lrc_offset_ms ?? 0);
         const index = activeLineIndex(lyricLines, adjusted);
         return index >= 0 ? lyricLines[index].text : "";
     });
