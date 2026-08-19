@@ -194,6 +194,8 @@ pub enum AccentForegroundPreference {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct OnlineSettings {
     pub scan_on_startup: bool,
+    #[serde(default)]
+    pub sound_check_enabled: bool,
     pub lyrics_sources: Vec<String>,
     pub artist_info_sources: Vec<String>,
     pub artist_image_sources: Vec<String>,
@@ -234,6 +236,18 @@ pub struct OnlineSettings {
     pub discord_artwork_s3_prefix: String,
     #[serde(default)]
     pub debug_logging_enabled: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct LoudnessStatus {
+    pub enabled: bool,
+    pub running: bool,
+    pub current_track_id: Option<i64>,
+    pub total: i64,
+    pub analyzed: i64,
+    pub pending: i64,
+    pub failed: i64,
+    pub prioritized_pending: i64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

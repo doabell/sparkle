@@ -5,6 +5,9 @@ export interface AppStatus {
     db_path: string;
     log_path: string;
     schema_version: number;
+    audio_backend: string;
+    audio_output_mode: string;
+    audio_precision_bits: number;
 }
 
 export async function enableMediaControlEvents(): Promise<void> {
@@ -154,6 +157,7 @@ export type AccentForegroundPreference = "auto" | "light" | "dark";
 
 export interface OnlineSettings {
     scan_on_startup: boolean;
+    sound_check_enabled: boolean;
     lyrics_sources: string[];
     artist_info_sources: string[];
     artist_image_sources: string[];
@@ -179,6 +183,17 @@ export interface OnlineSettings {
     discord_artwork_s3_region: string;
     discord_artwork_s3_prefix: string;
     debug_logging_enabled: boolean;
+}
+
+export interface LoudnessStatus {
+    enabled: boolean;
+    running: boolean;
+    current_track_id: number | null;
+    total: number;
+    analyzed: number;
+    pending: number;
+    failed: number;
+    prioritized_pending: number;
 }
 
 export interface CacheStat {
@@ -958,6 +973,14 @@ export async function setOnlineSettings(
     settings: OnlineSettings,
 ): Promise<void> {
     return invoke("set_online_settings", { settings });
+}
+
+export async function getLoudnessStatus(): Promise<LoudnessStatus> {
+    return invoke("get_loudness_status");
+}
+
+export async function rescanLoudness(): Promise<void> {
+    return invoke("rescan_loudness");
 }
 
 export async function testArtworkStorage(): Promise<string> {

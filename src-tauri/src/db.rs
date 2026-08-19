@@ -2,7 +2,7 @@ use rusqlite::{Connection, Result};
 use std::fs;
 use tauri::{AppHandle, Manager};
 
-const CURRENT_SCHEMA_VERSION: i32 = 9;
+const CURRENT_SCHEMA_VERSION: i32 = 10;
 
 /// The full schema, created fresh on first launch. The database was reset
 /// for v1 (July 2026): lyrics, artist info, and image bytes live as files
@@ -61,6 +61,40 @@ CREATE TABLE IF NOT EXISTS tracks (
     created_at INTEGER NOT NULL DEFAULT (unixepoch()),
     updated_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
+
+-- Sound Check analysis is derived data. It is keyed to the exact file
+-- revision and analyzer version so stale measurements are never applied.
+CREATE TABLE IF NOT EXISTS track_loudness (
+    track_id INTEGER NOT NULL PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
+    status TEXT NOT NULL CHECK (status IN ('complete', 'peak_only', 'silent', 'failed')),
+    integrated_lufs REAL,
+    true_peak_dbtp REAL,
+    gain_db REAL,
+    analyzed_file_mtime INTEGER NOT NULL,
+    analyzed_file_size_bytes INTEGER,
+    analyzer_version INTEGER NOT NULL,
+    analyzed_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    retry_after INTEGER,
+    error_code TEXT,
+    CHECK (
+        (status = 'complete' AND integrated_lufs IS NOT NULL
+            AND true_peak_dbtp IS NOT NULL AND gain_db IS NOT NULL
+            AND error_code IS NULL)
+        OR (status = 'peak_only' AND integrated_lufs IS NULL
+            AND true_peak_dbtp IS NOT NULL AND gain_db IS NOT NULL
+            AND error_code IS NULL)
+        OR (status = 'silent' AND integrated_lufs IS NULL
+            AND true_peak_dbtp IS NULL AND gain_db = 0
+            AND error_code IS NULL)
+        OR (status = 'failed' AND integrated_lufs IS NULL
+            AND true_peak_dbtp IS NULL AND gain_db IS NULL
+            AND error_code IS NOT NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_track_loudness_status_retry
+    ON track_loudness(status, retry_after);
 
 CREATE TABLE IF NOT EXISTS album_artists (
     album_id INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
@@ -399,6 +433,42 @@ CREATE INDEX idx_playback_events_source
     ON playback_events(source, occurred_at_ms);
 "#;
 
+/// v10 adds versioned, file-revision-bound EBU R128 measurements. These are
+/// intentionally separate from user metadata because they can be rebuilt.
+const V9_TO_V10: &str = r#"
+CREATE TABLE track_loudness (
+    track_id INTEGER NOT NULL PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
+    status TEXT NOT NULL CHECK (status IN ('complete', 'peak_only', 'silent', 'failed')),
+    integrated_lufs REAL,
+    true_peak_dbtp REAL,
+    gain_db REAL,
+    analyzed_file_mtime INTEGER NOT NULL,
+    analyzed_file_size_bytes INTEGER,
+    analyzer_version INTEGER NOT NULL,
+    analyzed_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    retry_after INTEGER,
+    error_code TEXT,
+    CHECK (
+        (status = 'complete' AND integrated_lufs IS NOT NULL
+            AND true_peak_dbtp IS NOT NULL AND gain_db IS NOT NULL
+            AND error_code IS NULL)
+        OR (status = 'peak_only' AND integrated_lufs IS NULL
+            AND true_peak_dbtp IS NOT NULL AND gain_db IS NOT NULL
+            AND error_code IS NULL)
+        OR (status = 'silent' AND integrated_lufs IS NULL
+            AND true_peak_dbtp IS NULL AND gain_db = 0
+            AND error_code IS NULL)
+        OR (status = 'failed' AND integrated_lufs IS NULL
+            AND true_peak_dbtp IS NULL AND gain_db IS NULL
+            AND error_code IS NOT NULL)
+    )
+);
+
+CREATE INDEX idx_track_loudness_status_retry
+    ON track_loudness(status, retry_after);
+"#;
+
 /// Returns the profile-specific application data directory.
 ///
 /// Release builds keep the existing Tauri directory so installed users do
@@ -467,6 +537,7 @@ pub fn init_db(app: &AppHandle) -> Result<(Connection, bool)> {
             match migrated {
                 7 => migrate_v7_to_v8(&conn)?,
                 8 => migrate_v8_to_v9(&conn)?,
+                9 => migrate_v9_to_v10(&conn)?,
                 _ => return Err(rusqlite::Error::InvalidQuery),
             }
             migrated += 1;
@@ -492,6 +563,16 @@ fn migrate_v8_to_v9(conn: &Connection) -> Result<()> {
     record_schema_version(&tx, 9)?;
     tx.commit()?;
     log::info!(target: "sparkle::database", "event=migration_completed from=8 to=9");
+    Ok(())
+}
+
+fn migrate_v9_to_v10(conn: &Connection) -> Result<()> {
+    log::info!(target: "sparkle::database", "event=migration_started from=9 to=10");
+    let tx = conn.unchecked_transaction()?;
+    tx.execute_batch(V9_TO_V10)?;
+    record_schema_version(&tx, 10)?;
+    tx.commit()?;
+    log::info!(target: "sparkle::database", "event=migration_completed from=9 to=10");
     Ok(())
 }
 
@@ -564,6 +645,7 @@ mod tests {
             "playlists",
             "settings",
             "track_artists",
+            "track_loudness",
             "tracks",
         ] {
             assert!(
@@ -784,5 +866,38 @@ mod tests {
             )
             .unwrap();
         assert_eq!(legacy_table, 0);
+    }
+
+    #[test]
+    fn v9_to_v10_adds_versioned_loudness_analysis() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
+        conn.execute_batch(SCHEMA_VERSION_TABLE).unwrap();
+        conn.execute_batch(
+            "INSERT INTO _schema_version (version) VALUES (9);
+             CREATE TABLE tracks (id INTEGER PRIMARY KEY);",
+        )
+        .unwrap();
+
+        migrate_v9_to_v10(&conn).unwrap();
+
+        let columns = table_columns(&conn, "track_loudness");
+        for expected in [
+            "track_id",
+            "integrated_lufs",
+            "true_peak_dbtp",
+            "gain_db",
+            "analyzed_file_mtime",
+            "analyzer_version",
+            "attempt_count",
+        ] {
+            assert!(columns.iter().any(|column| column == expected));
+        }
+        let version: i32 = conn
+            .query_row("SELECT MAX(version) FROM _schema_version", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(version, 10);
     }
 }

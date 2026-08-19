@@ -11,6 +11,7 @@ const ARTIST_INFO_SOURCES_KEY: &str = "artist_info_sources";
 const ARTIST_IMAGE_SOURCES_KEY: &str = "artist_image_sources";
 const ALBUM_ART_SOURCES_KEY: &str = "album_art_sources";
 const SCAN_ON_STARTUP_KEY: &str = "scan_on_startup";
+const SOUND_CHECK_ENABLED_KEY: &str = "sound_check_enabled";
 const UI_FONT_KEY: &str = "ui_font";
 const LYRICS_FONT_KEY: &str = "lyrics_font";
 const REDUCE_MOTION_KEY: &str = "reduce_motion";
@@ -96,6 +97,10 @@ fn default_artist_split_exceptions() -> Vec<String> {
 }
 
 fn default_scan_on_startup() -> bool {
+    false
+}
+
+fn default_sound_check_enabled() -> bool {
     false
 }
 
@@ -192,6 +197,8 @@ pub struct Settings {
     pub artist_split_exceptions: Vec<String>,
     #[serde(default = "default_scan_on_startup")]
     pub scan_on_startup: bool,
+    #[serde(default = "default_sound_check_enabled")]
+    pub sound_check_enabled: bool,
     #[serde(default = "default_ui_font")]
     pub ui_font: String,
     #[serde(default = "default_lyrics_font")]
@@ -247,6 +254,7 @@ impl Default for Settings {
             artist_split_regex: default_artist_split_regex(),
             artist_split_exceptions: default_artist_split_exceptions(),
             scan_on_startup: default_scan_on_startup(),
+            sound_check_enabled: default_sound_check_enabled(),
             ui_font: default_ui_font(),
             lyrics_font: default_lyrics_font(),
             reduce_motion: default_reduce_motion(),
@@ -325,6 +333,11 @@ pub fn load_settings(conn: &Connection) -> Result<Settings, String> {
             default_artist_split_exceptions(),
         )?,
         scan_on_startup: load_json(conn, SCAN_ON_STARTUP_KEY, default_scan_on_startup())?,
+        sound_check_enabled: load_json(
+            conn,
+            SOUND_CHECK_ENABLED_KEY,
+            default_sound_check_enabled(),
+        )?,
         ui_font: load_json(conn, UI_FONT_KEY, default_ui_font())?,
         lyrics_font: load_json(conn, LYRICS_FONT_KEY, default_lyrics_font())?,
         reduce_motion: load_json(conn, REDUCE_MOTION_KEY, default_reduce_motion())?,
@@ -405,6 +418,7 @@ pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<(), Strin
         &settings.artist_split_exceptions,
     )?;
     save_json(conn, SCAN_ON_STARTUP_KEY, &settings.scan_on_startup)?;
+    save_json(conn, SOUND_CHECK_ENABLED_KEY, &settings.sound_check_enabled)?;
     save_json(conn, UI_FONT_KEY, &settings.ui_font)?;
     save_json(conn, LYRICS_FONT_KEY, &settings.lyrics_font)?;
     save_json(conn, REDUCE_MOTION_KEY, &settings.reduce_motion)?;
@@ -505,6 +519,7 @@ mod tests {
         settings.accent_color = "FA243C".to_string();
         settings.accent_foreground_preference = AccentForegroundPreference::Light;
         settings.debug_logging_enabled = true;
+        settings.sound_check_enabled = true;
         settings.discord_artwork_s3_endpoint = "https://s3.example.test".to_string();
         settings.discord_artwork_s3_bucket = "artwork".to_string();
         settings.discord_artwork_s3_access_key = "access".to_string();
@@ -514,6 +529,7 @@ mod tests {
         let loaded = load_settings(&conn).unwrap();
         assert_eq!(loaded.monitored_folders, settings.monitored_folders);
         assert_eq!(loaded.artist_split_regex, settings.artist_split_regex);
+        assert!(loaded.sound_check_enabled);
         assert_eq!(
             loaded.artist_split_exceptions,
             settings.artist_split_exceptions
