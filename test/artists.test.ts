@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { strict as assert } from "node:assert";
-import { test } from "node:test";
+import { test } from "bun:test";
 import { getArtistDisplayEntries } from "../src/lib/utils/artists.ts";
 
 test("keeps every artist name when linkable ids are incomplete", () => {

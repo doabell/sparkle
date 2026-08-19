@@ -1,6 +1,6 @@
 // @ts-nocheck
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "bun:test";
 import { moveCommandSelection } from "../src/lib/utils/commandPalette.ts";
 
 test("keeps command selection inside the available results", () => {
