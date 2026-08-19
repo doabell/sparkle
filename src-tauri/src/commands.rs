@@ -59,10 +59,10 @@ fn live_mix_query(kind: &str) -> Option<String> {
             "{base}ORDER BY t.created_at DESC, t.id DESC LIMIT 50"
         )),
         "most_played" => Some(format!(
-            "{base}JOIN (SELECT track_id, COUNT(*) AS plays FROM play_history GROUP BY track_id) p ON p.track_id = t.id ORDER BY p.plays DESC, t.title LIMIT 50"
+            "{base}JOIN (SELECT track_id, COUNT(*) AS plays FROM listens WHERE finalized = 1 AND meaningful = 1 GROUP BY track_id) p ON p.track_id = t.id ORDER BY p.plays DESC, t.title LIMIT 50"
         )),
         "never_played" => Some(format!(
-            "{base}WHERE NOT EXISTS (SELECT 1 FROM play_history p WHERE p.track_id = t.id) ORDER BY t.created_at DESC, t.title LIMIT 50"
+            "{base}WHERE NOT EXISTS (SELECT 1 FROM listens p WHERE p.track_id = t.id AND p.finalized = 1 AND p.meaningful = 1) ORDER BY t.created_at DESC, t.title LIMIT 50"
         )),
         _ => None,
     }
@@ -1211,13 +1211,13 @@ pub fn get_discovery_tracks(state: State<'_, AppState>) -> Result<DiscoveryTrack
     let most_played = load_tracks_with_query(
         &conn,
         &format!(
-            "{base}JOIN (SELECT track_id, COUNT(*) AS plays FROM play_history GROUP BY track_id) p ON p.track_id = t.id ORDER BY p.plays DESC, t.title LIMIT 12"
+            "{base}JOIN (SELECT track_id, COUNT(*) AS plays FROM listens WHERE finalized = 1 AND meaningful = 1 GROUP BY track_id) p ON p.track_id = t.id ORDER BY p.plays DESC, t.title LIMIT 12"
         ),
     )?;
     let never_played = load_tracks_with_query(
         &conn,
         &format!(
-            "{base}WHERE NOT EXISTS (SELECT 1 FROM play_history p WHERE p.track_id = t.id) ORDER BY t.updated_at DESC, t.title LIMIT 12"
+            "{base}WHERE NOT EXISTS (SELECT 1 FROM listens p WHERE p.track_id = t.id AND p.finalized = 1 AND p.meaningful = 1) ORDER BY t.updated_at DESC, t.title LIMIT 12"
         ),
     )?;
     Ok(DiscoveryTracks {
@@ -1280,7 +1280,7 @@ pub fn get_library_health(state: State<'_, AppState>) -> Result<LibraryHealth, S
             "SELECT COUNT(*) FROM tracks t WHERE t.title IS NOT NULL AND TRIM(t.title) != '' AND EXISTS (SELECT 1 FROM tracks duplicate WHERE duplicate.id != t.id AND LOWER(TRIM(duplicate.title)) = LOWER(TRIM(t.title)))",
         )?,
         never_played: count(
-            "SELECT COUNT(*) FROM tracks t WHERE NOT EXISTS (SELECT 1 FROM play_history p WHERE p.track_id = t.id)",
+            "SELECT COUNT(*) FROM tracks t WHERE NOT EXISTS (SELECT 1 FROM listens p WHERE p.track_id = t.id AND p.finalized = 1 AND p.meaningful = 1)",
         )?,
         lossless_tracks,
         lossy_tracks,
@@ -1321,7 +1321,7 @@ pub fn get_health_tracks(state: State<'_, AppState>, kind: String) -> Result<Vec
         "years" => "t.year IS NULL",
         "track_numbers" => "t.track_number IS NULL",
         "duplicate_titles" => "t.title IS NOT NULL AND TRIM(t.title) != '' AND EXISTS (SELECT 1 FROM tracks duplicate WHERE duplicate.id != t.id AND LOWER(TRIM(duplicate.title)) = LOWER(TRIM(t.title)))",
-        "never_played" => "NOT EXISTS (SELECT 1 FROM play_history p WHERE p.track_id = t.id)",
+        "never_played" => "NOT EXISTS (SELECT 1 FROM listens p WHERE p.track_id = t.id AND p.finalized = 1 AND p.meaningful = 1)",
         "lossless" => "LOWER(COALESCE(t.audio_format, '')) IN ('flac', 'alac', 'wav')",
         "lossy" => "LOWER(COALESCE(t.audio_format, '')) IN ('mp3', 'aac', 'ogg', 'opus')",
         "high_resolution" => "LOWER(COALESCE(t.audio_format, '')) IN ('flac', 'alac', 'wav') AND (t.sample_rate_hz >= 96000 OR t.bit_depth >= 24)",
@@ -1576,30 +1576,38 @@ pub fn get_listening_stats(
     days: Option<i64>,
 ) -> Result<ListeningStats, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
+    listening_stats_with_connection(&conn, days)
+}
+
+fn listening_stats_with_connection(
+    conn: &rusqlite::Connection,
+    days: Option<i64>,
+) -> Result<ListeningStats, String> {
     let by_month = days.map(|d| d > 120).unwrap_or(true);
-    let since: i64 = days
+    let since_ms: i64 = days
         .map(|d| {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .map(|t| t.as_secs() as i64)
+                .map(|t| t.as_millis().min(i64::MAX as u128) as i64)
                 .unwrap_or(0);
-            now - d.max(1) * 86_400
+            now.saturating_sub(d.max(1).saturating_mul(86_400_000))
         })
         .unwrap_or(0);
 
     let (total_plays, total_ms): (i64, i64) = conn
         .query_row(
-            "SELECT COUNT(*), COALESCE(SUM(played_ms), 0) FROM play_history WHERE started_at >= ?1",
-            [since],
+            "SELECT COUNT(*), COALESCE(SUM(listened_ms), 0) FROM listens \
+             WHERE finalized = 1 AND meaningful = 1 AND started_at_ms >= ?1",
+            [since_ms],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .map_err(|e| e.to_string())?;
 
     let active_days: i64 = conn
         .query_row(
-            "SELECT COUNT(DISTINCT date(started_at, 'unixepoch', 'localtime')) \
-             FROM play_history WHERE started_at >= ?1",
-            [since],
+            "SELECT COUNT(DISTINCT date(started_at_ms / 1000, 'unixepoch', 'localtime')) \
+             FROM listens WHERE finalized = 1 AND meaningful = 1 AND started_at_ms >= ?1",
+            [since_ms],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
@@ -1607,58 +1615,57 @@ pub fn get_listening_stats(
     let (unique_tracks, completed_plays): (i64, i64) = conn
         .query_row(
             "SELECT COUNT(DISTINCT track_id), COALESCE(SUM(completed), 0) \
-             FROM play_history WHERE started_at >= ?1",
-            [since],
+             FROM listens WHERE finalized = 1 AND meaningful = 1 AND started_at_ms >= ?1",
+            [since_ms],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .map_err(|e| e.to_string())?;
     let unique_artists: i64 = conn
         .query_row(
-            "SELECT COUNT(DISTINCT ta.artist_id) FROM play_history ph \
-             JOIN track_artists ta ON ta.track_id = ph.track_id AND ta.role = 'main' \
-             WHERE ph.started_at >= ?1",
-            [since],
+            "SELECT COUNT(DISTINCT ta.artist_id) FROM listens l \
+             JOIN track_artists ta ON ta.track_id = l.track_id AND ta.role = 'main' \
+             WHERE l.finalized = 1 AND l.meaningful = 1 AND l.started_at_ms >= ?1",
+            [since_ms],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
     let discovery_tracks: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM (SELECT track_id, MIN(started_at) AS first_play \
-             FROM play_history GROUP BY track_id HAVING first_play >= ?1)",
-            [since],
+            "SELECT COUNT(*) FROM (SELECT track_id, MIN(started_at_ms) AS first_play \
+             FROM listens WHERE finalized = 1 AND meaningful = 1 \
+             GROUP BY track_id HAVING first_play >= ?1)",
+            [since_ms],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
     let longest_streak_days: i64 = conn
         .query_row(
             "WITH active AS ( \
-                 SELECT DISTINCT CAST(julianday(date(started_at, 'unixepoch', 'localtime')) AS INTEGER) AS day \
-                 FROM play_history WHERE started_at >= ?1 \
+                 SELECT DISTINCT CAST(julianday(date(started_at_ms / 1000, 'unixepoch', 'localtime')) AS INTEGER) AS day \
+                 FROM listens WHERE finalized = 1 AND meaningful = 1 AND started_at_ms >= ?1 \
              ), numbered AS ( \
                  SELECT day, day - ROW_NUMBER() OVER (ORDER BY day) AS island FROM active \
              ) SELECT COALESCE(MAX(streak), 0) FROM (SELECT COUNT(*) AS streak FROM numbered GROUP BY island)",
-            [since],
+            [since_ms],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
     let session_count: i64 = conn
         .query_row(
-            "SELECT COALESCE(SUM(is_new), 0) FROM ( \
-                 SELECT CASE WHEN previous_end IS NULL OR started_at - previous_end > 1200 THEN 1 ELSE 0 END AS is_new \
-                 FROM (SELECT started_at, LAG(started_at + played_ms / 1000) OVER (ORDER BY started_at) AS previous_end \
-                       FROM play_history WHERE started_at >= ?1) \
-             )",
-            [since],
+            "SELECT COUNT(DISTINCT session_id) FROM listens \
+             WHERE finalized = 1 AND meaningful = 1 AND started_at_ms >= ?1",
+            [since_ms],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
 
     let peak_hour_row: Option<(i64, i64)> = conn
         .query_row(
-            "SELECT CAST(strftime('%H', started_at, 'unixepoch', 'localtime') AS INTEGER) AS hour, \
-                    SUM(played_ms) AS ms FROM play_history WHERE started_at >= ?1 \
+            "SELECT CAST(strftime('%H', started_at_ms / 1000, 'unixepoch', 'localtime') AS INTEGER) AS hour, \
+                    SUM(listened_ms) AS ms FROM listens \
+             WHERE finalized = 1 AND meaningful = 1 AND started_at_ms >= ?1 \
              GROUP BY hour ORDER BY ms DESC, hour LIMIT 1",
-            [since],
+            [since_ms],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()
@@ -1675,15 +1682,15 @@ pub fn get_listening_stats(
     ) = conn
         .query_row(
             "SELECT \
-                COALESCE(SUM(CASE WHEN hour >= 5 AND hour < 12 THEN played_ms ELSE 0 END), 0), \
-                COALESCE(SUM(CASE WHEN hour >= 12 AND hour < 17 THEN played_ms ELSE 0 END), 0), \
-                COALESCE(SUM(CASE WHEN hour >= 17 AND hour < 23 THEN played_ms ELSE 0 END), 0), \
-                COALESCE(SUM(CASE WHEN hour >= 23 OR hour < 5 THEN played_ms ELSE 0 END), 0), \
-                COALESCE(SUM(CASE WHEN weekday IN ('0', '6') THEN played_ms ELSE 0 END), 0) \
-             FROM (SELECT played_ms, strftime('%w', started_at, 'unixepoch', 'localtime') AS weekday, \
-                          CAST(strftime('%H', started_at, 'unixepoch', 'localtime') AS INTEGER) AS hour \
-                   FROM play_history WHERE started_at >= ?1)",
-            [since],
+                COALESCE(SUM(CASE WHEN hour >= 5 AND hour < 12 THEN listened_ms ELSE 0 END), 0), \
+                COALESCE(SUM(CASE WHEN hour >= 12 AND hour < 17 THEN listened_ms ELSE 0 END), 0), \
+                COALESCE(SUM(CASE WHEN hour >= 17 AND hour < 23 THEN listened_ms ELSE 0 END), 0), \
+                COALESCE(SUM(CASE WHEN hour >= 23 OR hour < 5 THEN listened_ms ELSE 0 END), 0), \
+                COALESCE(SUM(CASE WHEN weekday IN ('0', '6') THEN listened_ms ELSE 0 END), 0) \
+             FROM (SELECT listened_ms, strftime('%w', started_at_ms / 1000, 'unixepoch', 'localtime') AS weekday, \
+                          CAST(strftime('%H', started_at_ms / 1000, 'unixepoch', 'localtime') AS INTEGER) AS hour \
+                   FROM listens WHERE finalized = 1 AND meaningful = 1 AND started_at_ms >= ?1)",
+            [since_ms],
             |row| {
                 Ok((
                     row.get(0)?,
@@ -1698,11 +1705,12 @@ pub fn get_listening_stats(
 
     let top_genre_row: Option<(String, i64)> = conn
         .query_row(
-            "SELECT TRIM(t.genre), SUM(ph.played_ms) AS ms FROM play_history ph \
-             JOIN tracks t ON t.id = ph.track_id \
-             WHERE ph.started_at >= ?1 AND t.genre IS NOT NULL AND TRIM(t.genre) != '' \
+            "SELECT TRIM(t.genre), SUM(l.listened_ms) AS ms FROM listens l \
+             JOIN tracks t ON t.id = l.track_id \
+             WHERE l.finalized = 1 AND l.meaningful = 1 AND l.started_at_ms >= ?1 \
+               AND t.genre IS NOT NULL AND TRIM(t.genre) != '' \
              GROUP BY LOWER(TRIM(t.genre)) ORDER BY ms DESC LIMIT 1",
-            [since],
+            [since_ms],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()
@@ -1712,29 +1720,30 @@ pub fn get_listening_stats(
         .unwrap_or((None, 0));
     let average_year: Option<f64> = conn
         .query_row(
-            "SELECT CAST(SUM(t.year * ph.played_ms) AS REAL) / NULLIF(SUM(ph.played_ms), 0) \
-             FROM play_history ph JOIN tracks t ON t.id = ph.track_id \
-             WHERE ph.started_at >= ?1 AND t.year BETWEEN 1000 AND 3000",
-            [since],
+            "SELECT CAST(SUM(t.year * l.listened_ms) AS REAL) / NULLIF(SUM(l.listened_ms), 0) \
+             FROM listens l JOIN tracks t ON t.id = l.track_id \
+             WHERE l.finalized = 1 AND l.meaningful = 1 AND l.started_at_ms >= ?1 \
+               AND t.year BETWEEN 1000 AND 3000",
+            [since_ms],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
 
     // Activity buckets, oldest first — the client fills the gaps.
     let bucket_expr = if by_month {
-        "strftime('%Y-%m', started_at, 'unixepoch', 'localtime')"
+        "strftime('%Y-%m', started_at_ms / 1000, 'unixepoch', 'localtime')"
     } else {
-        "date(started_at, 'unixepoch', 'localtime')"
+        "date(started_at_ms / 1000, 'unixepoch', 'localtime')"
     };
     let mut activity_stmt = conn
         .prepare(&format!(
-            "SELECT {bucket_expr} AS label, COUNT(*) AS plays, COALESCE(SUM(played_ms), 0) AS ms \
-                 FROM play_history WHERE started_at >= ?1 \
+            "SELECT {bucket_expr} AS label, COUNT(*) AS plays, COALESCE(SUM(listened_ms), 0) AS ms \
+                 FROM listens WHERE finalized = 1 AND meaningful = 1 AND started_at_ms >= ?1 \
                  GROUP BY label ORDER BY label"
         ))
         .map_err(|e| e.to_string())?;
     let activity = activity_stmt
-        .query_map([since], |row| {
+        .query_map([since_ms], |row| {
             Ok(PlayStatBucket {
                 label: row.get(0)?,
                 plays: row.get(1)?,
@@ -1747,14 +1756,14 @@ pub fn get_listening_stats(
 
     let mut track_stmt = conn
         .prepare(
-            "SELECT t.id, t.title, t.album_id, COUNT(*) AS plays, COALESCE(SUM(ph.played_ms), 0) AS ms \
-             FROM play_history ph JOIN tracks t ON t.id = ph.track_id \
-             WHERE ph.started_at >= ?1 \
-             GROUP BY ph.track_id ORDER BY ms DESC, plays DESC LIMIT 10",
+            "SELECT t.id, t.title, t.album_id, COUNT(*) AS plays, COALESCE(SUM(l.listened_ms), 0) AS ms \
+             FROM listens l JOIN tracks t ON t.id = l.track_id \
+             WHERE l.finalized = 1 AND l.meaningful = 1 AND l.started_at_ms >= ?1 \
+             GROUP BY l.track_id ORDER BY ms DESC, plays DESC LIMIT 10",
         )
         .map_err(|e| e.to_string())?;
     let top_track_rows = track_stmt
-        .query_map([since], |row| {
+        .query_map([since_ms], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, Option<String>>(1)?,
@@ -1781,16 +1790,16 @@ pub fn get_listening_stats(
 
     let mut artist_stmt = conn
         .prepare(
-            "SELECT ar.id, ar.name, COUNT(*) AS plays, COALESCE(SUM(ph.played_ms), 0) AS ms \
-             FROM play_history ph \
-             JOIN track_artists ta ON ta.track_id = ph.track_id AND ta.role = 'main' \
+            "SELECT ar.id, ar.name, COUNT(*) AS plays, COALESCE(SUM(l.listened_ms), 0) AS ms \
+             FROM listens l \
+             JOIN track_artists ta ON ta.track_id = l.track_id AND ta.role = 'main' \
              JOIN artists ar ON ar.id = ta.artist_id \
-             WHERE ph.started_at >= ?1 \
+             WHERE l.finalized = 1 AND l.meaningful = 1 AND l.started_at_ms >= ?1 \
              GROUP BY ar.id ORDER BY ms DESC, plays DESC LIMIT 10",
         )
         .map_err(|e| e.to_string())?;
     let top_artists = artist_stmt
-        .query_map([since], |row| {
+        .query_map([since_ms], |row| {
             Ok(PlayStatArtist {
                 artist_id: row.get(0)?,
                 name: row.get(1)?,
@@ -1804,16 +1813,16 @@ pub fn get_listening_stats(
 
     let mut album_stmt = conn
         .prepare(
-            "SELECT al.id, al.title, COUNT(*) AS plays, COALESCE(SUM(ph.played_ms), 0) AS ms \
-             FROM play_history ph \
-             JOIN tracks t ON t.id = ph.track_id AND t.album_id IS NOT NULL \
+            "SELECT al.id, al.title, COUNT(*) AS plays, COALESCE(SUM(l.listened_ms), 0) AS ms \
+             FROM listens l \
+             JOIN tracks t ON t.id = l.track_id AND t.album_id IS NOT NULL \
              JOIN albums al ON al.id = t.album_id \
-             WHERE ph.started_at >= ?1 \
+             WHERE l.finalized = 1 AND l.meaningful = 1 AND l.started_at_ms >= ?1 \
              GROUP BY al.id ORDER BY ms DESC, plays DESC LIMIT 10",
         )
         .map_err(|e| e.to_string())?;
     let top_album_rows = album_stmt
-        .query_map([since], |row| {
+        .query_map([since_ms], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
@@ -1984,5 +1993,66 @@ mod tests {
             })
             .unwrap();
         assert_eq!(source, "netease");
+    }
+
+    #[test]
+    fn listening_stats_use_only_finalized_meaningful_listens() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE artists (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+             CREATE TABLE albums (id INTEGER PRIMARY KEY, title TEXT NOT NULL);
+             CREATE TABLE tracks (
+                id INTEGER PRIMARY KEY,
+                title TEXT,
+                album_id INTEGER,
+                genre TEXT,
+                year INTEGER
+             );
+             CREATE TABLE track_artists (
+                track_id INTEGER NOT NULL,
+                artist_id INTEGER NOT NULL,
+                role TEXT NOT NULL
+             );
+             CREATE TABLE album_artists (
+                album_id INTEGER NOT NULL,
+                artist_id INTEGER NOT NULL
+             );
+             CREATE TABLE listens (
+                track_id INTEGER NOT NULL,
+                session_id TEXT NOT NULL,
+                started_at_ms INTEGER NOT NULL,
+                listened_ms INTEGER NOT NULL,
+                meaningful INTEGER NOT NULL,
+                completed INTEGER NOT NULL,
+                finalized INTEGER NOT NULL
+             );
+             INSERT INTO artists VALUES (1, 'Artist A'), (2, 'Artist B');
+             INSERT INTO albums VALUES (1, 'Album A'), (2, 'Album B');
+             INSERT INTO tracks VALUES
+                (1, 'Track A', 1, 'Rock', 2000),
+                (2, 'Track B', 2, 'Rock', 2010);
+             INSERT INTO track_artists VALUES (1, 1, 'main'), (2, 2, 'main');
+             INSERT INTO album_artists VALUES (1, 1), (2, 2);
+             INSERT INTO listens VALUES
+                (1, 'session-a', 1700000000000, 60000, 1, 1, 1),
+                (2, 'session-a', 1700000060000, 45000, 1, 0, 1),
+                (1, 'session-b', 1700000120000, 4000, 0, 0, 1),
+                (1, 'session-c', 1700000180000, 90000, 1, 1, 0);",
+        )
+        .unwrap();
+
+        let stats = listening_stats_with_connection(&conn, None).unwrap();
+        assert_eq!(stats.total_plays, 2);
+        assert_eq!(stats.total_ms, 105_000);
+        assert_eq!(stats.unique_tracks, 2);
+        assert_eq!(stats.unique_artists, 2);
+        assert_eq!(stats.completed_plays, 1);
+        assert_eq!(stats.discovery_tracks, 2);
+        assert_eq!(stats.session_count, 1);
+        assert_eq!(stats.top_tracks.len(), 2);
+        assert_eq!(stats.top_artists.len(), 2);
+        assert_eq!(stats.top_albums.len(), 2);
+        assert_eq!(stats.top_genre.as_deref(), Some("Rock"));
+        assert_eq!(stats.top_genre_ms, 105_000);
     }
 }

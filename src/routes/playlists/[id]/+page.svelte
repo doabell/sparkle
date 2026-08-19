@@ -229,6 +229,8 @@
         loadQueue(
             orderedTracks.map((t) => t.track.id),
             index,
+            undefined,
+            { kind: "playlist", id: String(playlistId) },
         );
     }
 
@@ -238,6 +240,7 @@
             orderedTracks.map((t) => t.track.id),
             0,
             false,
+            { kind: "playlist", id: String(playlistId) },
         );
     }
 
@@ -248,6 +251,7 @@
             orderedTracks.map((t) => t.track.id),
             start,
             true,
+            { kind: "playlist", id: String(playlistId) },
         );
     }
 

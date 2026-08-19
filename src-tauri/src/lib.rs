@@ -1,3 +1,4 @@
+mod analytics;
 mod artwork_store;
 mod audio_engine;
 mod backup;
@@ -17,7 +18,7 @@ mod settings;
 use commands::AppState;
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use tauri::{Manager, State};
 
 const MEDIA_SEEK_STEP_MS: i64 = 15_000;
@@ -30,6 +31,11 @@ pub(crate) fn set_debug_logging_enabled(enabled: bool) {
     DEBUG_LOGGING_ENABLED.store(enabled, Ordering::Relaxed);
 }
 
+fn should_emit_log(level: log::Level, target: &str, verbose: bool) -> bool {
+    !matches!(level, log::Level::Debug | log::Level::Trace)
+        || (verbose && target.starts_with("sparkle"))
+}
+
 #[derive(Serialize)]
 struct AppStatus {
     db_path: String,
@@ -39,9 +45,19 @@ struct AppStatus {
 
 #[cfg(desktop)]
 #[derive(Default)]
+struct MediaStatusQueue {
+    pending: Mutex<Option<crate::models::PlaybackState>>,
+    wake: Condvar,
+}
+
+#[cfg(desktop)]
+#[derive(Default)]
 pub(crate) struct MediaControlBridge {
     registered: AtomicBool,
     session_ready: AtomicBool,
+    shutting_down: AtomicBool,
+    status_worker_started: AtomicBool,
+    status_queue: Arc<MediaStatusQueue>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -80,27 +96,43 @@ impl NativeMediaPlayback for crate::audio_engine::AudioController {
     }
 
     fn play(&self) -> Result<(), String> {
-        crate::audio_engine::AudioController::play(self).map(|_| ())
+        crate::audio_engine::AudioController::play(self, analytics::PlaybackSource::SystemMedia)
+            .map(|_| ())
     }
 
     fn pause(&self) -> Result<(), String> {
-        crate::audio_engine::AudioController::pause(self).map(|_| ())
+        crate::audio_engine::AudioController::pause(self, analytics::PlaybackSource::SystemMedia)
+            .map(|_| ())
     }
 
     fn stop(&self) -> Result<(), String> {
-        crate::audio_engine::AudioController::stop(self).map(|_| ())
+        crate::audio_engine::AudioController::stop(self, analytics::PlaybackSource::SystemMedia)
+            .map(|_| ())
     }
 
     fn next(&self) -> Result<(), String> {
-        crate::audio_engine::AudioController::next_track(self).map(|_| ())
+        crate::audio_engine::AudioController::next_track(
+            self,
+            analytics::PlaybackSource::SystemMedia,
+        )
+        .map(|_| ())
     }
 
     fn previous(&self) -> Result<(), String> {
-        crate::audio_engine::AudioController::previous_track(self).map(|_| ())
+        crate::audio_engine::AudioController::previous_track(
+            self,
+            analytics::PlaybackSource::SystemMedia,
+        )
+        .map(|_| ())
     }
 
     fn seek(&self, position_ms: i64) -> Result<(), String> {
-        crate::audio_engine::AudioController::seek(self, position_ms).map(|_| ())
+        crate::audio_engine::AudioController::seek(
+            self,
+            position_ms,
+            analytics::PlaybackSource::SystemMedia,
+        )
+        .map(|_| ())
     }
 }
 
@@ -201,6 +233,69 @@ pub(crate) fn sync_system_media_status(
     Ok(())
 }
 
+/// Native WinRT status calls are outside the audio worker's control. Queue
+/// only the newest state on a separate thread so a sleeping media endpoint
+/// cannot stop playback commands or shutdown from being serviced.
+#[cfg(desktop)]
+fn queue_system_media_status(app: &tauri::AppHandle, playback: crate::models::PlaybackState) {
+    let bridge = app.state::<MediaControlBridge>();
+    if !bridge.session_ready.load(Ordering::Acquire) || bridge.shutting_down.load(Ordering::Acquire)
+    {
+        return;
+    }
+
+    if !bridge
+        .status_worker_started
+        .swap(true, std::sync::atomic::Ordering::AcqRel)
+    {
+        let queue = bridge.status_queue.clone();
+        let worker_app = app.clone();
+        std::thread::spawn(move || loop {
+            let latest = {
+                let bridge = worker_app.state::<MediaControlBridge>();
+                let mut pending = queue
+                    .pending
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner());
+                while pending.is_none() && !bridge.shutting_down.load(Ordering::Acquire) {
+                    pending = queue
+                        .wake
+                        .wait(pending)
+                        .unwrap_or_else(|error| error.into_inner());
+                }
+                if bridge.shutting_down.load(Ordering::Acquire) {
+                    return;
+                }
+                pending.take()
+            };
+
+            let Some(latest) = latest else {
+                continue;
+            };
+            let bridge = worker_app.state::<MediaControlBridge>();
+            if bridge.shutting_down.load(Ordering::Acquire) {
+                return;
+            }
+            if let Err(error) = sync_system_media_status(&worker_app, &latest) {
+                log::warn!(
+                    target: "sparkle::media::smtc",
+                    "event=status_sync_failed source=audio_state error={error}"
+                );
+            }
+        });
+    }
+
+    {
+        let mut pending = bridge
+            .status_queue
+            .pending
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        *pending = Some(playback);
+    }
+    bridge.status_queue.wake.notify_one();
+}
+
 #[tauri::command]
 fn get_status(state: State<'_, AppState>, app: tauri::AppHandle) -> Result<AppStatus, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
@@ -243,14 +338,14 @@ fn enable_media_control_events(
         return Ok(());
     }
 
-    log::info!(
+    log::debug!(
         target: "sparkle::media::smtc",
         "event=button_handler_registration_started"
     );
     let audio = app.state::<AppState>().audio.clone();
     app.media().set_event_handler(move |event| {
         let action = native_media_action(event.event_type);
-        log::info!(
+        log::debug!(
             target: "sparkle::media::smtc",
             "event=button_pressed action={action:?}"
         );
@@ -259,7 +354,7 @@ fn enable_media_control_events(
         // thread and will publish the resulting playback state to the UI.
         let audio = audio.clone();
         std::thread::spawn(move || match dispatch_native_media_action(&audio, action) {
-            Ok(()) => log::info!(
+            Ok(()) => log::debug!(
                 target: "sparkle::media::smtc",
                 "event=command_dispatched action={action:?}"
             ),
@@ -277,7 +372,7 @@ fn enable_media_control_events(
             "event=status_sync_failed source=session_ready error={err}"
         );
     }
-    log::info!(
+    log::debug!(
         target: "sparkle::media::smtc",
         "event=button_handler_registration_completed"
     );
@@ -316,15 +411,17 @@ pub fn run() {
                         file_name: Some("sparkle".to_string()),
                     }),
                 ])
-                .level(log::LevelFilter::Debug)
+                .level(log::LevelFilter::Trace)
                 .max_file_size(LOG_MAX_FILE_SIZE_BYTES)
                 .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(LOG_FILE_COUNT))
-                // Verbose mode adds Sparkle's debug events without allowing
-                // codec internals to drown out useful state transitions.
+                // Verbose mode adds Sparkle's debug and trace events without
+                // allowing codec internals to drown out useful transitions.
                 .filter(|metadata| {
-                    metadata.level() != log::Level::Debug
-                        || (metadata.target().starts_with("sparkle")
-                            && DEBUG_LOGGING_ENABLED.load(Ordering::Relaxed))
+                    should_emit_log(
+                        metadata.level(),
+                        metadata.target(),
+                        DEBUG_LOGGING_ENABLED.load(Ordering::Relaxed),
+                    )
                 })
                 .build(),
         )
@@ -332,13 +429,33 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_media::init())
         .setup(|app| {
-            let (conn, _fresh_db) = db::init_db(app.handle()).map_err(|e| e.to_string())?;
+            let (conn, fresh_db) = db::init_db(app.handle()).map_err(|e| e.to_string())?;
+            let recovered_listens =
+                db::recover_interrupted_listens(&conn).map_err(|e| e.to_string())?;
+            if recovered_listens > 0 {
+                log::warn!(
+                    target: "sparkle::analytics",
+                    "event=interrupted_listens_recovered count={recovered_listens}"
+                );
+            }
+            log::info!(
+                target: "sparkle::lifecycle",
+                "event=application_started version={} fresh_database={} recovered_listens={recovered_listens}",
+                env!("CARGO_PKG_VERSION"),
+                fresh_db
+            );
             if let Err(err) = commands::ensure_live_mix_playlists(&conn) {
-                log::warn!("Live mixes could not be initialized: {err}");
+                log::warn!(
+                    target: "sparkle::database",
+                    "event=live_mix_initialization_failed error={err}"
+                );
             }
             match settings::load_settings(&conn) {
                 Ok(settings) => set_debug_logging_enabled(settings.debug_logging_enabled),
-                Err(err) => log::warn!("event=debug_logging_setting_unavailable error={err}"),
+                Err(err) => log::warn!(
+                    target: "sparkle::settings",
+                    "event=debug_logging_setting_unavailable error={err}"
+                ),
             }
             let app_data_dir = db::data_dir(app.handle());
             let cache_dir = app_data_dir.join("cache");
@@ -375,27 +492,44 @@ pub fn run() {
                 let mut scan_conn = match db::open_connection(&path) {
                     Ok(c) => c,
                     Err(e) => {
-                        log::warn!("Startup scan could not open db: {e}");
+                        log::warn!(
+                            target: "sparkle::scanner",
+                            "event=startup_scan_database_open_failed error={e}"
+                        );
                         return;
                     }
                 };
                 let settings = match settings::load_settings(&scan_conn) {
                     Ok(s) => s,
                     Err(e) => {
-                        log::warn!("Startup scan could not load settings: {e}");
+                        log::warn!(
+                            target: "sparkle::scanner",
+                            "event=startup_scan_settings_load_failed error={e}"
+                        );
                         return;
                     }
                 };
                 if settings.scan_on_startup {
+                    log::debug!(target: "sparkle::scanner", "event=startup_scan_started");
                     if let Err(e) =
                         scanner::scan_library(&mut scan_conn, &settings, false, &cache_dir)
                     {
-                        log::warn!("Startup scan failed: {e}");
+                        log::warn!(
+                            target: "sparkle::scanner",
+                            "event=startup_scan_failed error={e}"
+                        );
+                    } else {
+                        log::info!(target: "sparkle::scanner", "event=startup_scan_completed");
                     }
+                } else {
+                    log::debug!(target: "sparkle::scanner", "event=startup_scan_skipped reason=disabled");
                 }
                 if let Err(e) = commands::refresh_live_mix_playlists_with_connection(&mut scan_conn)
                 {
-                    log::warn!("Startup live mix refresh failed: {e}");
+                    log::warn!(
+                        target: "sparkle::database",
+                        "event=live_mix_refresh_failed source=startup error={e}"
+                    );
                 }
             });
 
@@ -439,11 +573,17 @@ pub fn run() {
                             .build();
 
                         if let Err(err) = app.handle().plugin(plugin) {
-                            log::warn!("Media key global shortcut registration failed: {err}");
+                            log::warn!(
+                                target: "sparkle::media::shortcut",
+                                "event=registration_failed error={err}"
+                            );
                         }
                     }
                     Err(err) => {
-                        log::info!("Media key shortcuts are not supported on this platform: {err}");
+                        log::info!(
+                            target: "sparkle::media::shortcut",
+                            "event=unsupported error={err}"
+                        );
                     }
                 }
             }
@@ -538,9 +678,30 @@ pub fn run() {
 
     app.run(|app_handle, event| {
         if let tauri::RunEvent::ExitRequested { .. } = event {
+            log::info!(target: "sparkle::lifecycle", "event=shutdown_started");
+            #[cfg(desktop)]
+            {
+                let bridge = app_handle.state::<MediaControlBridge>();
+                bridge.shutting_down.store(true, Ordering::Release);
+                bridge.session_ready.store(false, Ordering::Release);
+                bridge.status_queue.wake.notify_all();
+            }
+            #[cfg(desktop)]
+            {
+                use tauri_plugin_media::MediaExt;
+
+                if let Err(error) = app_handle.media().shutdown() {
+                    log::warn!(
+                        target: "sparkle::media::smtc",
+                        "event=shutdown_failed error={error}"
+                    );
+                }
+            }
             let audio = app_handle.state::<AppState>().audio.clone();
             if let Err(error) = audio.shutdown() {
-                log::warn!("Audio shutdown did not complete cleanly: {error}");
+                log::error!(target: "sparkle::lifecycle", "event=audio_shutdown_failed error={error}");
+            } else {
+                log::info!(target: "sparkle::lifecycle", "event=shutdown_completed");
             }
         }
     });
@@ -550,6 +711,23 @@ pub fn run() {
 mod tests {
     use super::*;
     use std::cell::RefCell;
+
+    #[test]
+    fn logging_filter_keeps_lifecycle_and_scopes_verbose_output() {
+        assert!(should_emit_log(log::Level::Info, "dependency", false));
+        assert!(should_emit_log(log::Level::Error, "sparkle::audio", false));
+        assert!(!should_emit_log(
+            log::Level::Debug,
+            "sparkle::playback",
+            false
+        ));
+        assert!(should_emit_log(
+            log::Level::Trace,
+            "sparkle::analytics::writer",
+            true
+        ));
+        assert!(!should_emit_log(log::Level::Debug, "dependency", true));
+    }
 
     struct FakePlayback {
         is_playing: bool,

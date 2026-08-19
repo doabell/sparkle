@@ -908,7 +908,6 @@ pub async fn download_artist_image_candidate(
     url: String,
     source: String,
 ) -> Result<ImageData, String> {
-    let log_url = url.clone();
     let log_source = source.clone();
     let result = tokio::task::spawn_blocking(move || -> Result<ImageData, String> {
         let client = reqwest::blocking::Client::builder()
@@ -942,13 +941,10 @@ pub async fn download_artist_image_candidate(
     })
     .await
     .map_err(|e| e.to_string())?;
-    if let Err(error) = &result {
+    if result.is_err() {
         log::debug!(
             target: "sparkle::manual_image_search",
-            "event=candidate_preview_failed source={} url={} error={}",
-            log_source,
-            log_url,
-            error
+            "event=candidate_preview_failed source={log_source}"
         );
     }
     result
@@ -1170,6 +1166,7 @@ pub fn set_online_settings(
 ) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let mut full = settings::load_settings(&conn)?;
+    let debug_logging_changed = full.debug_logging_enabled != settings.debug_logging_enabled;
     full.scan_on_startup = settings.scan_on_startup;
     full.lyrics_sources = settings.lyrics_sources;
     full.artist_info_sources = settings.artist_info_sources;
@@ -1199,6 +1196,13 @@ pub fn set_online_settings(
     settings::save_settings(&conn, &full)?;
     drop(conn);
     crate::set_debug_logging_enabled(settings.debug_logging_enabled);
+    if debug_logging_changed {
+        log::info!(
+            target: "sparkle::settings",
+            "event=verbose_logging_changed enabled={}",
+            settings.debug_logging_enabled
+        );
+    }
     state.discord.refresh();
     // Lyrics views re-read provider biases and source lists live.
     use tauri::Emitter;

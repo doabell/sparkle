@@ -134,6 +134,7 @@
                     tracks.map((track) => track.id),
                     0,
                     false,
+                    { kind: "artist", id: String(artist.id) },
                 );
             }
         } catch (e) {

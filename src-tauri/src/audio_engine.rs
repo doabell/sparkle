@@ -1,8 +1,13 @@
-use crate::db_writer::{DbWriter, PlayRecord};
+use crate::analytics::{
+    is_completed, is_meaningful_listen, new_trace_id, now_epoch_ms, ListenEndReason, ListenRecord,
+    ListenStartReason, PlaybackContext, PlaybackEventKind, PlaybackEventRecord, PlaybackSource,
+    LISTENING_SESSION_GAP_MS,
+};
+use crate::db_writer::DbWriter;
 use crate::discord::DiscordPresence;
 use crate::models::{PlaybackState, QueueView, RepeatMode, Track};
 use crate::settings::{load_session, SessionSnapshot};
-use rodio::{Decoder, DeviceSinkBuilder, Player};
+use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink, Player};
 use serde::Serialize;
 use std::fs::File;
 use std::io::BufReader;
@@ -14,6 +19,20 @@ use tauri::{AppHandle, Emitter, Manager};
 const PROGRESS_INTERVAL_MS: u64 = 250;
 const COMMAND_REPLY_TIMEOUT: Duration = Duration::from_secs(3);
 const DEVICE_RETRY_INTERVAL: Duration = Duration::from_secs(1);
+
+type DeviceOpenResult = Result<MixerDeviceSink, String>;
+
+/// Opening a WASAPI sink can block indefinitely while Windows is bringing an
+/// audio endpoint back after sleep. Keep that operation away from the audio
+/// command worker so Play/Pause and shutdown can still be serviced.
+fn spawn_device_open() -> mpsc::Receiver<DeviceOpenResult> {
+    let (result_tx, result_rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let result = DeviceSinkBuilder::open_default_sink().map_err(|error| error.to_string());
+        let _ = result_tx.send(result);
+    });
+    result_rx
+}
 
 /// Returns the stable identifier of the current default output device, used
 /// to detect device switches that the stuck-position heuristic misses (a dead
@@ -142,13 +161,22 @@ impl AudioController {
             order_pos: None,
             current_track: None,
             is_playing: false,
+            play_when_device_ready: false,
+            pending_play_source: PlaybackSource::Unknown,
             position_ms: 0,
             duration_ms: 0,
             volume: 1.0,
             shuffle: false,
             repeat_mode: RepeatMode::Off,
             seek_target: None,
-            play_started_at: None,
+            context: PlaybackContext::default(),
+            active_session_id: None,
+            active_listen_id: None,
+            listen_started_at_ms: None,
+            listen_start_position_ms: 0,
+            listen_start_source: PlaybackSource::Unknown,
+            listen_start_reason: ListenStartReason::Unknown,
+            session_last_active_at_ms: None,
             listened_ms: 0,
             last_counted_position_ms: None,
             discord,
@@ -174,86 +202,111 @@ impl AudioController {
         track_ids: Vec<i64>,
         start_index: usize,
         shuffle: Option<bool>,
+        source: PlaybackSource,
+        context: PlaybackContext,
     ) -> Result<PlaybackState, String> {
         self.tx
-            .send(AudioCommand::LoadQueue(track_ids, start_index, shuffle))
+            .send(AudioCommand::LoadQueue(
+                track_ids,
+                start_index,
+                shuffle,
+                source,
+                context.sanitized(),
+            ))
             .map_err(|e| e.to_string())?;
         self.get_playback_state()
     }
 
-    pub fn play_track(&self, track_id: i64) -> Result<PlaybackState, String> {
+    pub fn play_track(
+        &self,
+        track_id: i64,
+        source: PlaybackSource,
+        context: PlaybackContext,
+    ) -> Result<PlaybackState, String> {
         self.tx
-            .send(AudioCommand::PlayTrack(track_id))
+            .send(AudioCommand::PlayTrack(
+                track_id,
+                source,
+                context.sanitized(),
+            ))
             .map_err(|e| e.to_string())?;
         self.get_playback_state()
     }
 
-    pub fn play(&self) -> Result<PlaybackState, String> {
+    pub fn play(&self, source: PlaybackSource) -> Result<PlaybackState, String> {
         self.tx
-            .send(AudioCommand::Play)
+            .send(AudioCommand::Play(source))
             .map_err(|e| e.to_string())?;
         self.get_playback_state()
     }
 
-    pub fn pause(&self) -> Result<PlaybackState, String> {
+    pub fn pause(&self, source: PlaybackSource) -> Result<PlaybackState, String> {
         self.tx
-            .send(AudioCommand::Pause)
+            .send(AudioCommand::Pause(source))
             .map_err(|e| e.to_string())?;
         self.get_playback_state()
     }
 
-    pub fn stop(&self) -> Result<PlaybackState, String> {
+    pub fn stop(&self, source: PlaybackSource) -> Result<PlaybackState, String> {
         self.tx
-            .send(AudioCommand::Stop)
+            .send(AudioCommand::Stop(source))
             .map_err(|e| e.to_string())?;
         self.get_playback_state()
     }
 
-    pub fn seek(&self, position_ms: i64) -> Result<PlaybackState, String> {
+    pub fn seek(&self, position_ms: i64, source: PlaybackSource) -> Result<PlaybackState, String> {
         self.tx
-            .send(AudioCommand::Seek(position_ms))
+            .send(AudioCommand::Seek(position_ms, source))
             .map_err(|e| e.to_string())?;
         self.get_playback_state()
     }
 
-    pub fn next_track(&self) -> Result<PlaybackState, String> {
+    pub fn next_track(&self, source: PlaybackSource) -> Result<PlaybackState, String> {
         self.tx
-            .send(AudioCommand::Next)
+            .send(AudioCommand::Next(source))
             .map_err(|e| e.to_string())?;
         self.get_playback_state()
     }
 
-    pub fn previous_track(&self) -> Result<PlaybackState, String> {
+    pub fn previous_track(&self, source: PlaybackSource) -> Result<PlaybackState, String> {
         self.tx
-            .send(AudioCommand::Previous)
+            .send(AudioCommand::Previous(source))
             .map_err(|e| e.to_string())?;
         self.get_playback_state()
     }
 
-    pub fn set_volume(&self, volume: f64) -> Result<PlaybackState, String> {
+    pub fn set_volume(&self, volume: f64, source: PlaybackSource) -> Result<PlaybackState, String> {
         self.tx
-            .send(AudioCommand::SetVolume(volume))
+            .send(AudioCommand::SetVolume(volume, source))
             .map_err(|e| e.to_string())?;
         self.get_playback_state()
     }
 
-    pub fn set_shuffle(&self, shuffle: bool) -> Result<PlaybackState, String> {
+    pub fn set_shuffle(
+        &self,
+        shuffle: bool,
+        source: PlaybackSource,
+    ) -> Result<PlaybackState, String> {
         self.tx
-            .send(AudioCommand::SetShuffle(shuffle))
+            .send(AudioCommand::SetShuffle(shuffle, source))
             .map_err(|e| e.to_string())?;
         self.get_playback_state()
     }
 
-    pub fn cycle_repeat_mode(&self) -> Result<PlaybackState, String> {
+    pub fn cycle_repeat_mode(&self, source: PlaybackSource) -> Result<PlaybackState, String> {
         self.tx
-            .send(AudioCommand::CycleRepeatMode)
+            .send(AudioCommand::CycleRepeatMode(source))
             .map_err(|e| e.to_string())?;
         self.get_playback_state()
     }
 
-    pub fn play_next(&self, track_id: i64) -> Result<PlaybackState, String> {
+    pub fn play_next(
+        &self,
+        track_id: i64,
+        source: PlaybackSource,
+    ) -> Result<PlaybackState, String> {
         self.tx
-            .send(AudioCommand::PlayNext(track_id))
+            .send(AudioCommand::PlayNext(track_id, source))
             .map_err(|e| e.to_string())?;
         self.get_playback_state()
     }
@@ -266,9 +319,13 @@ impl AudioController {
         receive_audio_reply(reply_rx, COMMAND_REPLY_TIMEOUT, "queue")
     }
 
-    pub fn play_queue_index(&self, order_pos: usize) -> Result<PlaybackState, String> {
+    pub fn play_queue_index(
+        &self,
+        order_pos: usize,
+        source: PlaybackSource,
+    ) -> Result<PlaybackState, String> {
         self.tx
-            .send(AudioCommand::PlayAt(order_pos))
+            .send(AudioCommand::PlayAt(order_pos, source))
             .map_err(|e| e.to_string())?;
         self.get_playback_state()
     }
@@ -301,10 +358,26 @@ impl AudioController {
         // Database operations have their own bounded busy retries. Wait for
         // the explicit durability barrier here so application exit cannot
         // overtake the final session/history writes.
-        let shutdown_result = reply_rx
-            .recv()
-            .map_err(|_| "audio engine stopped before confirming shutdown".to_string())
-            .and_then(|result| result);
+        let shutdown_result = match reply_rx.recv_timeout(COMMAND_REPLY_TIMEOUT) {
+            Ok(result) => result,
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                // Do not join a worker that is stuck in an OS audio call. The
+                // handle is intentionally detached so application exit can
+                // continue and release the native media session.
+                worker_guard.take();
+                drop(worker_guard);
+                return Err(format!(
+                    "audio engine timed out waiting for shutdown after {} seconds",
+                    COMMAND_REPLY_TIMEOUT.as_secs()
+                ));
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                let worker = worker_guard.take();
+                drop(worker_guard);
+                join_audio_worker(worker)?;
+                return Err("audio engine stopped before confirming shutdown".to_string());
+            }
+        };
 
         let worker = worker_guard.take();
         drop(worker_guard);
@@ -340,20 +413,26 @@ fn join_audio_worker(worker: Option<std::thread::JoinHandle<()>>) -> Result<(), 
 }
 
 enum AudioCommand {
-    LoadQueue(Vec<i64>, usize, Option<bool>),
-    PlayTrack(i64),
-    Play,
-    Pause,
-    Stop,
-    Seek(i64),
-    Next,
-    Previous,
-    SetVolume(f64),
-    SetShuffle(bool),
-    CycleRepeatMode,
-    PlayNext(i64),
+    LoadQueue(
+        Vec<i64>,
+        usize,
+        Option<bool>,
+        PlaybackSource,
+        PlaybackContext,
+    ),
+    PlayTrack(i64, PlaybackSource, PlaybackContext),
+    Play(PlaybackSource),
+    Pause(PlaybackSource),
+    Stop(PlaybackSource),
+    Seek(i64, PlaybackSource),
+    Next(PlaybackSource),
+    Previous(PlaybackSource),
+    SetVolume(f64, PlaybackSource),
+    SetShuffle(bool, PlaybackSource),
+    CycleRepeatMode(PlaybackSource),
+    PlayNext(i64, PlaybackSource),
     GetQueue(mpsc::Sender<QueueView>),
-    PlayAt(usize),
+    PlayAt(usize, PlaybackSource),
     GetState(mpsc::Sender<PlaybackState>),
     Shutdown(mpsc::Sender<Result<(), String>>),
 }
@@ -365,14 +444,23 @@ struct SharedState {
     order_pos: Option<usize>,
     current_track: Option<Track>,
     is_playing: bool,
+    /// User intent retained while the OS output endpoint is unavailable.
+    play_when_device_ready: bool,
+    pending_play_source: PlaybackSource,
     position_ms: i64,
     duration_ms: i64,
     volume: f64,
     shuffle: bool,
     repeat_mode: RepeatMode,
     seek_target: Option<(i64, Instant)>,
-    /// When the current play started (epoch seconds), for play_history.
-    play_started_at: Option<i64>,
+    context: PlaybackContext,
+    active_session_id: Option<String>,
+    active_listen_id: Option<String>,
+    listen_started_at_ms: Option<i64>,
+    listen_start_position_ms: i64,
+    listen_start_source: PlaybackSource,
+    listen_start_reason: ListenStartReason,
+    session_last_active_at_ms: Option<i64>,
     /// Actual forward-moving audio time. This is intentionally independent
     /// from position so seeking cannot manufacture listening minutes.
     listened_ms: i64,
@@ -408,55 +496,263 @@ fn save_session_to_db(state: &Arc<Mutex<SharedState>>, writer: &DbWriter) {
         shuffle: s.shuffle,
         repeat_mode: s.repeat_mode,
         play_order: s.play_order.clone(),
+        context: s.context.clone(),
     };
     drop(s);
     // Non-blocking: the writer thread persists the newest snapshot.
     writer.save_session(snapshot);
+    checkpoint_active_listen(state, writer);
 }
 
-const MIN_MEANINGFUL_LISTEN_MS: i64 = 30_000;
-const MIN_SHORT_TRACK_LISTEN_MS: i64 = 5_000;
-
-fn is_meaningful_listen(listened_ms: i64, duration_ms: i64) -> bool {
-    listened_ms >= MIN_MEANINGFUL_LISTEN_MS
-        || (duration_ms > 0
-            && listened_ms >= MIN_SHORT_TRACK_LISTEN_MS
-            && listened_ms.saturating_mul(2) >= duration_ms)
+fn listen_record_locked(
+    state: &SharedState,
+    finalized: bool,
+    ended_at_ms: Option<i64>,
+    end_reason: Option<ListenEndReason>,
+) -> Option<ListenRecord> {
+    let track = state.current_track.as_ref()?;
+    Some(ListenRecord {
+        id: state.active_listen_id.clone()?,
+        session_id: state.active_session_id.clone()?,
+        track_id: track.id,
+        started_at_ms: state.listen_started_at_ms?,
+        ended_at_ms,
+        last_activity_at_ms: state.session_last_active_at_ms.unwrap_or_else(now_epoch_ms),
+        start_position_ms: state.listen_start_position_ms.max(0),
+        end_position_ms: state.position_ms.max(0),
+        duration_ms: state.duration_ms.max(0),
+        listened_ms: state.listened_ms.max(0),
+        meaningful: is_meaningful_listen(state.listened_ms, state.duration_ms),
+        completed: finalized && is_completed(state.position_ms, state.duration_ms),
+        finalized,
+        start_source: state.listen_start_source,
+        start_reason: state.listen_start_reason,
+        end_reason,
+        context: state.context.clone(),
+        queue_index: state.queue_index,
+        play_order_index: state.order_pos,
+        queue_length: state.play_order.len(),
+        shuffle: state.shuffle,
+        repeat_mode: state.repeat_mode,
+    })
 }
 
-/// Records one compact row for a meaningful outgoing listen. Tiny previews,
-/// accidental starts, and seek jumps are discarded before they reach SQLite.
-fn record_outgoing_play(state: &Arc<Mutex<SharedState>>, writer: &DbWriter) {
-    let record = {
-        let mut s = lock_state(state);
-        let started_at = s.play_started_at.take();
-        match (s.current_track.as_ref(), started_at) {
-            (Some(track), Some(started_at))
-                if is_meaningful_listen(s.listened_ms, s.duration_ms) =>
-            {
-                let played_ms = s.listened_ms.max(0);
-                let completed = s.duration_ms > 0
-                    && s.position_ms.saturating_mul(10) >= s.duration_ms.saturating_mul(9);
-                Some(PlayRecord {
-                    track_id: track.id,
-                    started_at,
-                    played_ms,
-                    completed,
-                })
-            }
-            _ => None,
-        }
-    };
-    if let Some(record) = record {
-        writer.record_play(record);
+fn event_record_locked(
+    state: &SharedState,
+    kind: PlaybackEventKind,
+    source: PlaybackSource,
+    reason: Option<&str>,
+    target_position_ms: Option<i64>,
+) -> PlaybackEventRecord {
+    PlaybackEventRecord {
+        id: new_trace_id("event"),
+        listen_id: state.active_listen_id.clone(),
+        session_id: state.active_session_id.clone(),
+        occurred_at_ms: now_epoch_ms(),
+        kind,
+        source,
+        reason: reason.map(str::to_string),
+        track_id: state.current_track.as_ref().map(|track| track.id),
+        position_ms: state
+            .current_track
+            .as_ref()
+            .map(|_| state.position_ms.max(0)),
+        target_position_ms,
+        context: state.context.clone(),
+        queue_index: state.queue_index,
+        play_order_index: state.order_pos,
+        queue_length: state.play_order.len(),
+        shuffle: state.shuffle,
+        repeat_mode: state.repeat_mode,
     }
 }
 
-fn now_epoch_seconds() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64
+fn record_event(
+    state: &Arc<Mutex<SharedState>>,
+    writer: &DbWriter,
+    kind: PlaybackEventKind,
+    source: PlaybackSource,
+    reason: Option<&str>,
+    target_position_ms: Option<i64>,
+) {
+    let event = event_record_locked(&lock_state(state), kind, source, reason, target_position_ms);
+    writer.record_event(event);
+}
+
+fn checkpoint_active_listen(state: &Arc<Mutex<SharedState>>, writer: &DbWriter) {
+    let record = listen_record_locked(&lock_state(state), false, None, None);
+    if let Some(record) = record {
+        writer.upsert_listen(record);
+    }
+}
+
+fn begin_active_listen(
+    state: &Arc<Mutex<SharedState>>,
+    writer: &DbWriter,
+    source: PlaybackSource,
+    reason: ListenStartReason,
+) {
+    let (record, event, new_session) = {
+        let mut s = lock_state(state);
+        if s.current_track.is_none() || s.active_listen_id.is_some() {
+            return;
+        }
+        let now = now_epoch_ms();
+        let needs_session = s.active_session_id.is_none()
+            || s.session_last_active_at_ms
+                .is_some_and(|last| now.saturating_sub(last) > LISTENING_SESSION_GAP_MS);
+        if needs_session {
+            s.active_session_id = Some(new_trace_id("session"));
+        }
+        s.active_listen_id = Some(new_trace_id("listen"));
+        s.listen_started_at_ms = Some(now);
+        s.listen_start_position_ms = s.position_ms.max(0);
+        s.listen_start_source = source;
+        s.listen_start_reason = reason;
+        s.session_last_active_at_ms = Some(now);
+        s.listened_ms = 0;
+        s.last_counted_position_ms = None;
+        let record = listen_record_locked(&s, false, None, None)
+            .expect("a listen is complete immediately after it starts");
+        let event = event_record_locked(
+            &s,
+            PlaybackEventKind::TrackStarted,
+            source,
+            Some(reason.as_str()),
+            None,
+        );
+        (record, event, needs_session)
+    };
+    writer.upsert_listen(record.clone());
+    writer.record_event(event);
+    log::info!(
+        target: "sparkle::playback",
+        "event=listen_started listen_id={} session_id={} track_id={} source={} reason={} context={} queue_index={} play_order_index={} queue_length={} new_session={}",
+        record.id,
+        record.session_id,
+        record.track_id,
+        source.as_str(),
+        reason.as_str(),
+        record.context.kind,
+        record.queue_index.map(|index| index.to_string()).unwrap_or_else(|| "none".to_string()),
+        record.play_order_index.map(|index| index.to_string()).unwrap_or_else(|| "none".to_string()),
+        record.queue_length,
+        new_session
+    );
+}
+
+fn finalize_active_listen(
+    state: &Arc<Mutex<SharedState>>,
+    writer: &DbWriter,
+    reason: ListenEndReason,
+    source: PlaybackSource,
+) -> bool {
+    let result = {
+        let mut s = lock_state(state);
+        let ended_at_ms = now_epoch_ms();
+        let Some(record) = listen_record_locked(&s, true, Some(ended_at_ms), Some(reason)) else {
+            return false;
+        };
+        let event = event_record_locked(
+            &s,
+            PlaybackEventKind::ListenEnded,
+            source,
+            Some(reason.as_str()),
+            None,
+        );
+        s.active_listen_id = None;
+        s.listen_started_at_ms = None;
+        s.listen_start_position_ms = 0;
+        s.listen_start_source = PlaybackSource::Unknown;
+        s.listen_start_reason = ListenStartReason::Unknown;
+        s.listened_ms = 0;
+        s.last_counted_position_ms = None;
+        Some((record, event))
+    };
+    let Some((record, event)) = result else {
+        return false;
+    };
+    writer.upsert_listen(record.clone());
+    writer.record_event(event);
+    log::info!(
+        target: "sparkle::playback",
+        "event=listen_ended listen_id={} session_id={} track_id={} source={} reason={} listened_ms={} position_ms={} duration_ms={} meaningful={} completed={}",
+        record.id,
+        record.session_id,
+        record.track_id,
+        source.as_str(),
+        reason.as_str(),
+        record.listened_ms,
+        record.end_position_ms,
+        record.duration_ms,
+        record.meaningful,
+        record.completed
+    );
+    true
+}
+
+fn end_active_session(state: &Arc<Mutex<SharedState>>) {
+    let mut s = lock_state(state);
+    s.active_session_id = None;
+    s.session_last_active_at_ms = None;
+}
+
+fn resume_or_begin_listen(
+    state: &Arc<Mutex<SharedState>>,
+    writer: &DbWriter,
+    source: PlaybackSource,
+) {
+    let (has_active, timed_out, pending_source) = {
+        let s = lock_state(state);
+        (
+            s.active_listen_id.is_some(),
+            s.active_listen_id.is_some()
+                && s.session_last_active_at_ms.is_some_and(|last| {
+                    now_epoch_ms().saturating_sub(last) > LISTENING_SESSION_GAP_MS
+                }),
+            s.pending_play_source,
+        )
+    };
+    if timed_out {
+        finalize_active_listen(state, writer, ListenEndReason::SessionTimeout, source);
+        end_active_session(state);
+        begin_active_listen(
+            state,
+            writer,
+            source,
+            ListenStartReason::ResumeAfterInactivity,
+        );
+    } else if has_active {
+        record_event(
+            state,
+            writer,
+            PlaybackEventKind::PlaybackResumed,
+            source,
+            Some("user_resume"),
+            None,
+        );
+        let (listen_id, track_id) = {
+            let s = lock_state(state);
+            (
+                s.active_listen_id.clone(),
+                s.current_track.as_ref().map(|track| track.id),
+            )
+        };
+        log::info!(
+            target: "sparkle::playback",
+            "event=playback_resumed listen_id={} track_id={} source={}",
+            listen_id.as_deref().unwrap_or("none"),
+            track_id.map(|id| id.to_string()).unwrap_or_else(|| "none".to_string()),
+            source.as_str()
+        );
+    } else {
+        let reason = if pending_source == PlaybackSource::Restore {
+            ListenStartReason::RestoredResume
+        } else {
+            ListenStartReason::Replay
+        };
+        begin_active_listen(state, writer, source, reason);
+    }
 }
 
 fn restore_session(
@@ -473,7 +769,10 @@ fn restore_session(
     let snapshot = match snapshot_result {
         Ok(s) => s,
         Err(e) => {
-            log::warn!("Failed to load session: {e}");
+            log::warn!(
+                target: "sparkle::playback",
+                "event=session_restore_failed error={e}"
+            );
             return;
         }
     };
@@ -490,8 +789,17 @@ fn restore_session(
         s.position_ms = snapshot.position_ms.max(0);
         s.listened_ms = 0;
         s.last_counted_position_ms = None;
-        s.play_started_at = None;
         s.is_playing = false;
+        s.play_when_device_ready = false;
+        s.pending_play_source = PlaybackSource::Restore;
+        s.context = snapshot.context.clone().sanitized();
+        s.active_session_id = None;
+        s.active_listen_id = None;
+        s.listen_started_at_ms = None;
+        s.listen_start_position_ms = 0;
+        s.listen_start_source = PlaybackSource::Unknown;
+        s.listen_start_reason = ListenStartReason::Unknown;
+        s.session_last_active_at_ms = None;
         s.shuffle = snapshot.shuffle;
         s.repeat_mode = snapshot.repeat_mode;
         s.seek_target = None;
@@ -514,8 +822,24 @@ fn restore_session(
     if let Some(player) = player {
         player.pause();
     }
-    if !load_track_at_index_with_autoplay(player, state, db, writer, app_handle, index, false) {
-        update_state_for_stop(state, writer);
+    if !load_track_at_index_with_autoplay(
+        player,
+        state,
+        db,
+        writer,
+        app_handle,
+        index,
+        false,
+        PlaybackSource::Restore,
+        ListenStartReason::RestoredResume,
+        ListenEndReason::QueueReplaced,
+    ) {
+        update_state_for_stop(
+            state,
+            writer,
+            ListenEndReason::PlaybackError,
+            PlaybackSource::Restore,
+        );
         emit_state_changed(app_handle, state);
         return;
     }
@@ -550,20 +874,28 @@ fn load_source_into_player(player: &Player, track: &Track) -> bool {
     let file = match File::open(&track.file_path) {
         Ok(f) => f,
         Err(e) => {
-            log::error!("Failed to open {}: {}", track.file_path, e);
+            log::error!(
+                target: "sparkle::audio",
+                "event=source_open_failed track_id={} error={e}",
+                track.id
+            );
             return false;
         }
     };
-    let source = match Decoder::new(BufReader::new(file)) {
+    let decoded_source = match Decoder::new(BufReader::new(file)) {
         Ok(s) => s,
         Err(e) => {
-            log::error!("Failed to decode {}: {}", track.file_path, e);
+            log::error!(
+                target: "sparkle::audio",
+                "event=source_decode_failed track_id={} error={e}",
+                track.id
+            );
             return false;
         }
     };
     player.stop();
     player.clear();
-    player.append(source);
+    player.append(decoded_source);
     true
 }
 
@@ -573,13 +905,27 @@ fn reload_current_for_device(
     writer: &DbWriter,
     app_handle: &AppHandle,
 ) {
-    let (track, was_playing, position_ms, volume) = {
+    let (
+        track,
+        was_playing,
+        position_ms,
+        volume,
+        pending_source,
+        had_active_listen,
+        session_timed_out,
+    ) = {
         let s = lock_state(state);
         (
             s.current_track.clone(),
-            s.is_playing,
+            s.is_playing || s.play_when_device_ready,
             s.position_ms,
             s.volume,
+            s.pending_play_source,
+            s.active_listen_id.is_some(),
+            s.active_listen_id.is_some()
+                && s.session_last_active_at_ms.is_some_and(|last| {
+                    now_epoch_ms().saturating_sub(last) > LISTENING_SESSION_GAP_MS
+                }),
         )
     };
     let track = match track {
@@ -591,7 +937,12 @@ fn reload_current_for_device(
         player.pause();
     }
     if !load_source_into_player(player, &track) {
-        update_state_for_stop(state, writer);
+        update_state_for_stop(
+            state,
+            writer,
+            ListenEndReason::PlaybackError,
+            PlaybackSource::Internal,
+        );
         emit_state_changed(app_handle, state);
         return;
     }
@@ -611,11 +962,49 @@ fn reload_current_for_device(
     {
         let mut s = lock_state(state);
         s.seek_target = Some((position_ms, Instant::now()));
+        s.play_when_device_ready = false;
+        s.is_playing = was_playing;
     }
 
-    if !was_playing {
-        let mut s = lock_state(state);
-        s.is_playing = false;
+    if was_playing {
+        record_event(
+            state,
+            writer,
+            PlaybackEventKind::OutputRestored,
+            PlaybackSource::Internal,
+            Some("device_available"),
+            None,
+        );
+        if had_active_listen && session_timed_out {
+            finalize_active_listen(
+                state,
+                writer,
+                ListenEndReason::SessionTimeout,
+                PlaybackSource::Internal,
+            );
+            end_active_session(state);
+            begin_active_listen(
+                state,
+                writer,
+                PlaybackSource::Internal,
+                ListenStartReason::OutputRestored,
+            );
+        } else if !had_active_listen {
+            begin_active_listen(
+                state,
+                writer,
+                pending_source,
+                ListenStartReason::OutputRestored,
+            );
+        } else {
+            let mut s = lock_state(state);
+            s.session_last_active_at_ms = Some(now_epoch_ms());
+        }
+        log::info!(
+            target: "sparkle::audio",
+            "event=output_restored track_id={} resumed=true session_rotated={session_timed_out}",
+            track.id
+        );
     }
 
     emit_state_changed(app_handle, state);
@@ -632,35 +1021,26 @@ fn audio_thread(
     // output endpoint being present (common during RDP and device switching).
     restore_session(None, &state, &db, &writer, &app_handle);
     let mut device_error_logged = false;
+    let mut pending_device_open = None;
 
     'pipeline: loop {
-        let handle = match DeviceSinkBuilder::open_default_sink() {
-            Ok(handle) => {
-                if device_error_logged {
-                    log::info!("Audio output device is available again");
-                    device_error_logged = false;
-                }
-                handle
+        let handle = match wait_for_device(
+            &rx,
+            &state,
+            &db,
+            &writer,
+            &app_handle,
+            &mut pending_device_open,
+            &mut device_error_logged,
+        ) {
+            DeviceWaitFlow::Ready(handle) => handle,
+            DeviceWaitFlow::Shutdown(reply) => {
+                finish_audio_thread(None, &state, writer, Some(reply));
+                return;
             }
-            Err(e) => {
-                mark_output_unavailable(&state, &writer, &app_handle);
-                if device_error_logged {
-                    log::debug!("audio device still unavailable: {e}");
-                } else {
-                    log::error!("audio device unavailable: {e}");
-                    device_error_logged = true;
-                }
-                match process_commands_until_device_retry(&rx, &state, &db, &writer, &app_handle) {
-                    DeviceWaitFlow::Retry => continue,
-                    DeviceWaitFlow::Shutdown(reply) => {
-                        finish_audio_thread(None, &state, writer, Some(reply));
-                        return;
-                    }
-                    DeviceWaitFlow::Disconnected => {
-                        finish_audio_thread(None, &state, writer, None);
-                        return;
-                    }
-                }
+            DeviceWaitFlow::Disconnected => {
+                finish_audio_thread(None, &state, writer, None);
+                return;
             }
         };
         let player = Player::connect_new(handle.mixer());
@@ -705,9 +1085,8 @@ fn audio_thread(
                 last_device_check = Instant::now();
                 let new_name = default_output_device_id();
                 if new_name != device_name {
-                    log::info!(
-                        "Default audio device changed ({device_name:?} -> {new_name:?}), recreating pipeline"
-                    );
+                    log::info!(target: "sparkle::audio", "event=output_device_changed");
+                    mark_output_unavailable(&state, &writer, &app_handle);
                     drop(player);
                     drop(handle);
                     continue 'pipeline;
@@ -746,6 +1125,7 @@ fn audio_thread(
                         // the listener actually heard.
                         if delta > 0 && delta <= 2_000 {
                             s.listened_ms = s.listened_ms.saturating_add(delta);
+                            s.session_last_active_at_ms = Some(now_epoch_ms());
                         }
                     }
                     s.last_counted_position_ms = Some(pos_ms);
@@ -760,7 +1140,11 @@ fn audio_thread(
                     if stuck_since.is_none() {
                         stuck_since = Some(Instant::now());
                     } else if stuck_since.unwrap().elapsed() >= stuck_timeout {
-                        log::warn!("Audio device lost, recreating pipeline");
+                        log::warn!(
+                            target: "sparkle::audio",
+                            "event=output_device_lost recovery=recreate_pipeline"
+                        );
+                        mark_output_unavailable(&state, &writer, &app_handle);
                         drop(player);
                         drop(handle);
                         continue 'pipeline;
@@ -804,7 +1188,15 @@ fn audio_thread(
                     s.is_playing && s.current_track.is_some()
                 };
                 if should_advance {
-                    advance(Some(&player), &state, &db, &writer, &app_handle, true);
+                    advance(
+                        Some(&player),
+                        &state,
+                        &db,
+                        &writer,
+                        &app_handle,
+                        true,
+                        PlaybackSource::Automatic,
+                    );
                 }
             }
 
@@ -817,30 +1209,68 @@ fn audio_thread(
 }
 
 enum DeviceWaitFlow {
-    Retry,
+    Ready(MixerDeviceSink),
     Shutdown(mpsc::Sender<Result<(), String>>),
     Disconnected,
 }
 
-fn process_commands_until_device_retry(
+fn wait_for_device(
     rx: &mpsc::Receiver<AudioCommand>,
     state: &Arc<Mutex<SharedState>>,
     db: &Arc<Mutex<rusqlite::Connection>>,
     writer: &DbWriter,
     app_handle: &AppHandle,
+    pending_device_open: &mut Option<mpsc::Receiver<DeviceOpenResult>>,
+    device_error_logged: &mut bool,
 ) -> DeviceWaitFlow {
-    let retry_at = Instant::now() + DEVICE_RETRY_INTERVAL;
+    let mut retry_at = Instant::now();
     loop {
-        let remaining = retry_at.saturating_duration_since(Instant::now());
-        if remaining.is_zero() {
-            return DeviceWaitFlow::Retry;
+        if pending_device_open.is_none() && Instant::now() >= retry_at {
+            *pending_device_open = Some(spawn_device_open());
         }
-        match rx.recv_timeout(remaining) {
+
+        let open_result = match pending_device_open.as_ref() {
+            Some(result_rx) => match result_rx.try_recv() {
+                Ok(result) => Some(result),
+                Err(mpsc::TryRecvError::Disconnected) => Some(Err(
+                    "device opener stopped before returning a result".to_string(),
+                )),
+                Err(mpsc::TryRecvError::Empty) => None,
+            },
+            None => None,
+        };
+
+        if let Some(result) = open_result {
+            pending_device_open.take();
+            match result {
+                Ok(handle) => {
+                    if *device_error_logged {
+                        log::info!(target: "sparkle::audio", "event=output_device_available");
+                        *device_error_logged = false;
+                    }
+                    return DeviceWaitFlow::Ready(handle);
+                }
+                Err(error) => {
+                    mark_output_unavailable(state, writer, app_handle);
+                    if *device_error_logged {
+                        log::debug!(target: "sparkle::audio", "event=output_device_retry_failed error={error}");
+                    } else {
+                        log::warn!(target: "sparkle::audio", "event=output_device_unavailable recovery=retry error={error}");
+                        *device_error_logged = true;
+                    }
+                    retry_at = Instant::now() + DEVICE_RETRY_INTERVAL;
+                }
+            }
+        }
+
+        // Poll commands while the opener is in an OS call. In particular,
+        // Shutdown must not wait for WASAPI to return before it can finish.
+        match rx.recv_timeout(Duration::from_millis(50)) {
             Ok(cmd) => match handle_command(cmd, None, state, db, writer, app_handle) {
                 CommandFlow::Continue => {}
                 CommandFlow::Shutdown(reply) => return DeviceWaitFlow::Shutdown(reply),
             },
-            Err(mpsc::RecvTimeoutError::Timeout) => return DeviceWaitFlow::Retry,
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => {
                 return DeviceWaitFlow::Disconnected;
             }
@@ -853,14 +1283,35 @@ fn mark_output_unavailable(
     writer: &DbWriter,
     app_handle: &AppHandle,
 ) {
-    let changed = {
+    let (newly_unavailable, should_resume, track_id) = {
         let mut s = lock_state(state);
-        let changed = s.is_playing;
+        let newly_unavailable = s.is_playing;
+        let should_resume = s.is_playing || s.play_when_device_ready;
         s.is_playing = false;
+        s.play_when_device_ready = should_resume;
         s.last_counted_position_ms = None;
-        changed
+        (
+            newly_unavailable,
+            should_resume,
+            s.current_track.as_ref().map(|track| track.id),
+        )
     };
-    if changed {
+    if newly_unavailable {
+        record_event(
+            state,
+            writer,
+            PlaybackEventKind::OutputUnavailable,
+            PlaybackSource::Internal,
+            Some("device_unavailable"),
+            None,
+        );
+        log::warn!(
+            target: "sparkle::audio",
+            "event=output_lost track_id={} resume_pending={should_resume}",
+            track_id.map(|id| id.to_string()).unwrap_or_else(|| "none".to_string())
+        );
+    }
+    if newly_unavailable || should_resume {
         emit_state_changed(app_handle, state);
         save_session_to_db(state, writer);
     }
@@ -878,15 +1329,25 @@ fn finish_audio_thread(
     {
         let mut s = lock_state(state);
         s.is_playing = false;
+        s.play_when_device_ready = false;
         s.last_counted_position_ms = None;
     }
+    finalize_active_listen(
+        state,
+        &writer,
+        ListenEndReason::AppShutdown,
+        PlaybackSource::Internal,
+    );
+    end_active_session(state);
     save_session_to_db(state, &writer);
-    record_outgoing_play(state, &writer);
     let result = writer.shutdown();
     if let Some(reply) = reply {
         let _ = reply.send(result);
     } else if let Err(error) = result {
-        log::warn!("Audio shutdown could not flush database writes: {error}");
+        log::error!(
+            target: "sparkle::analytics::writer",
+            "event=shutdown_flush_failed error={error}"
+        );
     }
 }
 
@@ -904,8 +1365,8 @@ fn handle_command(
     app_handle: &AppHandle,
 ) -> CommandFlow {
     match cmd {
-        AudioCommand::LoadQueue(track_ids, start_index, shuffle_override) => {
-            record_outgoing_play(state, writer);
+        AudioCommand::LoadQueue(track_ids, start_index, shuffle_override, source, context) => {
+            finalize_active_listen(state, writer, ListenEndReason::QueueReplaced, source);
             let (track_ids, start_index) = dedup_queue(track_ids, start_index);
             let shuffle = shuffle_override.unwrap_or_else(|| lock_state(state).shuffle);
             let (play_order, order_pos) = build_play_order(track_ids.len(), start_index, shuffle);
@@ -924,15 +1385,45 @@ fn handle_command(
                 s.play_order = play_order;
                 s.order_pos = if idx.is_some() { Some(order_pos) } else { None };
                 s.is_playing = false;
+                s.play_when_device_ready = false;
+                s.pending_play_source = source;
+                s.context = context;
                 s.current_track = None;
                 s.position_ms = 0;
                 s.duration_ms = 0;
                 s.listened_ms = 0;
                 s.last_counted_position_ms = None;
             }
+            record_event(
+                state,
+                writer,
+                PlaybackEventKind::QueueLoaded,
+                source,
+                Some("queue_replaced"),
+                None,
+            );
+            log::debug!(
+                target: "sparkle::playback",
+                "event=queue_loaded source={} context={} queue_length={} start_index={} shuffle={}",
+                source.as_str(),
+                lock_state(state).context.kind,
+                lock_state(state).queue.len(),
+                start_index,
+                shuffle
+            );
             if let Some(i) = idx {
-                if !load_track_at_index(player, state, db, writer, app_handle, i) {
-                    update_state_for_stop(state, writer);
+                if !load_track_at_index(
+                    player,
+                    state,
+                    db,
+                    writer,
+                    app_handle,
+                    i,
+                    source,
+                    ListenStartReason::QueueStarted,
+                    ListenEndReason::QueueReplaced,
+                ) {
+                    update_state_for_stop(state, writer, ListenEndReason::PlaybackError, source);
                     emit_state_changed(app_handle, state);
                 }
             } else {
@@ -940,43 +1431,76 @@ fn handle_command(
                     player.stop();
                     player.clear();
                 }
-                update_state_for_stop(state, writer);
+                update_state_for_stop(state, writer, ListenEndReason::QueueReplaced, source);
                 emit_state_changed(app_handle, state);
             }
             emit_queue_changed(app_handle);
             save_session_to_db(state, writer);
         }
-        AudioCommand::PlayTrack(track_id) => {
+        AudioCommand::PlayTrack(track_id, source, context) => {
+            finalize_active_listen(state, writer, ListenEndReason::TrackSelected, source);
             {
                 let mut s = lock_state(state);
                 s.queue = vec![track_id];
                 s.queue_index = Some(0);
                 s.play_order = vec![0];
                 s.order_pos = Some(0);
+                s.context = context;
+                s.pending_play_source = source;
             }
-            if !load_track_at_index(player, state, db, writer, app_handle, 0) {
-                update_state_for_stop(state, writer);
+            record_event(
+                state,
+                writer,
+                PlaybackEventKind::QueueLoaded,
+                source,
+                Some("single_track"),
+                None,
+            );
+            if !load_track_at_index(
+                player,
+                state,
+                db,
+                writer,
+                app_handle,
+                0,
+                source,
+                ListenStartReason::TrackSelected,
+                ListenEndReason::TrackSelected,
+            ) {
+                update_state_for_stop(state, writer, ListenEndReason::PlaybackError, source);
                 emit_state_changed(app_handle, state);
             }
             emit_queue_changed(app_handle);
             save_session_to_db(state, writer);
         }
-        AudioCommand::Play => {
-            let has_track = lock_state(state).current_track.is_some();
+        AudioCommand::Play(source) => {
+            let (has_track, was_playing) = {
+                let s = lock_state(state);
+                (
+                    s.current_track.is_some(),
+                    s.is_playing || s.play_when_device_ready,
+                )
+            };
+            log::debug!(target: "sparkle::playback", "event=command_received command=play source={} was_playing={was_playing}", source.as_str());
             if has_track {
                 if let Some(player) = player {
                     player.play();
-                    let mut s = lock_state(state);
-                    s.is_playing = true;
-                    // Resuming a restored track has no start marker yet.
-                    if s.play_started_at.is_none() {
-                        s.play_started_at = Some(now_epoch_seconds());
+                    {
+                        let mut s = lock_state(state);
+                        s.is_playing = true;
+                        s.play_when_device_ready = false;
+                        s.pending_play_source = source;
+                    }
+                    if !was_playing {
+                        resume_or_begin_listen(state, writer, source);
                     }
                 } else {
                     // Commands still resolve when no output exists, but the
                     // logical state must never claim inaudible playback.
                     let mut s = lock_state(state);
                     s.is_playing = false;
+                    s.play_when_device_ready = true;
+                    s.pending_play_source = source;
                     s.last_counted_position_ms = None;
                 }
                 emit_state_changed(app_handle, state);
@@ -984,36 +1508,109 @@ fn handle_command(
             } else {
                 let idx = lock_state(state).queue_index;
                 if let Some(i) = idx {
-                    if !load_track_at_index(player, state, db, writer, app_handle, i) {
-                        update_state_for_stop(state, writer);
+                    if !load_track_at_index(
+                        player,
+                        state,
+                        db,
+                        writer,
+                        app_handle,
+                        i,
+                        source,
+                        ListenStartReason::RestoredResume,
+                        ListenEndReason::QueueReplaced,
+                    ) {
+                        update_state_for_stop(
+                            state,
+                            writer,
+                            ListenEndReason::PlaybackError,
+                            source,
+                        );
                         emit_state_changed(app_handle, state);
                     }
                     save_session_to_db(state, writer);
                 }
             }
         }
-        AudioCommand::Pause => {
+        AudioCommand::Pause(source) => {
+            let was_active = {
+                let s = lock_state(state);
+                s.is_playing || s.play_when_device_ready
+            };
             if let Some(player) = player {
                 player.pause();
             }
             {
                 let mut s = lock_state(state);
                 s.is_playing = false;
+                s.play_when_device_ready = false;
+                s.pending_play_source = source;
                 s.last_counted_position_ms = None;
+            }
+            if was_active {
+                record_event(
+                    state,
+                    writer,
+                    PlaybackEventKind::PlaybackPaused,
+                    source,
+                    Some("user_pause"),
+                    None,
+                );
+                let (listen_id, track_id, position_ms) = {
+                    let s = lock_state(state);
+                    (
+                        s.active_listen_id.clone(),
+                        s.current_track.as_ref().map(|track| track.id),
+                        s.position_ms,
+                    )
+                };
+                log::info!(
+                    target: "sparkle::playback",
+                    "event=playback_paused listen_id={} track_id={} source={} position_ms={position_ms}",
+                    listen_id.as_deref().unwrap_or("none"),
+                    track_id.map(|id| id.to_string()).unwrap_or_else(|| "none".to_string()),
+                    source.as_str()
+                );
             }
             emit_state_changed(app_handle, state);
             save_session_to_db(state, writer);
         }
-        AudioCommand::Stop => {
+        AudioCommand::Stop(source) => {
+            record_event(
+                state,
+                writer,
+                PlaybackEventKind::PlaybackStopped,
+                source,
+                Some("user_stop"),
+                None,
+            );
             if let Some(player) = player {
                 player.stop();
                 player.clear();
             }
-            update_state_for_stop(state, writer);
+            update_state_for_stop(state, writer, ListenEndReason::Stopped, source);
+            end_active_session(state);
             emit_state_changed(app_handle, state);
+            save_session_to_db(state, writer);
+            log::info!(target: "sparkle::playback", "event=playback_stopped source={}", source.as_str());
         }
-        AudioCommand::Seek(position_ms) => {
-            let position_ms = position_ms.max(0);
+        AudioCommand::Seek(position_ms, source) => {
+            let (old_position_ms, duration_ms) = {
+                let s = lock_state(state);
+                (s.position_ms, s.duration_ms)
+            };
+            let position_ms = if duration_ms > 0 {
+                position_ms.clamp(0, duration_ms)
+            } else {
+                position_ms.max(0)
+            };
+            record_event(
+                state,
+                writer,
+                PlaybackEventKind::Seeked,
+                source,
+                Some("absolute"),
+                Some(position_ms),
+            );
             if let Some(player) = player {
                 let pos = Duration::from_millis(position_ms as u64);
                 let was_playing = !player.is_paused();
@@ -1024,7 +1621,7 @@ fn handle_command(
                 if !seek_ok {
                     let reloaded = reload_source_at_position(player, state, position_ms);
                     if !reloaded {
-                        log::warn!("Seek failed and source reload was unsuccessful");
+                        log::warn!(target: "sparkle::audio", "event=seek_failed target_position_ms={position_ms}");
                     }
                 }
                 if was_playing {
@@ -1039,21 +1636,35 @@ fn handle_command(
             }
             emit_state_changed(app_handle, state);
             save_session_to_db(state, writer);
+            log::debug!(
+                target: "sparkle::playback",
+                "event=seek_applied source={} from_position_ms={old_position_ms} to_position_ms={position_ms}",
+                source.as_str()
+            );
         }
-        AudioCommand::Next => {
-            advance(player, state, db, writer, app_handle, false);
+        AudioCommand::Next(source) => {
+            advance(player, state, db, writer, app_handle, false, source);
             save_session_to_db(state, writer);
         }
-        AudioCommand::Previous => {
+        AudioCommand::Previous(source) => {
             let (pos, order_pos) = {
                 let s = lock_state(state);
                 (s.position_ms, s.order_pos)
             };
             if pos > 3000 {
+                record_event(
+                    state,
+                    writer,
+                    PlaybackEventKind::Seeked,
+                    source,
+                    Some("previous_restart"),
+                    Some(0),
+                );
                 seek_to_start(player, state);
             } else if let Some(p) = order_pos {
                 if p > 0 {
                     let prev_pos = p - 1;
+                    finalize_active_listen(state, writer, ListenEndReason::ManualPrevious, source);
                     let prev_idx = {
                         let mut s = lock_state(state);
                         s.order_pos = Some(prev_pos);
@@ -1061,19 +1672,43 @@ fn handle_command(
                         s.queue_index
                     };
                     if let Some(i) = prev_idx {
-                        if !load_track_at_index(player, state, db, writer, app_handle, i) {
-                            update_state_for_stop(state, writer);
+                        if !load_track_at_index(
+                            player,
+                            state,
+                            db,
+                            writer,
+                            app_handle,
+                            i,
+                            source,
+                            ListenStartReason::ManualPrevious,
+                            ListenEndReason::ManualPrevious,
+                        ) {
+                            update_state_for_stop(
+                                state,
+                                writer,
+                                ListenEndReason::PlaybackError,
+                                source,
+                            );
                             emit_state_changed(app_handle, state);
                         }
                     }
                 } else {
+                    record_event(
+                        state,
+                        writer,
+                        PlaybackEventKind::Seeked,
+                        source,
+                        Some("previous_restart"),
+                        Some(0),
+                    );
                     seek_to_start(player, state);
                 }
             }
             emit_queue_changed(app_handle);
             save_session_to_db(state, writer);
         }
-        AudioCommand::SetShuffle(shuffle) => {
+        AudioCommand::SetShuffle(shuffle, source) => {
+            let previous = lock_state(state).shuffle;
             {
                 let mut s = lock_state(state);
                 s.shuffle = shuffle;
@@ -1089,19 +1724,53 @@ fn handle_command(
                     }
                 }
             }
+            if previous != shuffle {
+                record_event(
+                    state,
+                    writer,
+                    PlaybackEventKind::ShuffleChanged,
+                    source,
+                    Some(if shuffle { "enabled" } else { "disabled" }),
+                    None,
+                );
+                log::debug!(
+                    target: "sparkle::playback",
+                    "event=shuffle_changed source={} enabled={shuffle}",
+                    source.as_str()
+                );
+            }
             emit_state_changed(app_handle, state);
             emit_queue_changed(app_handle);
             save_session_to_db(state, writer);
         }
-        AudioCommand::CycleRepeatMode => {
-            {
+        AudioCommand::CycleRepeatMode(source) => {
+            let repeat_mode = {
                 let mut s = lock_state(state);
                 s.repeat_mode = s.repeat_mode.next();
-            }
+                s.repeat_mode
+            };
+            record_event(
+                state,
+                writer,
+                PlaybackEventKind::RepeatChanged,
+                source,
+                Some(match repeat_mode {
+                    RepeatMode::Off => "off",
+                    RepeatMode::All => "all",
+                    RepeatMode::One => "one",
+                }),
+                None,
+            );
+            log::debug!(
+                target: "sparkle::playback",
+                "event=repeat_changed source={} mode={:?}",
+                source.as_str(),
+                repeat_mode
+            );
             emit_state_changed(app_handle, state);
             save_session_to_db(state, writer);
         }
-        AudioCommand::PlayNext(track_id) => {
+        AudioCommand::PlayNext(track_id, source) => {
             let current = {
                 let s = lock_state(state);
                 (s.queue_index, s.order_pos)
@@ -1155,13 +1824,50 @@ fn handle_command(
                         s.play_order = vec![0];
                         s.queue_index = Some(0);
                         s.order_pos = Some(0);
+                        s.context = PlaybackContext {
+                            kind: "queue".to_string(),
+                            id: None,
+                        };
+                        s.pending_play_source = source;
                     }
-                    if !load_track_at_index(player, state, db, writer, app_handle, 0) {
-                        update_state_for_stop(state, writer);
+                    if !load_track_at_index(
+                        player,
+                        state,
+                        db,
+                        writer,
+                        app_handle,
+                        0,
+                        source,
+                        ListenStartReason::PlayNext,
+                        ListenEndReason::TrackSelected,
+                    ) {
+                        update_state_for_stop(
+                            state,
+                            writer,
+                            ListenEndReason::PlaybackError,
+                            source,
+                        );
                         emit_state_changed(app_handle, state);
                     }
                 }
             }
+            let mut event = {
+                let s = lock_state(state);
+                event_record_locked(
+                    &s,
+                    PlaybackEventKind::QueuedNext,
+                    source,
+                    Some("play_next"),
+                    None,
+                )
+            };
+            event.track_id = Some(track_id);
+            writer.record_event(event);
+            log::debug!(
+                target: "sparkle::playback",
+                "event=track_queued_next source={} track_id={track_id}",
+                source.as_str()
+            );
             emit_queue_changed(app_handle);
             save_session_to_db(state, writer);
         }
@@ -1169,10 +1875,14 @@ fn handle_command(
             let view = build_queue_view(state, db);
             let _ = reply.send(view);
         }
-        AudioCommand::PlayAt(order_pos) => {
+        AudioCommand::PlayAt(order_pos, source) => {
+            let valid = order_pos < lock_state(state).play_order.len();
+            if valid {
+                finalize_active_listen(state, writer, ListenEndReason::QueueJump, source);
+            }
             let next_idx = {
                 let mut s = lock_state(state);
-                if order_pos < s.play_order.len() {
+                if valid {
                     s.order_pos = Some(order_pos);
                     s.queue_index = s.play_order.get(order_pos).copied();
                     s.queue_index
@@ -1181,19 +1891,34 @@ fn handle_command(
                 }
             };
             if let Some(i) = next_idx {
-                if !load_track_at_index(player, state, db, writer, app_handle, i) {
-                    update_state_for_stop(state, writer);
+                if !load_track_at_index(
+                    player,
+                    state,
+                    db,
+                    writer,
+                    app_handle,
+                    i,
+                    source,
+                    ListenStartReason::QueueJump,
+                    ListenEndReason::QueueJump,
+                ) {
+                    update_state_for_stop(state, writer, ListenEndReason::PlaybackError, source);
                     emit_state_changed(app_handle, state);
                 }
             }
             emit_queue_changed(app_handle);
             save_session_to_db(state, writer);
         }
-        AudioCommand::SetVolume(volume) => {
+        AudioCommand::SetVolume(volume, source) => {
             let v = volume.clamp(0.0, 1.0);
             if let Some(player) = player {
                 player.set_volume(slider_to_gain(v));
             }
+            log::trace!(
+                target: "sparkle::playback",
+                "event=volume_changed source={} value={v:.3}",
+                source.as_str()
+            );
             {
                 let mut s = lock_state(state);
                 s.volume = v;
@@ -1237,6 +1962,7 @@ fn advance(
     writer: &DbWriter,
     app_handle: &AppHandle,
     auto: bool,
+    source: PlaybackSource,
 ) {
     let (order_pos, order_len, repeat_mode, queue_index) = {
         let s = lock_state(state);
@@ -1252,8 +1978,23 @@ fn advance(
     // skip still moves to the next track.
     if auto && repeat_mode == RepeatMode::One {
         if let Some(i) = queue_index {
-            if !load_track_at_index(player, state, db, writer, app_handle, i) {
-                update_state_for_stop(state, writer);
+            if !load_track_at_index(
+                player,
+                state,
+                db,
+                writer,
+                app_handle,
+                i,
+                PlaybackSource::Automatic,
+                ListenStartReason::RepeatOne,
+                ListenEndReason::RepeatOne,
+            ) {
+                update_state_for_stop(
+                    state,
+                    writer,
+                    ListenEndReason::PlaybackError,
+                    PlaybackSource::Automatic,
+                );
                 emit_state_changed(app_handle, state);
             }
             save_session_to_db(state, writer);
@@ -1268,6 +2009,12 @@ fn advance(
     };
 
     if let Some(p) = next_pos {
+        let (start_reason, end_reason) = if auto {
+            (ListenStartReason::AutoAdvance, ListenEndReason::Completed)
+        } else {
+            (ListenStartReason::ManualNext, ListenEndReason::ManualNext)
+        };
+        finalize_active_listen(state, writer, end_reason, source);
         let next_idx = {
             let mut s = lock_state(state);
             s.order_pos = Some(p);
@@ -1275,8 +2022,18 @@ fn advance(
             s.queue_index
         };
         if let Some(i) = next_idx {
-            if !load_track_at_index(player, state, db, writer, app_handle, i) {
-                update_state_for_stop(state, writer);
+            if !load_track_at_index(
+                player,
+                state,
+                db,
+                writer,
+                app_handle,
+                i,
+                source,
+                start_reason,
+                end_reason,
+            ) {
+                update_state_for_stop(state, writer, ListenEndReason::PlaybackError, source);
                 emit_state_changed(app_handle, state);
             }
         } else {
@@ -1284,7 +2041,7 @@ fn advance(
                 player.stop();
                 player.clear();
             }
-            update_state_for_stop(state, writer);
+            update_state_for_stop(state, writer, ListenEndReason::PlaybackError, source);
             emit_state_changed(app_handle, state);
         }
     } else if auto {
@@ -1292,8 +2049,24 @@ fn advance(
         // loaded at position 0 so pressing play starts it again. The track
         // stays visible instead of the player emptying out.
         if let Some(i) = queue_index {
-            if !load_track_at_index_with_autoplay(player, state, db, writer, app_handle, i, false) {
-                update_state_for_stop(state, writer);
+            if !load_track_at_index_with_autoplay(
+                player,
+                state,
+                db,
+                writer,
+                app_handle,
+                i,
+                false,
+                PlaybackSource::Automatic,
+                ListenStartReason::AutoAdvance,
+                ListenEndReason::Completed,
+            ) {
+                update_state_for_stop(
+                    state,
+                    writer,
+                    ListenEndReason::PlaybackError,
+                    PlaybackSource::Automatic,
+                );
                 emit_state_changed(app_handle, state);
             } else {
                 let mut s = lock_state(state);
@@ -1305,23 +2078,41 @@ fn advance(
                 player.stop();
                 player.clear();
             }
-            update_state_for_stop(state, writer);
+            update_state_for_stop(
+                state,
+                writer,
+                ListenEndReason::PlaybackError,
+                PlaybackSource::Automatic,
+            );
             emit_state_changed(app_handle, state);
         }
+    }
+    if !auto && next_pos.is_none() {
+        log::debug!(
+            target: "sparkle::playback",
+            "event=command_noop command=next reason=end_of_queue source={}",
+            source.as_str()
+        );
     }
     // A manual Next at the end of the queue (repeat off) is a no-op.
     save_session_to_db(state, writer);
 }
 
-fn update_state_for_stop(state: &Arc<Mutex<SharedState>>, writer: &DbWriter) {
-    record_outgoing_play(state, writer);
+fn update_state_for_stop(
+    state: &Arc<Mutex<SharedState>>,
+    writer: &DbWriter,
+    reason: ListenEndReason,
+    source: PlaybackSource,
+) {
+    finalize_active_listen(state, writer, reason, source);
     let mut s = lock_state(state);
     s.is_playing = false;
+    s.play_when_device_ready = false;
+    s.pending_play_source = PlaybackSource::Unknown;
     s.current_track = None;
     s.position_ms = 0;
     s.duration_ms = 0;
     s.seek_target = None;
-    s.play_started_at = None;
     s.listened_ms = 0;
     s.last_counted_position_ms = None;
 }
@@ -1333,8 +2124,22 @@ fn load_track_at_index(
     writer: &DbWriter,
     app_handle: &AppHandle,
     index: usize,
+    source: PlaybackSource,
+    start_reason: ListenStartReason,
+    end_reason: ListenEndReason,
 ) -> bool {
-    load_track_at_index_with_autoplay(player, state, db, writer, app_handle, index, true)
+    load_track_at_index_with_autoplay(
+        player,
+        state,
+        db,
+        writer,
+        app_handle,
+        index,
+        true,
+        source,
+        start_reason,
+        end_reason,
+    )
 }
 
 fn load_track_at_index_with_autoplay(
@@ -1345,9 +2150,12 @@ fn load_track_at_index_with_autoplay(
     app_handle: &AppHandle,
     index: usize,
     autoplay: bool,
+    source: PlaybackSource,
+    start_reason: ListenStartReason,
+    end_reason: ListenEndReason,
 ) -> bool {
-    // A track transition ends the current play: record it before swapping.
-    record_outgoing_play(state, writer);
+    // A track transition finalizes the previous listen before metadata swaps.
+    finalize_active_listen(state, writer, end_reason, source);
     let track_id = {
         let s = lock_state(state);
         s.queue.get(index).copied()
@@ -1360,14 +2168,18 @@ fn load_track_at_index_with_autoplay(
     let track = match load_track_from_db(db, track_id) {
         Ok(t) => t,
         Err(e) => {
-            log::error!("Failed to load track {} from db: {}", track_id, e);
+            log::error!(
+                target: "sparkle::audio",
+                "event=track_load_failed track_id={track_id} error={e}"
+            );
             return false;
         }
     };
 
-    // Without an output device the queue and metadata are still usable, but
-    // playback stays paused. Automatically starting later, after a device
-    // appears, would be surprising and could produce unwanted audio.
+    // Without an output device the queue and metadata are still usable. Keep
+    // an explicit autoplay request until the endpoint comes back so a Play,
+    // Next, or track-selection command is not silently lost during recovery.
+    let play_when_device_ready = autoplay && player.is_none();
     let autoplay = autoplay && player.is_some();
 
     // Publish the new metadata before touching the audio file. Opening and
@@ -1378,10 +2190,11 @@ fn load_track_at_index_with_autoplay(
         let mut s = lock_state(state);
         s.current_track = Some(track.clone());
         s.is_playing = autoplay;
+        s.play_when_device_ready = play_when_device_ready;
+        s.pending_play_source = source;
         s.position_ms = 0;
         s.duration_ms = track.duration_ms.unwrap_or(0);
         s.seek_target = None;
-        s.play_started_at = autoplay.then(now_epoch_seconds);
         s.listened_ms = 0;
         s.last_counted_position_ms = None;
     }
@@ -1394,15 +2207,23 @@ fn load_track_at_index_with_autoplay(
     let file = match File::open(&track.file_path) {
         Ok(f) => f,
         Err(e) => {
-            log::error!("Failed to open audio file {}: {}", track.file_path, e);
+            log::error!(
+                target: "sparkle::audio",
+                "event=source_open_failed track_id={} error={e}",
+                track.id
+            );
             return false;
         }
     };
 
-    let source = match Decoder::new(BufReader::new(file)) {
+    let decoded_source = match Decoder::new(BufReader::new(file)) {
         Ok(s) => s,
         Err(e) => {
-            log::error!("Failed to decode {}: {}", track.file_path, e);
+            log::error!(
+                target: "sparkle::audio",
+                "event=source_decode_failed track_id={} error={e}",
+                track.id
+            );
             return false;
         }
     };
@@ -1415,9 +2236,10 @@ fn load_track_at_index_with_autoplay(
     }
     player.stop();
     player.clear();
-    player.append(source);
+    player.append(decoded_source);
     if autoplay {
         player.play();
+        begin_active_listen(state, writer, source, start_reason);
     }
     {
         let v = lock_state(state).volume;
@@ -1444,7 +2266,11 @@ fn reload_source_at_position(
     let file = match File::open(&track.file_path) {
         Ok(f) => f,
         Err(e) => {
-            log::error!("Failed to reopen audio file {}: {}", track.file_path, e);
+            log::error!(
+                target: "sparkle::audio",
+                "event=source_reopen_failed track_id={} error={e}",
+                track.id
+            );
             return false;
         }
     };
@@ -1452,7 +2278,11 @@ fn reload_source_at_position(
     let source = match Decoder::new(BufReader::new(file)) {
         Ok(s) => s,
         Err(e) => {
-            log::error!("Failed to re-decode {}: {}", track.file_path, e);
+            log::error!(
+                target: "sparkle::audio",
+                "event=source_redecode_failed track_id={} error={e}",
+                track.id
+            );
             return false;
         }
     };
@@ -1470,7 +2300,12 @@ fn reload_source_at_position(
 
     let pos = Duration::from_millis(position_ms.max(0) as u64);
     if let Err(e) = player.try_seek(pos) {
-        log::warn!("Reloaded source seek failed for {}: {}", track.file_path, e);
+        log::warn!(
+            target: "sparkle::audio",
+            "event=source_seek_after_reload_failed track_id={} position_ms={} error={e}",
+            track.id,
+            position_ms.max(0)
+        );
     }
 
     {
@@ -1570,12 +2405,7 @@ fn emit_state_changed(app_handle: &AppHandle, state: &Arc<Mutex<SharedState>>) {
             .session_ready
             .load(std::sync::atomic::Ordering::Acquire)
         {
-            if let Err(err) = crate::sync_system_media_status(app_handle, &ps) {
-                log::warn!(
-                    target: "sparkle::media::smtc",
-                    "event=status_sync_failed source=audio_state error={err}"
-                );
-            }
+            crate::queue_system_media_status(app_handle, ps.clone());
         }
     }
     let discord = lock_state(state).discord.clone();
@@ -1609,7 +2439,10 @@ fn build_queue_view(
             match load_track_from_db(db, *id) {
                 Ok(t) => tracks.push(t),
                 Err(e) => {
-                    log::error!("Failed to load queued track {} from db: {}", id, e);
+                    log::error!(
+                        target: "sparkle::audio",
+                        "event=queued_track_load_failed track_id={id} error={e}"
+                    );
                 }
             }
         }

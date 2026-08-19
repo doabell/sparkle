@@ -122,6 +122,8 @@
         loadQueue(
             results.tracks.map((t: Track) => t.id),
             index,
+            undefined,
+            { kind: "search" },
         );
     }
 
@@ -131,6 +133,8 @@
         loadQueue(
             results.lyric_tracks.map((m) => m.track.id),
             index,
+            undefined,
+            { kind: "search" },
         );
     }
 
@@ -143,6 +147,8 @@
             loadQueue(
                 tracks.map((t) => t.id),
                 0,
+                undefined,
+                { kind: "search" },
             );
         }
     }

@@ -520,6 +520,8 @@
         loadQueue(
             topTracks.map((t) => t.id),
             index,
+            undefined,
+            { kind: "artist", id: String(artistId) },
         );
     }
 
@@ -529,6 +531,7 @@
             topTracks.map((t) => t.id),
             0,
             false,
+            { kind: "artist", id: String(artistId) },
         );
     }
 
@@ -539,6 +542,7 @@
             topTracks.map((t) => t.id),
             start,
             true,
+            { kind: "artist", id: String(artistId) },
         );
     }
 

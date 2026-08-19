@@ -233,6 +233,8 @@
         loadQueue(
             orderedTracks.map((t) => t.id),
             index,
+            undefined,
+            { kind: "genre" },
         );
     }
 
@@ -242,6 +244,7 @@
             orderedTracks.map((t) => t.id),
             0,
             false,
+            { kind: "genre" },
         );
     }
 
@@ -252,6 +255,7 @@
             orderedTracks.map((t) => t.id),
             start,
             true,
+            { kind: "genre" },
         );
     }
 

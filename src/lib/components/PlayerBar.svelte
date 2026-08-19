@@ -427,7 +427,7 @@
 
             <button
                 class="control-btn"
-                onclick={previousTrack}
+                onclick={() => previousTrack()}
                 aria-label="Previous"
             >
                 <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -437,7 +437,7 @@
 
             <button
                 class="play-btn"
-                onclick={$playback.is_playing ? pause : play}
+                onclick={() => ($playback.is_playing ? pause() : play())}
                 aria-label="Play/Pause"
             >
                 {#if $playback.is_playing}
@@ -459,7 +459,11 @@
                 {/if}
             </button>
 
-            <button class="control-btn" onclick={nextTrack} aria-label="Next">
+            <button
+                class="control-btn"
+                onclick={() => nextTrack()}
+                aria-label="Next"
+            >
                 <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                     <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
                 </svg>
@@ -468,7 +472,7 @@
             <button
                 class="mode-btn"
                 class:active={$playback.repeat_mode !== "off"}
-                onclick={cycleRepeatMode}
+                onclick={() => cycleRepeatMode()}
                 aria-label="Repeat"
                 aria-pressed={$playback.repeat_mode !== "off"}
                 title={$playback.repeat_mode === "one"

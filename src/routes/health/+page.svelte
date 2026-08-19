@@ -188,6 +188,11 @@
             await loadQueue(
                 detailTracks.map((track) => track.id),
                 index,
+                undefined,
+                {
+                    kind: "health",
+                    id: selectedKind ?? undefined,
+                },
             );
         } catch (e) {
             error = String(e);

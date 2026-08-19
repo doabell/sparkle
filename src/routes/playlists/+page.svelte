@@ -182,6 +182,7 @@
                 detail.tracks.map((t) => t.id),
                 0,
                 false,
+                { kind: "playlist", id: String(playlist.id) },
             );
             goto(`/playlists/${playlist.id}`);
         } catch (e) {

@@ -233,6 +233,8 @@
         loadQueue(
             orderedTracks.map((track) => track.id),
             index,
+            undefined,
+            { kind: "songs" },
         );
     }
 
@@ -242,6 +244,7 @@
             orderedTracks.map((track) => track.id),
             0,
             false,
+            { kind: "songs" },
         );
     }
 
@@ -252,6 +255,7 @@
             orderedTracks.map((t) => t.id),
             start,
             true,
+            { kind: "songs" },
         );
     }
 </script>
