@@ -2,7 +2,7 @@ use rusqlite::{Connection, Result};
 use std::fs;
 use tauri::{AppHandle, Manager};
 
-const CURRENT_SCHEMA_VERSION: i32 = 8;
+const CURRENT_SCHEMA_VERSION: i32 = 9;
 
 /// The full schema, created fresh on first launch. The database was reset
 /// for v1 (July 2026): lyrics, artist info, and image bytes live as files
@@ -137,19 +137,78 @@ CREATE TABLE IF NOT EXISTS images (
     PRIMARY KEY (entity_type, entity_id, source)
 );
 
--- Play events for listening statistics ("sparkle unwrapped").
-CREATE TABLE IF NOT EXISTS play_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+-- Playback observability has two deliberately separate layers. `listens` is
+-- the query-friendly materialization of actual heard time; `playback_events`
+-- is the immutable semantic transition trace that explains each listen.
+CREATE TABLE IF NOT EXISTS listens (
+    id TEXT NOT NULL PRIMARY KEY,
+    session_id TEXT NOT NULL,
     track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
-    started_at INTEGER NOT NULL,
-    played_ms INTEGER NOT NULL CHECK (played_ms >= 0),
-    completed INTEGER NOT NULL DEFAULT 0
+    started_at_ms INTEGER NOT NULL CHECK (started_at_ms > 0),
+    ended_at_ms INTEGER,
+    last_activity_at_ms INTEGER NOT NULL CHECK (last_activity_at_ms > 0),
+    start_position_ms INTEGER NOT NULL DEFAULT 0 CHECK (start_position_ms >= 0),
+    end_position_ms INTEGER NOT NULL DEFAULT 0 CHECK (end_position_ms >= 0),
+    duration_ms INTEGER NOT NULL DEFAULT 0 CHECK (duration_ms >= 0),
+    listened_ms INTEGER NOT NULL DEFAULT 0 CHECK (listened_ms >= 0),
+    meaningful INTEGER NOT NULL DEFAULT 0 CHECK (meaningful IN (0, 1)),
+    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
+    finalized INTEGER NOT NULL DEFAULT 0 CHECK (finalized IN (0, 1)),
+    start_source TEXT NOT NULL,
+    start_reason TEXT NOT NULL,
+    end_reason TEXT,
+    context_type TEXT NOT NULL DEFAULT 'unknown',
+    context_id TEXT,
+    queue_index INTEGER,
+    play_order_index INTEGER,
+    queue_length INTEGER NOT NULL DEFAULT 0 CHECK (queue_length >= 0),
+    shuffle INTEGER NOT NULL DEFAULT 0 CHECK (shuffle IN (0, 1)),
+    repeat_mode TEXT NOT NULL DEFAULT 'off'
 );
 
-CREATE INDEX IF NOT EXISTS idx_play_history_track ON play_history(track_id);
-CREATE INDEX IF NOT EXISTS idx_play_history_started ON play_history(started_at);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_play_history_event
-    ON play_history(track_id, started_at, played_ms);
+CREATE INDEX IF NOT EXISTS idx_listens_track ON listens(track_id);
+CREATE INDEX IF NOT EXISTS idx_listens_track_started
+    ON listens(track_id, started_at_ms);
+CREATE INDEX IF NOT EXISTS idx_listens_started ON listens(started_at_ms);
+CREATE INDEX IF NOT EXISTS idx_listens_session ON listens(session_id, started_at_ms);
+CREATE INDEX IF NOT EXISTS idx_listens_meaningful_started
+    ON listens(meaningful, finalized, started_at_ms);
+CREATE INDEX IF NOT EXISTS idx_listens_end_reason ON listens(end_reason, started_at_ms);
+CREATE INDEX IF NOT EXISTS idx_listens_source_started
+    ON listens(start_source, started_at_ms);
+CREATE INDEX IF NOT EXISTS idx_listens_context_started
+    ON listens(context_type, context_id, started_at_ms);
+
+CREATE TABLE IF NOT EXISTS playback_events (
+    id TEXT NOT NULL PRIMARY KEY,
+    listen_id TEXT REFERENCES listens(id) ON DELETE CASCADE,
+    session_id TEXT,
+    occurred_at_ms INTEGER NOT NULL CHECK (occurred_at_ms > 0),
+    event_type TEXT NOT NULL,
+    source TEXT NOT NULL,
+    reason TEXT,
+    track_id INTEGER REFERENCES tracks(id) ON DELETE CASCADE,
+    position_ms INTEGER,
+    target_position_ms INTEGER,
+    context_type TEXT NOT NULL DEFAULT 'unknown',
+    context_id TEXT,
+    queue_index INTEGER,
+    play_order_index INTEGER,
+    queue_length INTEGER NOT NULL DEFAULT 0 CHECK (queue_length >= 0),
+    shuffle INTEGER NOT NULL DEFAULT 0 CHECK (shuffle IN (0, 1)),
+    repeat_mode TEXT NOT NULL DEFAULT 'off'
+);
+
+CREATE INDEX IF NOT EXISTS idx_playback_events_occurred
+    ON playback_events(occurred_at_ms);
+CREATE INDEX IF NOT EXISTS idx_playback_events_listen
+    ON playback_events(listen_id, occurred_at_ms);
+CREATE INDEX IF NOT EXISTS idx_playback_events_session
+    ON playback_events(session_id, occurred_at_ms);
+CREATE INDEX IF NOT EXISTS idx_playback_events_type
+    ON playback_events(event_type, occurred_at_ms);
+CREATE INDEX IF NOT EXISTS idx_playback_events_source
+    ON playback_events(source, occurred_at_ms);
 
 -- Uploaded Discord artwork is user-owned presence metadata. It deliberately
 -- lives outside normal cache cleanup so clearing/refetching album art cannot
@@ -204,6 +263,140 @@ SELECT
 FROM discord_artwork_cache_v7;
 
 DROP TABLE discord_artwork_cache_v7;
+"#;
+
+/// v9 replaces the lossy `play_history` table with checkpointed listen facts
+/// and a correlated semantic event trace. Legacy rows already passed the old
+/// meaningful-listen filter, so migration marks them meaningful and preserves
+/// the old 20-minute session grouping without inventing unavailable details.
+const V8_TO_V9: &str = r#"
+CREATE TABLE listens (
+    id TEXT NOT NULL PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    started_at_ms INTEGER NOT NULL CHECK (started_at_ms > 0),
+    ended_at_ms INTEGER,
+    last_activity_at_ms INTEGER NOT NULL CHECK (last_activity_at_ms > 0),
+    start_position_ms INTEGER NOT NULL DEFAULT 0 CHECK (start_position_ms >= 0),
+    end_position_ms INTEGER NOT NULL DEFAULT 0 CHECK (end_position_ms >= 0),
+    duration_ms INTEGER NOT NULL DEFAULT 0 CHECK (duration_ms >= 0),
+    listened_ms INTEGER NOT NULL DEFAULT 0 CHECK (listened_ms >= 0),
+    meaningful INTEGER NOT NULL DEFAULT 0 CHECK (meaningful IN (0, 1)),
+    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
+    finalized INTEGER NOT NULL DEFAULT 0 CHECK (finalized IN (0, 1)),
+    start_source TEXT NOT NULL,
+    start_reason TEXT NOT NULL,
+    end_reason TEXT,
+    context_type TEXT NOT NULL DEFAULT 'unknown',
+    context_id TEXT,
+    queue_index INTEGER,
+    play_order_index INTEGER,
+    queue_length INTEGER NOT NULL DEFAULT 0 CHECK (queue_length >= 0),
+    shuffle INTEGER NOT NULL DEFAULT 0 CHECK (shuffle IN (0, 1)),
+    repeat_mode TEXT NOT NULL DEFAULT 'off'
+);
+
+CREATE TABLE playback_events (
+    id TEXT NOT NULL PRIMARY KEY,
+    listen_id TEXT REFERENCES listens(id) ON DELETE CASCADE,
+    session_id TEXT,
+    occurred_at_ms INTEGER NOT NULL CHECK (occurred_at_ms > 0),
+    event_type TEXT NOT NULL,
+    source TEXT NOT NULL,
+    reason TEXT,
+    track_id INTEGER REFERENCES tracks(id) ON DELETE CASCADE,
+    position_ms INTEGER,
+    target_position_ms INTEGER,
+    context_type TEXT NOT NULL DEFAULT 'unknown',
+    context_id TEXT,
+    queue_index INTEGER,
+    play_order_index INTEGER,
+    queue_length INTEGER NOT NULL DEFAULT 0 CHECK (queue_length >= 0),
+    shuffle INTEGER NOT NULL DEFAULT 0 CHECK (shuffle IN (0, 1)),
+    repeat_mode TEXT NOT NULL DEFAULT 'off'
+);
+
+CREATE TEMP TABLE _analytics_migration_nonce (value TEXT NOT NULL);
+INSERT INTO _analytics_migration_nonce VALUES (lower(hex(randomblob(16))));
+
+CREATE TEMP TABLE _legacy_listens AS
+WITH ordered AS (
+    SELECT
+        ph.*,
+        CASE
+            WHEN LAG(started_at + played_ms / 1000)
+                    OVER (ORDER BY started_at, id) IS NULL
+              OR started_at - LAG(started_at + played_ms / 1000)
+                    OVER (ORDER BY started_at, id) > 1200
+            THEN 1 ELSE 0
+        END AS new_session
+    FROM play_history ph
+), grouped AS (
+    SELECT
+        ordered.*,
+        SUM(new_session) OVER (ORDER BY started_at, id) AS session_number
+    FROM ordered
+)
+SELECT * FROM grouped;
+
+INSERT INTO listens (
+    id, session_id, track_id, started_at_ms, ended_at_ms,
+    last_activity_at_ms, start_position_ms, end_position_ms, duration_ms,
+    listened_ms, meaningful, completed, finalized, start_source,
+    start_reason, end_reason, context_type, context_id, queue_index,
+    play_order_index, queue_length, shuffle, repeat_mode
+)
+SELECT
+    nonce.value || '-listen-' || legacy.id,
+    nonce.value || '-session-' || legacy.session_number,
+    legacy.track_id,
+    legacy.started_at * 1000,
+    legacy.started_at * 1000 + legacy.played_ms,
+    legacy.started_at * 1000 + legacy.played_ms,
+    0,
+    0,
+    COALESCE(t.duration_ms, 0),
+    legacy.played_ms,
+    1,
+    legacy.completed,
+    1,
+    'legacy',
+    'legacy_migration',
+    'legacy_migration',
+    'unknown',
+    NULL,
+    NULL,
+    NULL,
+    0,
+    0,
+    'off'
+FROM _legacy_listens legacy
+JOIN tracks t ON t.id = legacy.track_id
+CROSS JOIN _analytics_migration_nonce nonce;
+
+DROP TABLE _legacy_listens;
+DROP TABLE _analytics_migration_nonce;
+DROP TABLE play_history;
+
+CREATE INDEX idx_listens_track ON listens(track_id);
+CREATE INDEX idx_listens_track_started ON listens(track_id, started_at_ms);
+CREATE INDEX idx_listens_started ON listens(started_at_ms);
+CREATE INDEX idx_listens_session ON listens(session_id, started_at_ms);
+CREATE INDEX idx_listens_meaningful_started
+    ON listens(meaningful, finalized, started_at_ms);
+CREATE INDEX idx_listens_end_reason ON listens(end_reason, started_at_ms);
+CREATE INDEX idx_listens_source_started ON listens(start_source, started_at_ms);
+CREATE INDEX idx_listens_context_started ON listens(context_type, context_id, started_at_ms);
+CREATE INDEX idx_playback_events_occurred
+    ON playback_events(occurred_at_ms);
+CREATE INDEX idx_playback_events_listen
+    ON playback_events(listen_id, occurred_at_ms);
+CREATE INDEX idx_playback_events_session
+    ON playback_events(session_id, occurred_at_ms);
+CREATE INDEX idx_playback_events_type
+    ON playback_events(event_type, occurred_at_ms);
+CREATE INDEX idx_playback_events_source
+    ON playback_events(source, occurred_at_ms);
 "#;
 
 /// Returns the profile-specific application data directory.
@@ -265,21 +458,62 @@ pub fn init_db(app: &AppHandle) -> Result<(Connection, bool)> {
         record_schema_version(&tx, CURRENT_SCHEMA_VERSION)?;
         tx.commit()?;
         Ok((conn, true))
-    } else if version == CURRENT_SCHEMA_VERSION {
-        Ok((conn, false))
-    } else if version == CURRENT_SCHEMA_VERSION - 1 {
-        migrate_v7_to_v8(&conn)?;
-        Ok((conn, false))
     } else {
-        Err(rusqlite::Error::InvalidQuery)
+        if version > CURRENT_SCHEMA_VERSION || version < 7 {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        let mut migrated = version;
+        while migrated < CURRENT_SCHEMA_VERSION {
+            match migrated {
+                7 => migrate_v7_to_v8(&conn)?,
+                8 => migrate_v8_to_v9(&conn)?,
+                _ => return Err(rusqlite::Error::InvalidQuery),
+            }
+            migrated += 1;
+        }
+        Ok((conn, false))
     }
 }
 
 fn migrate_v7_to_v8(conn: &Connection) -> Result<()> {
+    log::info!(target: "sparkle::database", "event=migration_started from=7 to=8");
     let tx = conn.unchecked_transaction()?;
     tx.execute_batch(V7_TO_V8)?;
-    record_schema_version(&tx, CURRENT_SCHEMA_VERSION)?;
-    tx.commit()
+    record_schema_version(&tx, 8)?;
+    tx.commit()?;
+    log::info!(target: "sparkle::database", "event=migration_completed from=7 to=8");
+    Ok(())
+}
+
+fn migrate_v8_to_v9(conn: &Connection) -> Result<()> {
+    log::info!(target: "sparkle::database", "event=migration_started from=8 to=9");
+    let tx = conn.unchecked_transaction()?;
+    tx.execute_batch(V8_TO_V9)?;
+    record_schema_version(&tx, 9)?;
+    tx.commit()?;
+    log::info!(target: "sparkle::database", "event=migration_completed from=8 to=9");
+    Ok(())
+}
+
+/// Finalize checkpoints left open by a crash or forced process termination.
+/// A normal shutdown closes its active listen explicitly before the writer
+/// durability barrier, so any remaining row is unambiguously interrupted.
+pub fn recover_interrupted_listens(conn: &Connection) -> Result<usize> {
+    conn.execute(
+        "UPDATE listens SET \
+         finalized = 1, \
+         ended_at_ms = last_activity_at_ms, \
+         meaningful = CASE \
+             WHEN listened_ms >= 30000 OR \
+                  (duration_ms > 0 AND listened_ms >= 5000 AND listened_ms * 2 >= duration_ms) \
+             THEN 1 ELSE 0 END, \
+         completed = CASE \
+             WHEN duration_ms > 0 AND end_position_ms * 10 >= duration_ms * 9 \
+             THEN 1 ELSE 0 END, \
+         end_reason = 'interrupted' \
+         WHERE finalized = 0",
+        [],
+    )
 }
 
 /// Upgraded databases retain their applied-version history. Recording only the
@@ -323,7 +557,8 @@ mod tests {
             "folders",
             "images",
             "lyrics",
-            "play_history",
+            "listens",
+            "playback_events",
             "play_queue",
             "playlist_tracks",
             "playlists",
@@ -349,6 +584,50 @@ mod tests {
             .filter_map(|r| r.ok())
             .collect();
         assert!(cols.iter().any(|c| c == "lyrics_source"));
+    }
+
+    #[test]
+    fn playback_analytics_schema_has_query_and_trace_layers() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
+        apply_schema(&conn);
+        let listen_columns = table_columns(&conn, "listens");
+        let event_columns = table_columns(&conn, "playback_events");
+        for expected in [
+            "session_id",
+            "listened_ms",
+            "meaningful",
+            "start_source",
+            "start_reason",
+            "end_reason",
+            "context_type",
+            "queue_index",
+            "play_order_index",
+        ] {
+            assert!(listen_columns.iter().any(|column| column == expected));
+        }
+        for expected in [
+            "listen_id",
+            "session_id",
+            "event_type",
+            "source",
+            "target_position_ms",
+            "queue_index",
+            "play_order_index",
+        ] {
+            assert!(event_columns.iter().any(|column| column == expected));
+        }
+    }
+
+    fn table_columns(conn: &Connection, table: &str) -> Vec<String> {
+        let mut statement = conn
+            .prepare(&format!("PRAGMA table_info({table})"))
+            .unwrap();
+        statement
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .collect::<Result<Vec<_>>>()
+            .unwrap()
     }
 
     #[test]
@@ -419,5 +698,91 @@ mod tests {
             .collect::<rusqlite::Result<Vec<i32>>>()
             .unwrap();
         assert_eq!(versions, vec![3, 4, 5, 6, 7, 8]);
+    }
+
+    #[test]
+    fn v8_to_v9_preserves_history_and_recovers_session_groups() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
+        conn.execute_batch(SCHEMA_VERSION_TABLE).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE tracks (
+                id INTEGER PRIMARY KEY,
+                duration_ms INTEGER
+             );
+             CREATE TABLE play_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+                started_at INTEGER NOT NULL,
+                played_ms INTEGER NOT NULL,
+                completed INTEGER NOT NULL DEFAULT 0
+             );
+             INSERT INTO tracks (id, duration_ms) VALUES (1, 180000), (2, 240000);
+             INSERT INTO play_history (track_id, started_at, played_ms, completed) VALUES
+                (1, 1000, 60000, 0),
+                (2, 1100, 200000, 1),
+                (1, 4000, 45000, 0);",
+        )
+        .unwrap();
+
+        migrate_v8_to_v9(&conn).unwrap();
+
+        let rows: Vec<(i64, i64, bool, String)> = conn
+            .prepare(
+                "SELECT started_at_ms, listened_ms, completed, session_id \
+                 FROM listens ORDER BY started_at_ms",
+            )
+            .unwrap()
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get::<_, i64>(2)? != 0,
+                    row.get(3)?,
+                ))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0].0, 1_000_000);
+        assert_eq!(rows[0].1, 60_000);
+        assert!(rows[1].2);
+        assert_eq!(rows[0].3, rows[1].3);
+        assert_ne!(rows[1].3, rows[2].3);
+        assert_eq!(recover_interrupted_listens(&conn).unwrap(), 0);
+        conn.execute(
+            "UPDATE listens SET finalized = 0, ended_at_ms = NULL, \
+             listened_ms = 4000, end_position_ms = 10000, meaningful = 1, \
+             completed = 1, end_reason = NULL WHERE started_at_ms = 1000000",
+            [],
+        )
+        .unwrap();
+        assert_eq!(recover_interrupted_listens(&conn).unwrap(), 1);
+        let recovered: (i64, i64, i64, i64, String) = conn
+            .query_row(
+                "SELECT finalized, ended_at_ms, meaningful, completed, end_reason \
+                 FROM listens WHERE started_at_ms = 1000000",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(recovered, (1, 1_060_000, 0, 0, "interrupted".into()));
+        let legacy_table: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'play_history'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(legacy_table, 0);
     }
 }

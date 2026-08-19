@@ -1,3 +1,4 @@
+use crate::analytics::PlaybackContext;
 use crate::models::{AccentForegroundPreference, RepeatMode};
 use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -44,6 +45,8 @@ pub struct SessionSnapshot {
     pub repeat_mode: RepeatMode,
     #[serde(default)]
     pub play_order: Vec<usize>,
+    #[serde(default)]
+    pub context: PlaybackContext,
 }
 
 impl Default for SessionSnapshot {
@@ -57,6 +60,7 @@ impl Default for SessionSnapshot {
             shuffle: false,
             repeat_mode: RepeatMode::Off,
             play_order: Vec::new(),
+            context: PlaybackContext::default(),
         }
     }
 }

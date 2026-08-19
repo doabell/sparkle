@@ -231,6 +231,7 @@
                     tracks.map((track) => track.id),
                     0,
                     false,
+                    { kind: "album", id: String(album.id) },
                 );
             }
         } catch (e) {

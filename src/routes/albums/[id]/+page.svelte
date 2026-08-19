@@ -112,6 +112,7 @@
             tracks.map((track) => track.id),
             0,
             false,
+            { kind: "album", id: String(albumId) },
         );
     }
 
@@ -119,6 +120,8 @@
         loadQueue(
             tracks.map((track) => track.id),
             index,
+            undefined,
+            { kind: "album", id: String(albumId) },
         );
     }
 
@@ -129,6 +132,7 @@
             tracks.map((t) => t.id),
             start,
             true,
+            { kind: "album", id: String(albumId) },
         );
     }
 

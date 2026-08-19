@@ -1,5 +1,6 @@
 use serde::de::DeserializeOwned;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, TryLockError};
+use std::time::{Duration, Instant};
 use tauri::{plugin::PluginApi, AppHandle, Runtime};
 
 use crate::models::*;
@@ -71,6 +72,30 @@ impl<R: Runtime> Media<R> {
     {
         let mut controller = self.controller.lock().unwrap();
         controller.set_event_handler(Box::new(handler));
+    }
+
+    pub fn shutdown(&self) -> crate::Result<()> {
+        // A status update may be in a WinRT call when exit is requested. Give
+        // that short-lived call a chance to finish, but never let a wedged
+        // media endpoint hold application shutdown indefinitely.
+        let deadline = Instant::now() + Duration::from_millis(500);
+        let mut controller = loop {
+            match self.controller.try_lock() {
+                Ok(controller) => break controller,
+                Err(TryLockError::Poisoned(error)) => break error.into_inner(),
+                Err(TryLockError::WouldBlock) if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(TryLockError::WouldBlock) => {
+                    return Err(crate::Error::String(
+                        "media controller is busy during shutdown".to_string(),
+                    ));
+                }
+            }
+        };
+        controller
+            .shutdown()
+            .map_err(|e| crate::Error::String(e.to_string()))
     }
 
     pub fn get_metadata(&self) -> crate::Result<Option<MediaMetadata>> {

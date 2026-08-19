@@ -57,27 +57,27 @@ Other platforms are not released or tested yet.
 
 ## Develop
 
-Install the [Tauri prerequisites for Windows](https://v2.tauri.app/start/prerequisites/), Node.js 24, and Rust 1.89. Then run:
+Install the [Tauri prerequisites for Windows](https://v2.tauri.app/start/prerequisites/), Bun 1.3.14, and Rust 1.89. Then run:
 
 ```sh
-npm ci
-npm run tauri dev
+bun install --frozen-lockfile
+bun run tauri dev
 ```
 
 Useful checks:
 
 ```sh
-npm run version:check
-npm run format:check
-npm run check
-npm test
+bun run version:check
+bun run format:check
+bun run check
+bun run test
 cargo test --locked --manifest-path src-tauri/Cargo.toml
 ```
 
 Build the MSI locally with:
 
 ```sh
-npm run tauri build -- --bundles msi
+bun run tauri build -- --bundles msi
 ```
 
 ## License

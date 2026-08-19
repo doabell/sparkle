@@ -87,7 +87,10 @@ where
             Ok(Some(lyrics)) => return Ok(Some(lyrics)),
             Ok(None) => {}
             Err(e) => {
-                log::warn!("lyrics provider {source} failed: {e}");
+                log::debug!(
+                    target: "sparkle::lyrics",
+                    "event=provider_failed provider={source} error={e}"
+                );
             }
         }
     }

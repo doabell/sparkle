@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 #[cfg(target_os = "windows")]
 use windows::{
-    Foundation::TypedEventHandler,
+    Foundation::{EventRegistrationToken, TypedEventHandler},
     Media::{
         Control::{
             GlobalSystemMediaTransportControlsSession,
@@ -24,6 +24,8 @@ pub struct WindowsMediaController {
     #[cfg(target_os = "windows")]
     media_player: Option<MediaPlayer>,
     controls: Option<SystemMediaTransportControls>,
+    #[cfg(target_os = "windows")]
+    button_handler_token: Option<EventRegistrationToken>,
     event_handler: Option<Arc<Mutex<Box<dyn Fn(MediaControlEvent) + Send>>>>,
     metadata: Option<MediaMetadata>,
     playback_info: Option<PlaybackInfo>,
@@ -36,6 +38,8 @@ impl WindowsMediaController {
             #[cfg(target_os = "windows")]
             media_player: None,
             controls: None,
+            #[cfg(target_os = "windows")]
+            button_handler_token: None,
             event_handler: None,
             metadata: None,
             playback_info: None,
@@ -112,12 +116,16 @@ impl WindowsMediaController {
     fn setup_button_handlers(&mut self) -> Result<(), Box<dyn StdError>> {
         // Clone event handler before getting controls to avoid borrow issues
         let handler = self.event_handler.clone();
-        let controls = self.get_controls()?;
+        let controls = self.get_controls()?.clone();
 
         if let Some(handler) = handler {
+            if let Some(token) = self.button_handler_token.take() {
+                controls.RemoveButtonPressed(token)?;
+            }
+
             // Play button
             let play_handler = handler.clone();
-            controls.ButtonPressed(&TypedEventHandler::new(
+            let token = controls.ButtonPressed(&TypedEventHandler::new(
                 move |_, args: &Option<SystemMediaTransportControlsButtonPressedEventArgs>| {
                     if let Some(args) = args {
                         let button = args.Button()?;
@@ -167,6 +175,7 @@ impl WindowsMediaController {
                     Ok(())
                 },
             ))?;
+            self.button_handler_token = Some(token);
             log::info!(
                 target: "sparkle::media::smtc",
                 "event=button_handler_registered"
@@ -419,6 +428,41 @@ impl super::MediaController for WindowsMediaController {
                     "event=button_handler_registration_failed error={err}"
                 );
             }
+        }
+    }
+
+    fn shutdown(&mut self) -> Result<(), Box<dyn StdError>> {
+        let mut first_error: Option<String> = None;
+
+        #[cfg(target_os = "windows")]
+        {
+            if let Some(controls) = self.controls.as_ref() {
+                if let Some(token) = self.button_handler_token.take() {
+                    if let Err(error) = controls.RemoveButtonPressed(token) {
+                        first_error.get_or_insert_with(|| error.to_string());
+                    }
+                }
+                if let Err(error) = controls.SetIsEnabled(false) {
+                    first_error.get_or_insert_with(|| error.to_string());
+                }
+            }
+
+            // Drop the WinRT objects after unregistering the callback. This
+            // releases the app's SMTC session instead of leaving a stale
+            // native player behind when shutdown follows a device failure.
+            self.button_handler_token = None;
+            self.event_handler = None;
+            self.controls = None;
+            self.media_player = None;
+        }
+
+        self.metadata = None;
+        self.playback_info = None;
+        self.session_initialized = false;
+
+        match first_error {
+            Some(error) => Err(error.into()),
+            None => Ok(()),
         }
     }
 

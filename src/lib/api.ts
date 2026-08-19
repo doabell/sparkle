@@ -60,6 +60,27 @@ export interface Track {
 
 export type RepeatMode = "off" | "all" | "one";
 
+export type PlaybackActionSource = "ui" | "keyboard" | "system_media";
+
+export type PlaybackContextKind =
+    | "album"
+    | "artist"
+    | "genre"
+    | "health"
+    | "home"
+    | "playlist"
+    | "queue"
+    | "search"
+    | "single"
+    | "songs"
+    | "unknown";
+
+export interface PlaybackContext {
+    kind: PlaybackContextKind;
+    /** Opaque local identifier only; never pass display text or paths. */
+    id?: string;
+}
+
 export interface PlaybackState {
     is_playing: boolean;
     current_track: Track | null;
@@ -385,60 +406,95 @@ export async function loadQueue(
     trackIds: number[],
     startIndex = 0,
     shuffle?: boolean,
+    context?: PlaybackContext,
+    source: PlaybackActionSource = "ui",
 ): Promise<PlaybackState> {
     return invoke("load_queue", {
         trackIds,
         startIndex,
         shuffle: shuffle ?? null,
+        context: context ?? null,
+        source,
     });
 }
 
-export async function playTrack(trackId: number): Promise<PlaybackState> {
-    return invoke("play_track", { trackId });
+export async function playTrack(
+    trackId: number,
+    context?: PlaybackContext,
+    source: PlaybackActionSource = "ui",
+): Promise<PlaybackState> {
+    return invoke("play_track", { trackId, context: context ?? null, source });
 }
 
-export async function play(): Promise<PlaybackState> {
-    return invoke("play");
+export async function play(
+    source: PlaybackActionSource = "ui",
+): Promise<PlaybackState> {
+    return invoke("play", { source });
 }
 
-export async function pause(): Promise<PlaybackState> {
-    return invoke("pause");
+export async function pause(
+    source: PlaybackActionSource = "ui",
+): Promise<PlaybackState> {
+    return invoke("pause", { source });
 }
 
-export async function stop(): Promise<PlaybackState> {
-    return invoke("stop");
+export async function stop(
+    source: PlaybackActionSource = "ui",
+): Promise<PlaybackState> {
+    return invoke("stop", { source });
 }
 
-export async function seek(positionMs: number): Promise<PlaybackState> {
-    return invoke("seek", { positionMs });
+export async function seek(
+    positionMs: number,
+    source: PlaybackActionSource = "ui",
+): Promise<PlaybackState> {
+    return invoke("seek", { positionMs, source });
 }
 
-export async function nextTrack(): Promise<PlaybackState> {
-    return invoke("next_track");
+export async function nextTrack(
+    source: PlaybackActionSource = "ui",
+): Promise<PlaybackState> {
+    return invoke("next_track", { source });
 }
 
-export async function previousTrack(): Promise<PlaybackState> {
-    return invoke("previous_track");
+export async function previousTrack(
+    source: PlaybackActionSource = "ui",
+): Promise<PlaybackState> {
+    return invoke("previous_track", { source });
 }
 
-export async function setVolume(volume: number): Promise<PlaybackState> {
-    return invoke("set_volume", { volume });
+export async function setVolume(
+    volume: number,
+    source: PlaybackActionSource = "ui",
+): Promise<PlaybackState> {
+    return invoke("set_volume", { volume, source });
 }
 
-export async function setVolumeLive(volume: number): Promise<void> {
-    return invoke("set_volume", { volume });
+export async function setVolumeLive(
+    volume: number,
+    source: PlaybackActionSource = "ui",
+): Promise<void> {
+    return invoke("set_volume", { volume, source });
 }
 
-export async function setShuffle(shuffle: boolean): Promise<PlaybackState> {
-    return invoke("set_shuffle", { shuffle });
+export async function setShuffle(
+    shuffle: boolean,
+    source: PlaybackActionSource = "ui",
+): Promise<PlaybackState> {
+    return invoke("set_shuffle", { shuffle, source });
 }
 
-export async function cycleRepeatMode(): Promise<PlaybackState> {
-    return invoke("cycle_repeat_mode");
+export async function cycleRepeatMode(
+    source: PlaybackActionSource = "ui",
+): Promise<PlaybackState> {
+    return invoke("cycle_repeat_mode", { source });
 }
 
-export async function playNext(trackId: number): Promise<PlaybackState> {
-    return invoke("play_next", { trackId });
+export async function playNext(
+    trackId: number,
+    source: PlaybackActionSource = "ui",
+): Promise<PlaybackState> {
+    return invoke("play_next", { trackId, source });
 }
 
 export interface QueueView {
@@ -450,8 +506,11 @@ export async function getQueue(): Promise<QueueView> {
     return invoke("get_queue");
 }
 
-export async function playQueueIndex(orderPos: number): Promise<PlaybackState> {
-    return invoke("play_queue_index", { orderPos });
+export async function playQueueIndex(
+    orderPos: number,
+    source: PlaybackActionSource = "ui",
+): Promise<PlaybackState> {
+    return invoke("play_queue_index", { orderPos, source });
 }
 
 export async function getPlaybackState(): Promise<PlaybackState> {

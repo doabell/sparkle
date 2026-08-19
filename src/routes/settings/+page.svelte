@@ -959,7 +959,7 @@
                             />
                             <span
                                 ><strong>Listening history</strong><small
-                                    >Minutes and listening patterns</small
+                                    >Listens, skips, sessions, and control trace</small
                                 ></span
                             >
                         </label>
@@ -1099,7 +1099,12 @@
                                     disabled={pendingBackup.manifest.history ===
                                         0}
                                 />
-                                <span><strong>Listening history</strong></span>
+                                <span
+                                    ><strong>Listening history</strong><small
+                                        >Includes the playback trace when
+                                        available</small
+                                    ></span
+                                >
                             </label>
                         </div>
                         <p class="backup-status">
@@ -1855,8 +1860,9 @@
                             <div class="debug-toggle-copy">
                                 <span class="debug-label">Verbose logging</span>
                                 <span class="debug-description">
-                                    Include detailed Sparkle events in the log
-                                    file.
+                                    Include Sparkle debug and trace events.
+                                    Playback logs use local IDs, never music
+                                    names or paths.
                                 </span>
                             </div>
                             <label class="toggle">

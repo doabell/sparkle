@@ -18,6 +18,8 @@ import {
     playTrack as backendPlayTrack,
     type Track as ApiTrack,
     type PlaybackState as ApiPlaybackState,
+    type PlaybackActionSource,
+    type PlaybackContext,
     type RepeatMode,
 } from "$lib/api";
 
@@ -137,35 +139,60 @@ function createPlaybackStore() {
     return {
         subscribe,
         set,
-        play: () => callCommand(backendPlay),
-        pause: () => callCommand(backendPause),
-        stop: () => callCommand(backendStop),
-        seek: (positionMs: number) =>
-            callCommand(() => backendSeek(positionMs)),
-        nextTrack: () => callCommand(backendNextTrack),
-        previousTrack: () => callCommand(backendPreviousTrack),
-        setVolume: (volume: number) =>
-            callCommand(() => backendSetVolume(volume)),
-        setVolumeLive: (volume: number) =>
-            backendSetVolumeLive(volume).catch((err) => {
+        play: (source: PlaybackActionSource = "ui") =>
+            callCommand(() => backendPlay(source)),
+        pause: (source: PlaybackActionSource = "ui") =>
+            callCommand(() => backendPause(source)),
+        stop: (source: PlaybackActionSource = "ui") =>
+            callCommand(() => backendStop(source)),
+        seek: (positionMs: number, source: PlaybackActionSource = "ui") =>
+            callCommand(() => backendSeek(positionMs, source)),
+        nextTrack: (source: PlaybackActionSource = "ui") =>
+            callCommand(() => backendNextTrack(source)),
+        previousTrack: (source: PlaybackActionSource = "ui") =>
+            callCommand(() => backendPreviousTrack(source)),
+        setVolume: (volume: number, source: PlaybackActionSource = "ui") =>
+            callCommand(() => backendSetVolume(volume, source)),
+        setVolumeLive: (volume: number, source: PlaybackActionSource = "ui") =>
+            backendSetVolumeLive(volume, source).catch((err) => {
                 console.error("Live volume update failed:", err);
             }),
-        setShuffle: (shuffle: boolean) =>
-            callCommand(() => backendSetShuffle(shuffle)),
-        cycleRepeatMode: () => callCommand(backendCycleRepeatMode),
-        playNext: (trackId: number) =>
-            callCommand(() => backendPlayNext(trackId)),
-        playQueueIndex: (orderPos: number) =>
-            callCommand(() => backendPlayQueueIndex(orderPos)),
+        setShuffle: (shuffle: boolean, source: PlaybackActionSource = "ui") =>
+            callCommand(() => backendSetShuffle(shuffle, source)),
+        cycleRepeatMode: (source: PlaybackActionSource = "ui") =>
+            callCommand(() => backendCycleRepeatMode(source)),
+        playNext: (trackId: number, source: PlaybackActionSource = "ui") =>
+            callCommand(() => backendPlayNext(trackId, source)),
+        playQueueIndex: (
+            orderPos: number,
+            source: PlaybackActionSource = "ui",
+        ) => callCommand(() => backendPlayQueueIndex(orderPos, source)),
         updateCurrentTrackLrcOffset,
         updateCurrentTrackLyricsSource,
         // shuffle = explicit context switch: page Play buttons pass false,
         // page Shuffle buttons pass true, individual track picks pass undefined
         // (the player's current mode is kept).
-        loadQueue: (trackIds: number[], startIndex = 0, shuffle?: boolean) =>
-            callCommand(() => backendLoadQueue(trackIds, startIndex, shuffle)),
-        playTrack: (trackId: number) =>
-            callCommand(() => backendPlayTrack(trackId)),
+        loadQueue: (
+            trackIds: number[],
+            startIndex = 0,
+            shuffle?: boolean,
+            context?: PlaybackContext,
+            source: PlaybackActionSource = "ui",
+        ) =>
+            callCommand(() =>
+                backendLoadQueue(
+                    trackIds,
+                    startIndex,
+                    shuffle,
+                    context,
+                    source,
+                ),
+            ),
+        playTrack: (
+            trackId: number,
+            context?: PlaybackContext,
+            source: PlaybackActionSource = "ui",
+        ) => callCommand(() => backendPlayTrack(trackId, context, source)),
     };
 }
 

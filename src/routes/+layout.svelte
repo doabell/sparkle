@@ -217,8 +217,8 @@
         );
     }
 
-    function togglePlayPause() {
-        $playback.is_playing ? pause() : play();
+    function togglePlayPause(source: "keyboard" | "system_media") {
+        $playback.is_playing ? pause(source) : play(source);
     }
 
     async function loadUiSettings() {
@@ -259,36 +259,46 @@
         switch (key) {
             case " ":
                 event.preventDefault();
-                togglePlayPause();
+                togglePlayPause("keyboard");
                 break;
             case "ArrowLeft":
                 event.preventDefault();
                 if (event.ctrlKey) {
-                    previousTrack();
+                    previousTrack("keyboard");
                 } else {
-                    seek(Math.max(0, $playback.position_ms - SEEK_STEP_MS));
+                    seek(
+                        Math.max(0, $playback.position_ms - SEEK_STEP_MS),
+                        "keyboard",
+                    );
                 }
                 break;
             case "ArrowRight":
                 event.preventDefault();
                 if (event.ctrlKey) {
-                    nextTrack();
+                    nextTrack("keyboard");
                 } else {
                     seek(
                         Math.min(
                             $playback.duration_ms,
                             $playback.position_ms + SEEK_STEP_MS,
                         ),
+                        "keyboard",
                     );
                 }
                 break;
             case "ArrowUp":
                 event.preventDefault();
-                setVolume(Math.min(1, $playback.volume + VOLUME_STEP));
+                setVolume(
+                    Math.min(1, $playback.volume + VOLUME_STEP),
+                    "keyboard",
+                );
                 break;
             case "ArrowDown":
                 event.preventDefault();
-                setVolume(Math.max(0, $playback.volume - VOLUME_STEP));
+                setVolume(
+                    Math.max(0, $playback.volume - VOLUME_STEP),
+                    "keyboard",
+                );
                 break;
         }
     }
@@ -302,7 +312,7 @@
             try {
                 unlisteners.push(
                     await listen("media-key-play-pause", () => {
-                        togglePlayPause();
+                        togglePlayPause("system_media");
                     }),
                 );
             } catch (err) {
@@ -313,14 +323,20 @@
             }
 
             try {
-                unlisteners.push(await listen("media-key-next", nextTrack));
+                unlisteners.push(
+                    await listen("media-key-next", () =>
+                        nextTrack("system_media"),
+                    ),
+                );
             } catch (err) {
                 console.error("Failed to listen for media key next:", err);
             }
 
             try {
                 unlisteners.push(
-                    await listen("media-key-previous", previousTrack),
+                    await listen("media-key-previous", () =>
+                        previousTrack("system_media"),
+                    ),
                 );
             } catch (err) {
                 console.error("Failed to listen for media key previous:", err);

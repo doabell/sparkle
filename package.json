@@ -13,15 +13,19 @@
         "url": "https://github.com/doabell/sparkle/issues"
     },
     "type": "module",
+    "engines": {
+        "bun": ">=1.3.14"
+    },
+    "packageManager": "bun@1.3.14",
     "scripts": {
         "dev": "vite dev",
         "build": "vite build",
         "preview": "vite preview",
         "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-        "test": "node --test --experimental-strip-types test/scrollRestore.test.ts test/scrollback.test.ts test/songIndex.test.ts test/artists.test.ts test/searchHistory.test.ts test/windowTitle.test.ts test/theme.test.ts test/commandPalette.test.ts",
-        "format": "prettier --write . && cargo fmt --manifest-path src-tauri/Cargo.toml",
+        "test": "bun test",
+        "format": "prettier --write .  --cache --list-different && cargo fmt --manifest-path src-tauri/Cargo.toml",
         "format:check": "prettier --check . && cargo fmt --check --manifest-path src-tauri/Cargo.toml",
-        "version:check": "node scripts/check-version.mjs",
+        "version:check": "bun scripts/check-version.mjs",
         "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
         "tauri": "tauri"
     },

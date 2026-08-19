@@ -1,6 +1,6 @@
 // @ts-nocheck
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "bun:test";
 import { APP_TITLE, getWindowTitle } from "../src/lib/utils/windowTitle.ts";
 
 test("uses the navigated page when nothing is playing", () => {

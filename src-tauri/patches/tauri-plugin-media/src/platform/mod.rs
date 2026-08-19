@@ -20,6 +20,9 @@ pub trait MediaController {
     fn set_position(&mut self, position: f64) -> Result<(), Box<dyn StdError>>;
     fn clear_metadata(&mut self) -> Result<(), Box<dyn StdError>>;
     fn set_event_handler(&mut self, handler: Box<dyn Fn(MediaControlEvent) + Send>);
+    fn shutdown(&mut self) -> Result<(), Box<dyn StdError>> {
+        Ok(())
+    }
 
     // Get methods to retrieve current state
     fn get_metadata(&self) -> Result<Option<MediaMetadata>, Box<dyn StdError>>;
