@@ -486,6 +486,15 @@ pub fn run() {
             // in the database again since v2.
             let _ = std::fs::remove_dir_all(cache_dir.join("lyrics"));
             cache::ensure_dirs(&cache_dir);
+            let image_cache_dir = cache_dir.join("images");
+            app.asset_protocol_scope()
+                .allow_directory(&image_cache_dir, true)
+                .map_err(|err| {
+                    format!(
+                        "failed to allow cached image directory '{}': {err}",
+                        image_cache_dir.display()
+                    )
+                })?;
             let db = Arc::new(Mutex::new(conn));
             #[cfg(desktop)]
             app.manage(MediaControlBridge::default());
