@@ -1129,6 +1129,7 @@ pub fn get_online_settings(state: State<'_, AppState>) -> Result<OnlineSettings,
     let settings = settings::load_settings(&conn)?;
     Ok(OnlineSettings {
         scan_on_startup: settings.scan_on_startup,
+        sound_check_enabled: settings.sound_check_enabled,
         lyrics_sources: settings.lyrics_sources,
         artist_info_sources: settings.artist_info_sources,
         artist_image_sources: settings.artist_image_sources,
@@ -1167,7 +1168,9 @@ pub fn set_online_settings(
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let mut full = settings::load_settings(&conn)?;
     let debug_logging_changed = full.debug_logging_enabled != settings.debug_logging_enabled;
+    let sound_check_changed = full.sound_check_enabled != settings.sound_check_enabled;
     full.scan_on_startup = settings.scan_on_startup;
+    full.sound_check_enabled = settings.sound_check_enabled;
     full.lyrics_sources = settings.lyrics_sources;
     full.artist_info_sources = settings.artist_info_sources;
     full.artist_image_sources = settings.artist_image_sources;
@@ -1202,6 +1205,12 @@ pub fn set_online_settings(
             "event=verbose_logging_changed enabled={}",
             settings.debug_logging_enabled
         );
+    }
+    if sound_check_changed {
+        state
+            .audio
+            .set_sound_check_enabled(settings.sound_check_enabled)?;
+        state.loudness.set_enabled(settings.sound_check_enabled);
     }
     state.discord.refresh();
     // Lyrics views re-read provider biases and source lists live.

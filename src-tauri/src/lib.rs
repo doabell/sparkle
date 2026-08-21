@@ -7,6 +7,7 @@ mod commands;
 mod db;
 mod db_writer;
 mod discord;
+mod loudness;
 mod models;
 mod normalizer;
 mod online_commands;
@@ -41,6 +42,9 @@ struct AppStatus {
     db_path: String,
     log_path: String,
     schema_version: i32,
+    audio_backend: &'static str,
+    audio_output_mode: &'static str,
+    audio_precision_bits: u8,
 }
 
 #[cfg(desktop)]
@@ -316,6 +320,17 @@ fn get_status(state: State<'_, AppState>, app: tauri::AppHandle) -> Result<AppSt
             .to_string_lossy()
             .to_string(),
         schema_version: version,
+        audio_backend: if cfg!(target_os = "windows") {
+            "WASAPI"
+        } else {
+            "CPAL system backend"
+        },
+        audio_output_mode: if cfg!(target_os = "windows") {
+            "shared"
+        } else {
+            "system default"
+        },
+        audio_precision_bits: 64,
     })
 }
 
@@ -450,13 +465,17 @@ pub fn run() {
                     "event=live_mix_initialization_failed error={err}"
                 );
             }
-            match settings::load_settings(&conn) {
-                Ok(settings) => set_debug_logging_enabled(settings.debug_logging_enabled),
-                Err(err) => log::warn!(
-                    target: "sparkle::settings",
-                    "event=debug_logging_setting_unavailable error={err}"
-                ),
-            }
+            let startup_settings = match settings::load_settings(&conn) {
+                Ok(settings) => settings,
+                Err(err) => {
+                    log::warn!(
+                        target: "sparkle::settings",
+                        "event=debug_logging_setting_unavailable error={err}"
+                    );
+                    settings::Settings::default()
+                }
+            };
+            set_debug_logging_enabled(startup_settings.debug_logging_enabled);
             let app_data_dir = db::data_dir(app.handle());
             let cache_dir = app_data_dir.join("cache");
             // The cache is never wiped automatically — not on startup, not on
@@ -467,19 +486,36 @@ pub fn run() {
             // in the database again since v2.
             let _ = std::fs::remove_dir_all(cache_dir.join("lyrics"));
             cache::ensure_dirs(&cache_dir);
+            let image_cache_dir = cache_dir.join("images");
+            app.asset_protocol_scope()
+                .allow_directory(&image_cache_dir, true)
+                .map_err(|err| {
+                    format!(
+                        "failed to allow cached image directory '{}': {err}",
+                        image_cache_dir.display()
+                    )
+                })?;
             let db = Arc::new(Mutex::new(conn));
             #[cfg(desktop)]
             app.manage(MediaControlBridge::default());
             let discord =
                 discord::DiscordPresence::new(db::db_path(app.handle()), cache_dir.clone());
+            let loudness = loudness::LoudnessController::new(
+                app.handle().clone(),
+                db::db_path(app.handle()),
+                startup_settings.sound_check_enabled,
+            );
             let audio = audio_engine::AudioController::new(
                 app.handle().clone(),
                 db.clone(),
                 discord.clone(),
+                loudness.clone(),
+                startup_settings.sound_check_enabled,
             );
             app.manage(AppState {
                 db,
                 audio,
+                loudness: loudness.clone(),
                 discord,
                 cache_dir: cache_dir.clone(),
             });
@@ -487,6 +523,7 @@ pub fn run() {
             // Optional background scan at startup. Runs on its own connection
             // (WAL mode) so it never blocks library reads from the UI.
             let app_handle = app.handle().clone();
+            let scan_loudness = loudness.clone();
             std::thread::spawn(move || {
                 let path = db::db_path(&app_handle);
                 let mut scan_conn = match db::open_connection(&path) {
@@ -531,6 +568,7 @@ pub fn run() {
                         "event=live_mix_refresh_failed source=startup error={e}"
                     );
                 }
+                scan_loudness.refresh_library();
             });
 
             // Windows delivers media-key presses through its System Media
@@ -603,6 +641,8 @@ pub fn run() {
             commands::reveal_in_explorer,
             commands::list_folders,
             commands::scan_library,
+            commands::get_loudness_status,
+            commands::rescan_loudness,
             commands::set_track_lyrics_source,
             commands::set_track_custom_lyrics,
             commands::clear_track_custom_lyrics,
@@ -697,9 +737,19 @@ pub fn run() {
                     );
                 }
             }
+            let mut shutdown_failed = false;
             let audio = app_handle.state::<AppState>().audio.clone();
             if let Err(error) = audio.shutdown() {
                 log::error!(target: "sparkle::lifecycle", "event=audio_shutdown_failed error={error}");
+                shutdown_failed = true;
+            }
+            let loudness = app_handle.state::<AppState>().loudness.clone();
+            if let Err(error) = loudness.shutdown() {
+                log::error!(target: "sparkle::lifecycle", "event=loudness_shutdown_failed error={error}");
+                shutdown_failed = true;
+            }
+            if shutdown_failed {
+                log::warn!(target: "sparkle::lifecycle", "event=shutdown_completed_with_errors");
             } else {
                 log::info!(target: "sparkle::lifecycle", "event=shutdown_completed");
             }

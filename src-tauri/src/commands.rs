@@ -14,6 +14,7 @@ use tauri_plugin_dialog::{DialogExt, FilePath};
 pub struct AppState {
     pub db: Arc<Mutex<rusqlite::Connection>>,
     pub audio: crate::audio_engine::AudioController,
+    pub loudness: crate::loudness::LoudnessController,
     pub discord: crate::discord::DiscordPresence,
     /// Root of the on-disk metadata cache (`<app data>/cache`).
     pub cache_dir: std::path::PathBuf,
@@ -149,12 +150,23 @@ pub fn import_library_backup(
     sections: crate::backup::BackupSections,
 ) -> Result<crate::backup::BackupImportSummary, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    crate::backup::import(
+    let summary = crate::backup::import(
         &conn,
         &state.cache_dir,
         std::path::Path::new(&path),
         sections,
-    )
+    )?;
+    let restored_sound_check = if sections.settings {
+        Some(settings::load_settings(&conn)?.sound_check_enabled)
+    } else {
+        None
+    };
+    drop(conn);
+    if let Some(enabled) = restored_sound_check {
+        state.audio.set_sound_check_enabled(enabled)?;
+        state.loudness.set_enabled(enabled);
+    }
+    Ok(summary)
 }
 
 #[tauri::command]
@@ -296,7 +308,7 @@ pub fn scan_library(
     let path = crate::db::db_path(&app);
     let mut scan_conn = crate::db::open_connection(&path).map_err(|e| e.to_string())?;
     let progress_app = app.clone();
-    scanner::scan_library_with_progress(
+    let result = scanner::scan_library_with_progress(
         &mut scan_conn,
         &settings,
         force.unwrap_or(false),
@@ -305,7 +317,21 @@ pub fn scan_library(
             use tauri::Emitter;
             let _ = progress_app.emit("scan-progress", progress);
         },
-    )
+    )?;
+    state.loudness.refresh_library();
+    Ok(result)
+}
+
+#[tauri::command]
+pub fn get_loudness_status(
+    state: State<'_, AppState>,
+) -> Result<crate::models::LoudnessStatus, String> {
+    state.loudness.status()
+}
+
+#[tauri::command]
+pub fn rescan_loudness(state: State<'_, AppState>) -> Result<(), String> {
+    state.loudness.rescan_all()
 }
 
 /// Sets (or clears) the per-track lyrics provider override. Cached provider

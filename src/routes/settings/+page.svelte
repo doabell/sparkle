@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onMount } from "svelte";
+    import { listen } from "@tauri-apps/api/event";
     import {
         getOnlineSettings,
         setOnlineSettings,
@@ -11,6 +12,8 @@
         getCacheStats,
         getCacheDir,
         getStatus,
+        getLoudnessStatus,
+        rescanLoudness,
         exportLibraryBackup,
         inspectLibraryBackup,
         importLibraryBackup,
@@ -23,6 +26,7 @@
         type CacheStat,
         type BackupManifest,
         type BackupSections,
+        type LoudnessStatus,
     } from "$lib/api";
     import Loading from "$lib/components/Loading.svelte";
     import Select from "$lib/components/Select.svelte";
@@ -208,6 +212,8 @@
     let cacheStats = $state<CacheStat[]>([]);
     let cacheDir = $state<string | null>(null);
     let status = $state<AppStatus | null>(null);
+    let loudnessStatus = $state<LoudnessStatus | null>(null);
+    let loudnessRescanBusy = $state(false);
     let backupBusy = $state<"export" | "inspect" | "import" | null>(null);
     let exportSections = $state<BackupSections>({
         ...DEFAULT_BACKUP_SECTIONS,
@@ -278,6 +284,19 @@
         } catch (e) {
             saveState = "dirty";
             addToast(String(e), "error");
+        }
+    }
+
+    async function rescanSoundCheck() {
+        loudnessRescanBusy = true;
+        try {
+            await rescanLoudness();
+            loudnessStatus = await getLoudnessStatus();
+            addToast("Sound Check rescan started", "success");
+        } catch (e) {
+            addToast(String(e), "error");
+        } finally {
+            loudnessRescanBusy = false;
         }
     }
 
@@ -468,6 +487,9 @@
             if (typeof loaded.debug_logging_enabled !== "boolean") {
                 loaded.debug_logging_enabled = false;
             }
+            if (typeof loaded.sound_check_enabled !== "boolean") {
+                loaded.sound_check_enabled = false;
+            }
             settings = loaded;
             lastSavedJson = JSON.stringify(loaded);
             lastSplitKey = JSON.stringify([
@@ -498,6 +520,17 @@
         getCacheDir()
             .then((d) => (cacheDir = d))
             .catch(() => (cacheDir = null));
+    });
+
+    onMount(() => {
+        getLoudnessStatus()
+            .then((value) => (loudnessStatus = value))
+            .catch(() => (loudnessStatus = null));
+        const unlisten = listen<LoudnessStatus>(
+            "loudness-status-changed",
+            ({ payload }) => (loudnessStatus = payload),
+        );
+        return () => void unlisten.then((dispose) => dispose());
     });
 
     async function refreshCacheStats() {
@@ -1189,6 +1222,86 @@
         </div>
 
         <div class="form-card">
+            {@render sectionTitle("Sound Check")}
+
+            <div class="field field-inline">
+                <label class="toggle">
+                    <input
+                        id="sound-check-enabled"
+                        type="checkbox"
+                        bind:checked={settings.sound_check_enabled}
+                    />
+                    <span class="toggle-slider" aria-hidden="true"></span>
+                    <span>Normalize loudness between songs</span>
+                </label>
+            </div>
+
+            <p class="hint">
+                Sparkle scans with EBU R128, targets −18 LUFS, and only turns
+                songs down. A fixed gain is chosen before playback with a −1
+                dBTP true-peak ceiling; there is no limiter, compressor, or
+                change to your audio files. Turning this setting on or off takes
+                effect at the next song boundary.
+            </p>
+
+            {#if loudnessStatus}
+                <div class="sound-check-status" aria-live="polite">
+                    <div class="sound-check-summary">
+                        <strong>
+                            {loudnessStatus.analyzed} of {loudnessStatus.total}
+                            songs analyzed
+                        </strong>
+                        <span>
+                            {#if settings.sound_check_enabled && loudnessStatus.running}
+                                Scanning {loudnessStatus.prioritized_pending > 0
+                                    ? "next-up songs"
+                                    : "library"}…
+                            {:else if !settings.sound_check_enabled && loudnessStatus.pending > 0}
+                                Paused · {loudnessStatus.pending} pending
+                            {:else if loudnessStatus.pending > 0}
+                                {loudnessStatus.pending} pending
+                            {:else if loudnessStatus.failed > 0}
+                                Finished with skipped songs
+                            {:else}
+                                Up to date
+                            {/if}
+                        </span>
+                    </div>
+                    <progress
+                        class="sound-check-progress"
+                        max={Math.max(loudnessStatus.total, 1)}
+                        value={loudnessStatus.analyzed + loudnessStatus.failed}
+                    ></progress>
+                    {#if loudnessStatus.failed > 0}
+                        <p class="hint">
+                            {loudnessStatus.failed} song{loudnessStatus.failed ===
+                            1
+                                ? ""
+                                : "s"} could not be scanned and will play at its original
+                            level.
+                        </p>
+                    {/if}
+                </div>
+            {/if}
+
+            <div class="field field-inline">
+                <button
+                    type="button"
+                    class="btn-pill btn-secondary"
+                    onclick={rescanSoundCheck}
+                    disabled={loudnessRescanBusy ||
+                        !settings.sound_check_enabled ||
+                        !loudnessStatus?.total}
+                >
+                    {loudnessRescanBusy ? "Starting…" : "Rescan all songs"}
+                </button>
+                {@render hint(
+                    "The current song and next three queued songs always take priority over the rest of the library.",
+                )}
+            </div>
+        </div>
+
+        <div class="form-card">
             {@render sectionTitle("Appearance")}
 
             <div class="field">
@@ -1822,6 +1935,14 @@
                     <div class="debug-row">
                         <span class="debug-label">Schema version</span>
                         <span class="debug-value">{status.schema_version}</span>
+                    </div>
+                    <div class="debug-row">
+                        <span class="debug-label">Audio output</span>
+                        <span class="debug-value">
+                            {status.audio_backend}
+                            {status.audio_output_mode} ·
+                            {status.audio_precision_bits}-bit float processing
+                        </span>
                     </div>
                     <div class="debug-row">
                         <span class="debug-label">Log file</span>
@@ -2520,6 +2641,33 @@
         font-size: var(--font-size-sm);
         color: var(--color-text-muted);
         line-height: var(--line-height);
+    }
+
+    .sound-check-status {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-sm);
+        padding: var(--spacing-md);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius);
+        background: var(--color-surface-elevated);
+    }
+
+    .sound-check-summary {
+        display: flex;
+        justify-content: space-between;
+        gap: var(--spacing-md);
+        font-size: var(--font-size-sm);
+    }
+
+    .sound-check-summary span {
+        color: var(--color-text-muted);
+    }
+
+    .sound-check-progress {
+        width: 100%;
+        height: 0.45rem;
+        accent-color: var(--color-accent-native);
     }
 
     .cache-list {
