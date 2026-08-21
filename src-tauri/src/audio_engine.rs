@@ -176,6 +176,15 @@ fn gain_for_track(
     }
 }
 
+/// Chooses a fixed gain without delaying playback. A pending measurement gets
+/// transparent unity for this play; its result is available on a later load.
+fn immediate_start_gain(gain: GainAvailability) -> (f64, bool) {
+    match gain {
+        GainAvailability::Ready(gain_db) => (gain_db, false),
+        GainAvailability::Pending => (0.0, true),
+    }
+}
+
 fn refresh_loudness_priorities(state: &Arc<Mutex<SharedState>>) {
     let (loudness, track_ids) = {
         let s = lock_state(state);
@@ -244,9 +253,6 @@ impl AudioController {
             volume: 1.0,
             sound_check_enabled,
             latched_sound_check_gain_db: 0.0,
-            awaiting_loudness: false,
-            play_when_loudness_ready: false,
-            pending_start_reason: ListenStartReason::Unknown,
             shuffle: false,
             repeat_mode: RepeatMode::Off,
             seek_target: None,
@@ -544,9 +550,6 @@ struct SharedState {
     /// scan never changes gain after audible playback has begun.
     sound_check_enabled: bool,
     latched_sound_check_gain_db: f64,
-    awaiting_loudness: bool,
-    play_when_loudness_ready: bool,
-    pending_start_reason: ListenStartReason,
     shuffle: bool,
     repeat_mode: RepeatMode,
     seek_target: Option<(i64, Instant)>,
@@ -1000,25 +1003,15 @@ fn load_source_into_player(player: &Player, track: &Track) -> bool {
 fn reload_current_for_device(
     player: &Player,
     state: &Arc<Mutex<SharedState>>,
-    db: &Arc<Mutex<rusqlite::Connection>>,
     writer: &DbWriter,
     app_handle: &AppHandle,
 ) {
-    let (
-        track,
-        was_playing,
-        position_ms,
-        awaiting_loudness,
-        pending_source,
-        had_active_listen,
-        session_timed_out,
-    ) = {
+    let (track, was_playing, position_ms, pending_source, had_active_listen, session_timed_out) = {
         let s = lock_state(state);
         (
             s.current_track.clone(),
-            s.is_playing || s.play_when_device_ready || s.play_when_loudness_ready,
+            s.is_playing || s.play_when_device_ready,
             s.position_ms,
-            s.awaiting_loudness,
             s.pending_play_source,
             s.active_listen_id.is_some(),
             s.active_listen_id.is_some()
@@ -1049,18 +1042,6 @@ fn reload_current_for_device(
     if position_ms > 0 {
         let pos = Duration::from_millis(position_ms as u64);
         let _ = player.try_seek(pos);
-    }
-
-    if awaiting_loudness {
-        {
-            let mut s = lock_state(state);
-            s.play_when_loudness_ready = was_playing;
-            s.play_when_device_ready = false;
-            s.is_playing = false;
-        }
-        maybe_resolve_pending_loudness(player, state, db, writer, app_handle);
-        emit_state_changed(app_handle, state);
-        return;
     }
 
     if was_playing {
@@ -1120,64 +1101,6 @@ fn reload_current_for_device(
     emit_state_changed(app_handle, state);
 }
 
-/// Completes a deferred track start once the background scanner has produced
-/// a result for the exact file revision. Gain is installed while the player
-/// is paused, so the first audible sample already has the final track-wide
-/// multiplier and no mid-track gain transition is possible.
-fn maybe_resolve_pending_loudness(
-    player: &Player,
-    state: &Arc<Mutex<SharedState>>,
-    db: &Arc<Mutex<rusqlite::Connection>>,
-    writer: &DbWriter,
-    app_handle: &AppHandle,
-) {
-    let track_id = {
-        let s = lock_state(state);
-        if !s.awaiting_loudness {
-            return;
-        }
-        match s.current_track.as_ref() {
-            Some(track) => track.id,
-            None => return,
-        }
-    };
-    let GainAvailability::Ready(gain_db) = gain_for_track(state, db, track_id) else {
-        return;
-    };
-
-    let (should_play, source, start_reason) = {
-        let mut s = lock_state(state);
-        if !s.awaiting_loudness || s.current_track.as_ref().map(|track| track.id) != Some(track_id)
-        {
-            return;
-        }
-        let should_play = s.play_when_loudness_ready;
-        let source = s.pending_play_source;
-        let start_reason = s.pending_start_reason;
-        s.latched_sound_check_gain_db = gain_db;
-        s.awaiting_loudness = false;
-        s.play_when_loudness_ready = false;
-        s.is_playing = false;
-        (should_play, source, start_reason)
-    };
-
-    player.pause();
-    apply_player_volume(player, state);
-    if should_play {
-        player.play();
-        {
-            let mut s = lock_state(state);
-            s.is_playing = true;
-        }
-        begin_active_listen(state, writer, source, start_reason);
-        emit_state_changed(app_handle, state);
-    }
-    log::info!(
-        target: "sparkle::loudness",
-        "event=playback_gain_latched track_id={track_id} gain_db={gain_db:.3} started={should_play}"
-    );
-}
-
 fn audio_thread(
     rx: mpsc::Receiver<AudioCommand>,
     app_handle: AppHandle,
@@ -1213,7 +1136,7 @@ fn audio_thread(
         };
         let player = Player::connect_new(handle.mixer());
         let device_name = default_output_device_id();
-        reload_current_for_device(&player, &state, &db, &writer, &app_handle);
+        reload_current_for_device(&player, &state, &writer, &app_handle);
 
         let mut last_progress_emit = Instant::now();
         let progress_interval = Duration::from_millis(PROGRESS_INTERVAL_MS);
@@ -1247,8 +1170,6 @@ fn audio_thread(
                     }
                 }
             }
-
-            maybe_resolve_pending_loudness(&player, &state, &db, &writer, &app_handle);
 
             // Detect default-device changes (headphones, USB DAC, Bluetooth).
             if last_device_check.elapsed() >= device_check_interval {
@@ -1456,7 +1377,7 @@ fn mark_output_unavailable(
     let (newly_unavailable, should_resume, track_id) = {
         let mut s = lock_state(state);
         let newly_unavailable = s.is_playing;
-        let should_resume = s.is_playing || s.play_when_device_ready || s.play_when_loudness_ready;
+        let should_resume = s.is_playing || s.play_when_device_ready;
         s.is_playing = false;
         s.play_when_device_ready = should_resume;
         s.last_counted_position_ms = None;
@@ -1500,7 +1421,6 @@ fn finish_audio_thread(
         let mut s = lock_state(state);
         s.is_playing = false;
         s.play_when_device_ready = false;
-        s.play_when_loudness_ready = false;
         s.last_counted_position_ms = None;
     }
     finalize_active_listen(
@@ -1557,8 +1477,6 @@ fn handle_command(
                 s.order_pos = if idx.is_some() { Some(order_pos) } else { None };
                 s.is_playing = false;
                 s.play_when_device_ready = false;
-                s.play_when_loudness_ready = false;
-                s.awaiting_loudness = false;
                 s.latched_sound_check_gain_db = 0.0;
                 s.pending_play_source = source;
                 s.context = context;
@@ -1576,12 +1494,20 @@ fn handle_command(
                 Some("queue_replaced"),
                 None,
             );
+            // Take one snapshot and release the mutex before logging. The log
+            // facade evaluates debug arguments because its global max level is
+            // Trace, even when the plugin later filters the record. Locking
+            // `state` separately for both arguments therefore self-deadlocked.
+            let (context_kind, queue_length) = {
+                let s = lock_state(state);
+                (s.context.kind.clone(), s.queue.len())
+            };
             log::debug!(
                 target: "sparkle::playback",
                 "event=queue_loaded source={} context={} queue_length={} start_index={} shuffle={}",
                 source.as_str(),
-                lock_state(state).context.kind,
-                lock_state(state).queue.len(),
+                context_kind,
+                queue_length,
                 start_index,
                 shuffle
             );
@@ -1648,37 +1574,25 @@ fn handle_command(
             save_session_to_db(state, writer);
         }
         AudioCommand::Play(source) => {
-            let (has_track, was_playing, awaiting_loudness) = {
+            let (has_track, was_playing) = {
                 let s = lock_state(state);
                 (
                     s.current_track.is_some(),
-                    s.is_playing || s.play_when_device_ready || s.play_when_loudness_ready,
-                    s.awaiting_loudness,
+                    s.is_playing || s.play_when_device_ready,
                 )
             };
             log::debug!(target: "sparkle::playback", "event=command_received command=play source={} was_playing={was_playing}", source.as_str());
             if has_track {
                 if let Some(player) = player {
-                    if awaiting_loudness {
-                        player.pause();
+                    player.play();
+                    {
                         let mut s = lock_state(state);
-                        s.is_playing = false;
-                        s.play_when_loudness_ready = true;
+                        s.is_playing = true;
+                        s.play_when_device_ready = false;
                         s.pending_play_source = source;
-                        drop(s);
-                        refresh_loudness_priorities(state);
-                        maybe_resolve_pending_loudness(player, state, db, writer, app_handle);
-                    } else {
-                        player.play();
-                        {
-                            let mut s = lock_state(state);
-                            s.is_playing = true;
-                            s.play_when_device_ready = false;
-                            s.pending_play_source = source;
-                        }
-                        if !was_playing {
-                            resume_or_begin_listen(state, writer, source);
-                        }
+                    }
+                    if !was_playing {
+                        resume_or_begin_listen(state, writer, source);
                     }
                 } else {
                     // Commands still resolve when no output exists, but the
@@ -1720,7 +1634,7 @@ fn handle_command(
         AudioCommand::Pause(source) => {
             let was_active = {
                 let s = lock_state(state);
-                s.is_playing || s.play_when_device_ready || s.play_when_loudness_ready
+                s.is_playing || s.play_when_device_ready
             };
             if let Some(player) = player {
                 player.pause();
@@ -1729,7 +1643,6 @@ fn handle_command(
                 let mut s = lock_state(state);
                 s.is_playing = false;
                 s.play_when_device_ready = false;
-                s.play_when_loudness_ready = false;
                 s.pending_play_source = source;
                 s.last_counted_position_ms = None;
             }
@@ -2114,43 +2027,16 @@ fn handle_command(
             save_session_to_db(state, writer);
         }
         AudioCommand::SetSoundCheckEnabled(enabled) => {
-            let (release_wait, should_play, source, start_reason) = {
+            {
                 let mut s = lock_state(state);
                 s.sound_check_enabled = enabled;
-                let release_wait = !enabled && s.awaiting_loudness;
-                let should_play = release_wait && s.play_when_loudness_ready;
-                let source = s.pending_play_source;
-                let start_reason = s.pending_start_reason;
-                if release_wait {
-                    s.awaiting_loudness = false;
-                    s.play_when_loudness_ready = false;
-                    s.latched_sound_check_gain_db = 0.0;
-                    s.is_playing = false;
-                    if player.is_none() && should_play {
-                        s.play_when_device_ready = true;
-                    }
-                }
-                (release_wait, should_play, source, start_reason)
-            };
+            }
             if enabled {
                 refresh_loudness_priorities(state);
             }
-            if release_wait {
-                if let Some(player) = player {
-                    player.pause();
-                    apply_player_volume(player, state);
-                    if should_play {
-                        player.play();
-                        lock_state(state).is_playing = true;
-                        begin_active_listen(state, writer, source, start_reason);
-                    }
-                }
-                emit_state_changed(app_handle, state);
-            }
             log::info!(
                 target: "sparkle::loudness",
-                "event=playback_setting_latched enabled={enabled} current_track_unchanged={}",
-                !release_wait
+                "event=playback_setting_latched enabled={enabled} current_track_unchanged=true"
             );
         }
         AudioCommand::GetState(reply) => {
@@ -2335,8 +2221,6 @@ fn update_state_for_stop(
     let mut s = lock_state(state);
     s.is_playing = false;
     s.play_when_device_ready = false;
-    s.play_when_loudness_ready = false;
-    s.awaiting_loudness = false;
     s.latched_sound_check_gain_db = 0.0;
     s.pending_play_source = PlaybackSource::Unknown;
     s.current_track = None;
@@ -2407,21 +2291,16 @@ fn load_track_at_index_with_autoplay(
     };
 
     // Make the newly selected track and its next three successors the
-    // scanner's urgent work before deciding whether playback can start.
+    // scanner's urgent work. Pending analysis never delays playback.
     refresh_loudness_priorities(state);
-    let gain = gain_for_track(state, db, track_id);
-    let awaiting_loudness = matches!(gain, GainAvailability::Pending);
-    let latched_gain_db = match gain {
-        GainAvailability::Ready(gain_db) => gain_db,
-        GainAvailability::Pending => 0.0,
-    };
+    let (latched_gain_db, analysis_pending) =
+        immediate_start_gain(gain_for_track(state, db, track_id));
 
     // Without an output device the queue and metadata are still usable. Keep
     // an explicit autoplay request until the endpoint comes back so a Play,
     // Next, or track-selection command is not silently lost during recovery.
     let play_when_device_ready = autoplay && player.is_none();
-    let play_when_loudness_ready = autoplay && player.is_some() && awaiting_loudness;
-    let autoplay = autoplay && player.is_some() && !awaiting_loudness;
+    let autoplay = autoplay && player.is_some();
 
     // Publish the new metadata before touching the audio file. Opening and
     // decoding can take long enough to make the player bar feel stuck; the
@@ -2432,10 +2311,7 @@ fn load_track_at_index_with_autoplay(
         s.current_track = Some(track.clone());
         s.is_playing = autoplay;
         s.play_when_device_ready = play_when_device_ready;
-        s.play_when_loudness_ready = play_when_loudness_ready;
         s.pending_play_source = source;
-        s.pending_start_reason = start_reason;
-        s.awaiting_loudness = awaiting_loudness;
         s.latched_sound_check_gain_db = latched_gain_db;
         s.position_ms = 0;
         s.duration_ms = track.duration_ms.unwrap_or(0);
@@ -2476,7 +2352,9 @@ fn load_track_at_index_with_autoplay(
     // Pause before swapping the source. A fresh or currently-playing rodio
     // Player would otherwise start the appended source immediately, producing
     // an audible pop when the caller wants the track loaded but silent.
-    player.pause();
+    if !autoplay {
+        player.pause();
+    }
     player.stop();
     player.clear();
     player.append(decoded_source);
@@ -2488,12 +2366,11 @@ fn load_track_at_index_with_autoplay(
         player.pause();
     }
 
-    if awaiting_loudness {
+    if analysis_pending {
         log::info!(
             target: "sparkle::loudness",
-            "event=playback_waiting_for_analysis track_id={} autoplay={}",
-            track.id,
-            play_when_loudness_ready
+            "event=playback_started_unscanned track_id={} fallback=unity gain_latched=true",
+            track.id
         );
     }
 
@@ -2786,6 +2663,14 @@ mod tests {
         assert!(is_meaningful_listen(5_000, 8_000));
         assert!(!is_meaningful_listen(29_999, 180_000));
         assert!(is_meaningful_listen(30_000, 180_000));
+    }
+
+    #[test]
+    fn pending_loudness_starts_immediately_at_unity() {
+        let (gain_db, analysis_pending) = immediate_start_gain(GainAvailability::Pending);
+
+        assert_eq!(gain_db, 0.0);
+        assert!(analysis_pending);
     }
 
     #[test]

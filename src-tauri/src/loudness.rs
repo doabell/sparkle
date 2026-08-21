@@ -7,7 +7,7 @@ use std::fs::{self, File};
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::{Duration, Instant, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter};
 
 pub const TARGET_LUFS: f64 = -18.0;
@@ -136,7 +136,9 @@ impl LoudnessController {
             scheduler.generation = scheduler.generation.wrapping_add(1);
         }
         self.inner.wake.notify_all();
-        self.emit_status();
+        // Queue changes run on the audio command worker. Status aggregation
+        // opens SQLite and can wait on a concurrent writer, so leave both the
+        // work query and status event to the scanner thread we just woke.
     }
 
     pub fn refresh_library(&self) {
@@ -269,12 +271,23 @@ fn worker_loop(inner: Arc<Inner>) {
             scheduler.current_track_id = Some(candidate.track_id);
         }
         emit_status(&inner);
-        log::debug!(
-            target: "sparkle::loudness",
-            "event=analysis_started track_id={} prioritized={}",
-            candidate.track_id,
-            priority.contains(&candidate.track_id)
-        );
+        let prioritized = priority.contains(&candidate.track_id);
+        let started_at = Instant::now();
+        if prioritized {
+            log::info!(
+                target: "sparkle::loudness",
+                "event=analysis_started track_id={} prioritized=true file_size_bytes={}",
+                candidate.track_id,
+                candidate.file_size_bytes.unwrap_or(-1)
+            );
+        } else {
+            log::debug!(
+                target: "sparkle::loudness",
+                "event=analysis_started track_id={} prioritized=false file_size_bytes={}",
+                candidate.track_id,
+                candidate.file_size_bytes.unwrap_or(-1)
+            );
+        }
 
         let result = analyze_candidate(&candidate, || {
             let scheduler = lock_scheduler(&inner);
@@ -283,6 +296,7 @@ fn worker_loop(inner: Arc<Inner>) {
                 || (scheduler.generation != generation
                     && !scheduler.priority.contains(&candidate.track_id))
         });
+        let elapsed_ms = started_at.elapsed().as_millis();
 
         match result {
             Ok(result) => {
@@ -295,16 +309,16 @@ fn worker_loop(inner: Arc<Inner>) {
                 } else {
                     log::info!(
                         target: "sparkle::loudness",
-                        "event=analysis_completed track_id={}",
-                        candidate.track_id
+                        "event=analysis_completed track_id={} elapsed_ms={elapsed_ms}",
+                        candidate.track_id,
                     );
                 }
             }
             Err(AnalysisFailure::Cancelled) => {
                 log::debug!(
                     target: "sparkle::loudness",
-                    "event=analysis_preempted track_id={}",
-                    candidate.track_id
+                    "event=analysis_preempted track_id={} elapsed_ms={elapsed_ms}",
+                    candidate.track_id,
                 );
             }
             Err(AnalysisFailure::Failed { code, detail }) => {
@@ -317,7 +331,7 @@ fn worker_loop(inner: Arc<Inner>) {
                 }
                 log::warn!(
                     target: "sparkle::loudness",
-                    "event=analysis_failed track_id={} code={} error={detail}",
+                    "event=analysis_failed track_id={} code={} elapsed_ms={elapsed_ms} error={detail}",
                     candidate.track_id,
                     code
                 );

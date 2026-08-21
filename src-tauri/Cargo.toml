@@ -59,3 +59,21 @@ tauri-plugin-media = { path = "patches/tauri-plugin-media" }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Graphics_GdiPlus"] }
+
+# Sound Check is intentionally a background task, but unoptimized true-peak
+# DSP runs slower than real time in `tauri dev`. Keep the analyzer fast enough
+# for realistic local testing without optimizing Sparkle's own debug build.
+[profile.dev.package.ebur128]
+opt-level = 3
+
+[profile.dev.package.rodio]
+opt-level = 3
+
+[profile.dev.package.symphonia-core]
+opt-level = 3
+
+[profile.dev.package.symphonia-bundle-mp3]
+opt-level = 3
+
+[profile.dev.package.symphonia-bundle-flac]
+opt-level = 3
