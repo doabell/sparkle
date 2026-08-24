@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 — 2026-08-24
+
+- Add Sound Check loudness normalization with scan, rescan, progress, and library analysis controls.
+- Reorganize Settings with consistent controls, concise copy, and clearer Diagnostics and Licenses sections.
+- Improve playback recovery and add richer diagnostics and logging for playback failures.
+- Fix synchronized lyrics behavior and isolate development data from production libraries.
+- Upgrade application and development dependencies.
+
 ## 0.2.0 — 2026-07-25
 
 - Add configurable S3-compatible storage for Discord artwork, with settings UI, access testing, and environment-variable fallback.
