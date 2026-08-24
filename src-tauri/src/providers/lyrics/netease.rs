@@ -5,8 +5,7 @@
 
 use crate::models::Lyrics;
 use aes::cipher::block_padding::Pkcs7;
-use aes::cipher::generic_array::GenericArray;
-use aes::cipher::{BlockEncryptMut, KeyIvInit};
+use aes::cipher::{BlockModeEncrypt, KeyIvInit};
 use base64::Engine;
 use num_bigint::BigUint;
 use num_traits::Num;
@@ -87,13 +86,17 @@ struct LyricInner {
 }
 
 fn aes_encrypt(data: &[u8], key: &[u8], iv: &[u8]) -> Result<String, String> {
-    let key = GenericArray::from_slice(key);
-    let iv = GenericArray::from_slice(iv);
-    let cipher = cbc::Encryptor::<aes::Aes128>::new(key, iv);
+    let key: [u8; 16] = key
+        .try_into()
+        .map_err(|_| "aes key must be 16 bytes".to_string())?;
+    let iv: [u8; 16] = iv
+        .try_into()
+        .map_err(|_| "aes iv must be 16 bytes".to_string())?;
+    let cipher = cbc::Encryptor::<aes::Aes128>::new(&key.into(), &iv.into());
     let mut buf = vec![0u8; data.len() + 16];
     buf[..data.len()].copy_from_slice(data);
     let ct = cipher
-        .encrypt_padded_mut::<Pkcs7>(&mut buf, data.len())
+        .encrypt_padded::<Pkcs7>(&mut buf, data.len())
         .map_err(|_| "aes encrypt failed".to_string())?;
     Ok(base64::engine::general_purpose::STANDARD.encode(ct))
 }
@@ -484,6 +487,14 @@ pub async fn fetch_netease_lyrics(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn aes_cbc_encryption_matches_the_netease_wire_format() {
+        assert_eq!(
+            aes_encrypt(b"hello", NONCE.as_bytes(), IV.as_bytes()).unwrap(),
+            "+J9Q3vLzLGFuqlWFQh3T3A=="
+        );
+    }
 
     #[test]
     fn deserializes_netease_camel_case_song_count() {
