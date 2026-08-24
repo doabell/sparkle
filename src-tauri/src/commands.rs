@@ -330,6 +330,11 @@ pub fn get_loudness_status(
 }
 
 #[tauri::command]
+pub fn scan_loudness(state: State<'_, AppState>) {
+    state.loudness.refresh_library();
+}
+
+#[tauri::command]
 pub fn rescan_loudness(state: State<'_, AppState>) -> Result<(), String> {
     state.loudness.rescan_all()
 }

@@ -642,6 +642,7 @@ pub fn run() {
             commands::list_folders,
             commands::scan_library,
             commands::get_loudness_status,
+            commands::scan_loudness,
             commands::rescan_loudness,
             commands::set_track_lyrics_source,
             commands::set_track_custom_lyrics,

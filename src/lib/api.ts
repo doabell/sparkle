@@ -979,6 +979,10 @@ export async function getLoudnessStatus(): Promise<LoudnessStatus> {
     return invoke("get_loudness_status");
 }
 
+export async function scanLoudness(): Promise<void> {
+    return invoke("scan_loudness");
+}
+
 export async function rescanLoudness(): Promise<void> {
     return invoke("rescan_loudness");
 }

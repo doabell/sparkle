@@ -13,6 +13,7 @@
         getCacheDir,
         getStatus,
         getLoudnessStatus,
+        scanLoudness,
         rescanLoudness,
         exportLibraryBackup,
         inspectLibraryBackup,
@@ -81,6 +82,75 @@
         { keys: "\u2191 / \u2193", action: "Volume \u00b15%" },
     ];
 
+    const LICENSES = [
+        { name: "Sparkle", license: "MIT", href: null },
+        {
+            name: "MusicBee-NeteaseLyrics",
+            license: "Apache-2.0",
+            href: "https://github.com/cqjjjzr/MusicBee-NeteaseLyrics",
+        },
+        {
+            name: "MusicBee-QQLyrics",
+            license: "Apache-2.0",
+            href: "https://github.com/mslxl/MusicBee-QQLyrics",
+        },
+        {
+            name: "ZonyLrcToolsX",
+            license: "MIT",
+            href: "https://github.com/real-zony/ZonyLrcToolsX",
+        },
+        {
+            name: "KashiNaviLyricsPlugin",
+            license: "MIT",
+            href: "https://github.com/noriokun4649/mb_KashiNaviLyricsPlugin",
+        },
+        {
+            name: "MusicBeePluginTemplate",
+            license: "MIT",
+            href: "https://github.com/htsign/MusicBeePluginTemplate",
+        },
+        {
+            name: "DiscordBee",
+            license: "Apache-2.0",
+            href: "https://github.com/sll552/DiscordBee",
+        },
+    ] as const;
+
+    const SETTINGS_CATEGORIES = [
+        {
+            id: "appearance",
+            label: "Appearance",
+            description: "Theme, type, and motion",
+        },
+        {
+            id: "playback",
+            label: "Playback",
+            description: "Sound Check",
+        },
+        {
+            id: "library",
+            label: "Library",
+            description: "Scanning and metadata",
+        },
+        {
+            id: "sharing",
+            label: "Sharing",
+            description: "Discord Rich Presence",
+        },
+        {
+            id: "data",
+            label: "Data & storage",
+            description: "Backups and cache",
+        },
+        {
+            id: "advanced",
+            label: "Advanced",
+            description: "Shortcuts, logs, licenses",
+        },
+    ] as const;
+
+    type SettingsCategory = (typeof SETTINGS_CATEGORIES)[number]["id"];
+
     interface SourceCategory {
         key:
             | "lyrics_sources"
@@ -97,7 +167,7 @@
         {
             key: "lyrics_sources",
             label: "Lyrics",
-            hint: "Enabled providers are tried in order. Custom uses lyrics files saved for each song; sidecar .lrc reads a matching file beside the audio.",
+            hint: "Tried from top to bottom.",
             builtins: [
                 "custom",
                 "embedded",
@@ -112,14 +182,14 @@
         {
             key: "artist_info_sources",
             label: "Artist info",
-            hint: "Sources tried in order when fetching artist biographies. Custom uses the bio you write on the artist page.",
+            hint: "Tried from top to bottom.",
             builtins: ["custom"],
             wikipedia: true,
         },
         {
             key: "artist_image_sources",
             label: "Artist images",
-            hint: "Sources tried in order when fetching artist images. Custom uses the image you pick on the artist page. Brave requires an API key below.",
+            hint: "Tried from top to bottom.",
             builtins: [
                 "custom",
                 "wikipedia:en",
@@ -132,7 +202,7 @@
         {
             key: "album_art_sources",
             label: "Album art",
-            hint: "Sources tried in order when fetching album artwork. Custom uses the image you pick on the album page.",
+            hint: "Tried from top to bottom.",
             builtins: ["custom", "embedded", "cover_art_archive"],
             wikipedia: false,
         },
@@ -198,6 +268,12 @@
     ];
 
     let settings = $state<OnlineSettings | null>(null);
+    let activeCategory = $state<SettingsCategory>("appearance");
+    let activeCategoryInfo = $derived(
+        SETTINGS_CATEGORIES.find(
+            (category) => category.id === activeCategory,
+        ) ?? SETTINGS_CATEGORIES[0],
+    );
     let accentInput = $state(DEFAULT_ACCENT_COLOR);
     let accentInputInvalid = $derived(normalizeHex(accentInput) === null);
     let accentTheme = $derived(
@@ -213,7 +289,7 @@
     let cacheDir = $state<string | null>(null);
     let status = $state<AppStatus | null>(null);
     let loudnessStatus = $state<LoudnessStatus | null>(null);
-    let loudnessRescanBusy = $state(false);
+    let loudnessActionBusy = $state<"scan" | "rescan" | null>(null);
     let backupBusy = $state<"export" | "inspect" | "import" | null>(null);
     let exportSections = $state<BackupSections>({
         ...DEFAULT_BACKUP_SECTIONS,
@@ -287,16 +363,19 @@
         }
     }
 
-    async function rescanSoundCheck() {
-        loudnessRescanBusy = true;
+    async function runSoundCheckScan(action: "scan" | "rescan") {
+        loudnessActionBusy = action;
         try {
-            await rescanLoudness();
+            await (action === "scan" ? scanLoudness() : rescanLoudness());
             loudnessStatus = await getLoudnessStatus();
-            addToast("Sound Check rescan started", "success");
+            addToast(
+                action === "scan" ? "Scan started" : "Rescan started",
+                "success",
+            );
         } catch (e) {
             addToast(String(e), "error");
         } finally {
-            loudnessRescanBusy = false;
+            loudnessActionBusy = null;
         }
     }
 
@@ -315,9 +394,7 @@
             const url = await testArtworkStorageApi();
             artworkStorageTestUrl = store === "s3" ? null : url;
             addToast(
-                store === "s3"
-                    ? "S3 upload, verification, and cleanup succeeded"
-                    : "Artwork storage access and upload succeeded",
+                store === "s3" ? "S3 test passed" : "Catbox test passed",
                 "success",
             );
         } catch (e) {
@@ -386,7 +463,7 @@
                 summary.unmatched_tracks + summary.unmatched_artwork;
             addToast(
                 skipped > 0
-                    ? `Restore complete · ${skipped} unmatched item${skipped === 1 ? "" : "s"} skipped`
+                    ? `${skipped} item${skipped === 1 ? "" : "s"} skipped`
                     : "Restore complete",
                 "success",
             );
@@ -754,7 +831,9 @@
 </script>
 
 {#snippet sectionTitle(title: string)}
-    <h2 class="section-title">{title}</h2>
+    <div class="section-heading">
+        <h3 class="section-title">{title}</h3>
+    </div>
 {/snippet}
 
 {#snippet fieldLabel(label: string, htmlFor: string)}
@@ -924,7 +1003,9 @@
 
 <div class="settings-page">
     <div class="header">
-        <h1 class="page-title">Settings</h1>
+        <div class="page-heading">
+            <h1 class="page-title">Settings</h1>
+        </div>
         {#if settings}
             <span class="save-indicator" role="status">
                 {#if saveState === "saving"}
@@ -933,15 +1014,42 @@
                     Saved
                 {:else if saveState === "dirty"}
                     Editing…
+                {:else}
+                    Saves automatically
                 {/if}
             </span>
         {/if}
     </div>
 
     {#if settings}
-        <div class="form-card">
+        <nav class="settings-index" aria-label="Settings categories">
+            {#each SETTINGS_CATEGORIES as category (category.id)}
+                <button
+                    type="button"
+                    class:active={activeCategory === category.id}
+                    aria-current={activeCategory === category.id
+                        ? "page"
+                        : undefined}
+                    aria-controls="settings-category-content"
+                    onclick={() => (activeCategory = category.id)}
+                >
+                    <span>{category.label}</span>
+                    <small>{category.description}</small>
+                </button>
+            {/each}
+        </nav>
+
+        <div
+            class="category-heading"
+            id="settings-category-content"
+            tabindex="-1"
+        >
+            <h2>{activeCategoryInfo.label}</h2>
+        </div>
+
+        <div class="form-card" hidden={activeCategory !== "data"}>
             {@render sectionTitle("Backup & restore")}
-            <p class="hint">Music files, folders, and API keys stay local.</p>
+            <p class="privacy-note">Files and keys stay local.</p>
             <div class="backup-grid">
                 <section
                     class="backup-panel"
@@ -992,7 +1100,7 @@
                             />
                             <span
                                 ><strong>Listening history</strong><small
-                                    >Listens, skips, sessions, and control trace</small
+                                    >Playback history</small
                                 ></span
                             >
                         </label>
@@ -1141,8 +1249,7 @@
                             </label>
                         </div>
                         <p class="backup-status">
-                            Playlists with the same name are updated. Unmatched
-                            songs are skipped.
+                            Updates matches; skips missing songs.
                         </p>
                         <button
                             class="btn-pill btn-primary backup-button"
@@ -1154,15 +1261,13 @@
                                 : "Restore selected"}
                         </button>
                     {:else}
-                        <p class="backup-empty">
-                            Choose a file to review its contents.
-                        </p>
+                        <p class="backup-empty">Choose a backup file.</p>
                     {/if}
                 </section>
             </div>
         </div>
 
-        <div class="form-card">
+        <div class="form-card" hidden={activeCategory !== "library"}>
             {@render sectionTitle("Library")}
 
             <div class="field field-inline">
@@ -1175,9 +1280,7 @@
                     <span class="toggle-slider" aria-hidden="true"></span>
                     <span>Scan library on startup</span>
                 </label>
-                {@render hint(
-                    "Automatically rescan monitored folders when the app launches.",
-                )}
+                {@render hint("Rescans folders when Sparkle opens.")}
             </div>
 
             <div class="field">
@@ -1190,9 +1293,7 @@
                     type="text"
                     bind:value={settings.artist_split_regex}
                 />
-                {@render hint(
-                    "Regular expression used to split combined artist names into separate artists, e.g. “feat.” or “;”.",
-                )}
+                {@render hint("Splits combined artist names.")}
             </div>
 
             <div class="field">
@@ -1204,24 +1305,22 @@
                     "artist_split_exceptions",
                     "Add an artist name…",
                 )}
-                {@render hint(
-                    "Artist names that should stay as one artist even if they match the separator rule.",
-                )}
+                {@render hint("Keeps these names together.")}
             </div>
 
             {#if rulesNeedRescan}
                 <div class="field field-inline">
                     <span class="rescan-note">
-                        Artist rules changed — run a Full rescan from the <a
+                        Rescan changed rules in <a
                             class="rescan-link"
-                            href="/folders">Folders page</a
-                        > to apply them.
+                            href="/folders">Folders</a
+                        >.
                     </span>
                 </div>
             {/if}
         </div>
 
-        <div class="form-card">
+        <div class="form-card" hidden={activeCategory !== "playback"}>
             {@render sectionTitle("Sound Check")}
 
             <div class="field field-inline">
@@ -1232,17 +1331,11 @@
                         bind:checked={settings.sound_check_enabled}
                     />
                     <span class="toggle-slider" aria-hidden="true"></span>
-                    <span>Normalize loudness between songs</span>
+                    <span>Normalize song loudness</span>
                 </label>
             </div>
 
-            <p class="hint">
-                Sparkle scans with EBU R128, targets −18 LUFS, and only turns
-                songs down. A fixed gain is chosen before playback with a −1
-                dBTP true-peak ceiling; there is no limiter, compressor, or
-                change to your audio files. Turning this setting on or off takes
-                effect at the next song boundary.
-            </p>
+            <p class="hint">Lowers louder songs automatically.</p>
 
             {#if loudnessStatus}
                 <div class="sound-check-status" aria-live="polite">
@@ -1274,34 +1367,41 @@
                     ></progress>
                     {#if loudnessStatus.failed > 0}
                         <p class="hint">
-                            {loudnessStatus.failed} song{loudnessStatus.failed ===
+                            {loudnessStatus.failed} scan{loudnessStatus.failed ===
                             1
                                 ? ""
-                                : "s"} could not be scanned and will play at its original
-                            level.
+                                : "s"} failed.
                         </p>
                     {/if}
                 </div>
             {/if}
 
-            <div class="field field-inline">
+            <div class="field field-inline sound-check-actions">
+                <button
+                    type="button"
+                    class="btn-pill btn-primary"
+                    onclick={() => runSoundCheckScan("scan")}
+                    disabled={loudnessActionBusy !== null ||
+                        !settings.sound_check_enabled ||
+                        !loudnessStatus?.total ||
+                        !loudnessStatus.pending}
+                >
+                    {loudnessActionBusy === "scan" ? "Starting…" : "Scan"}
+                </button>
                 <button
                     type="button"
                     class="btn-pill btn-secondary"
-                    onclick={rescanSoundCheck}
-                    disabled={loudnessRescanBusy ||
+                    onclick={() => runSoundCheckScan("rescan")}
+                    disabled={loudnessActionBusy !== null ||
                         !settings.sound_check_enabled ||
                         !loudnessStatus?.total}
                 >
-                    {loudnessRescanBusy ? "Starting…" : "Rescan all songs"}
+                    {loudnessActionBusy === "rescan" ? "Starting…" : "Rescan"}
                 </button>
-                {@render hint(
-                    "The current song and next three queued songs always take priority over the rest of the library.",
-                )}
             </div>
         </div>
 
-        <div class="form-card">
+        <div class="form-card" hidden={activeCategory !== "appearance"}>
             {@render sectionTitle("Appearance")}
 
             <div class="field">
@@ -1365,19 +1465,13 @@
                         Reset
                     </button>
                 </div>
-                <p class="hint" id="accent-help">
-                    Your exact color is kept as the seed. Sparkle derives
-                    accessible text, controls, focus rings, and chart colors for
-                    both light and dark mode.
-                </p>
+                <p class="hint" id="accent-help">Accessible in both themes.</p>
                 <p
                     class="accent-error"
                     id="accent-error"
                     role={accentInputInvalid ? "alert" : undefined}
                 >
-                    {accentInputInvalid
-                        ? "Enter a six-digit hex color, such as #fa243c."
-                        : ""}
+                    {accentInputInvalid ? "Use six-digit hex." : ""}
                 </p>
             </div>
 
@@ -1397,9 +1491,7 @@
                         ariaLabel="Filled-control text preference"
                     />
                 </div>
-                {@render hint(
-                    "Automatic preserves the chosen color when possible. Light or Dark keeps that foreground and gently adjusts the rendered fill until it passes contrast.",
-                )}
+                {@render hint("Adjusts filled-control contrast.")}
             </div>
 
             <div class="field">
@@ -1459,9 +1551,7 @@
                     placeholder="Font family, e.g. Inter"
                     spellcheck="false"
                 />
-                {@render hint(
-                    "Font used throughout the app interface. Type any installed font family.",
-                )}
+                {@render hint("Uses an installed font.")}
             </div>
 
             <div class="field">
@@ -1473,7 +1563,7 @@
                     placeholder="Font family, e.g. Monospace"
                     spellcheck="false"
                 />
-                {@render hint("Font used for lyrics in the now-playing view.")}
+                {@render hint("Changes now-playing lyrics.")}
             </div>
 
             <div class="field">
@@ -1493,9 +1583,7 @@
                         ariaLabel="Songs scroll index language"
                     />
                 </div>
-                {@render hint(
-                    "Choose the language your library uses most. Japanese groups titles into あ, か, さ…; automatic follows the system locale.",
-                )}
+                {@render hint("Sets alphabet grouping.")}
             </div>
 
             <div class="field field-inline">
@@ -1508,18 +1596,12 @@
                     <span class="toggle-slider" aria-hidden="true"></span>
                     <span>Reduce motion</span>
                 </label>
-                {@render hint("Turn off page and card animations.")}
+                {@render hint("Disables interface animations.")}
             </div>
         </div>
 
-        <div class="form-card">
+        <div class="form-card" hidden={activeCategory !== "library"}>
             {@render sectionTitle("Online sources")}
-            <p class="hint">
-                Providers are tried in order for each category. "Custom" is your
-                own content — a bio or image you set on an artist page, artwork
-                you set on an album page, or lyrics files you pick per song. Add
-                Wikipedia editions per language below.
-            </p>
 
             {#each SOURCE_CATEGORIES as category (category.key)}
                 {@render sortableSourceList(category)}
@@ -1535,14 +1617,12 @@
                     spellcheck="false"
                     autocomplete="off"
                 />
-                {@render hint(
-                    "Used by the Brave artist image source, which searches the web for artist photos. Get a free key at brave.com/search/api. Leave empty to disable the Brave source.",
-                )}
+                {@render hint("Enables Brave image search.")}
             </div>
         </div>
 
-        <div class="form-card">
-            {@render sectionTitle("Discord Rich Presence")}
+        <div class="form-card" hidden={activeCategory !== "sharing"}>
+            {@render sectionTitle("Discord")}
 
             <div class="field field-inline">
                 <label class="toggle">
@@ -1552,11 +1632,8 @@
                         bind:checked={settings.discord_enabled}
                     />
                     <span class="toggle-slider" aria-hidden="true"></span>
-                    <span>Show what I’m listening to on Discord</span>
+                    <span>Share playback on Discord</span>
                 </label>
-                {@render hint(
-                    "Shows the current track and progress while it is playing, then clears it when paused or stopped.",
-                )}
             </div>
 
             {#if settings.discord_enabled}
@@ -1573,9 +1650,6 @@
                         spellcheck="false"
                         autocomplete="off"
                     />
-                    {@render hint(
-                        "Enter the application ID registered for Sparkle in the Discord Developer Portal.",
-                    )}
                 </div>
 
                 <div class="field">
@@ -1595,9 +1669,7 @@
                             ariaLabel="Discord artwork storage"
                         />
                     </div>
-                    {@render hint(
-                        "Choose exactly where new Discord artwork uploads go. Disabled never uploads; S3 requires a working endpoint and bucket.",
-                    )}
+                    {@render hint("Hosts Discord artwork.")}
                 </div>
 
                 {#if settings.discord_artwork_store === "catbox"}
@@ -1613,22 +1685,14 @@
                             spellcheck="false"
                             autocomplete="off"
                         />
-                        {@render hint(
-                            "Optional legacy Catbox user hash. Sparkle reuses cached artwork URLs and only uploads on cache misses.",
-                        )}
+                        {@render hint("Optional Catbox account hash.")}
                     </div>
                 {/if}
 
                 {#if settings.discord_artwork_store === "s3"}
                     <div class="s3-section">
                         <div>
-                            <h3>S3-compatible artwork storage</h3>
-                            <p class="hint">
-                                Configure an S3-compatible bucket, MinIO, or CDN
-                                so artwork uploads are shared by content hash
-                                instead of going through Catbox. Endpoint and
-                                bucket are required to enable it.
-                            </p>
+                            <h3>S3 artwork</h3>
                         </div>
 
                         <div class="field">
@@ -1646,9 +1710,7 @@
                                 spellcheck="false"
                                 autocomplete="off"
                             />
-                            {@render hint(
-                                "The S3-compatible API endpoint, for example http://localhost:9000 for MinIO.",
-                            )}
+                            {@render hint("S3-compatible API URL.")}
                         </div>
 
                         <div class="field">
@@ -1681,9 +1743,7 @@
                                 spellcheck="false"
                                 autocomplete="off"
                             />
-                            {@render hint(
-                                "The URL Discord can reach. Leave empty to use the endpoint and bucket path.",
-                            )}
+                            {@render hint("Public Discord artwork URL.")}
                         </div>
 
                         <div class="field">
@@ -1732,9 +1792,7 @@
                                 spellcheck="false"
                                 autocomplete="new-password"
                             />
-                            {@render hint(
-                                "Optional temporary-session credential. Access and secret keys must be supplied with it.",
-                            )}
+                            {@render hint("Optional temporary credential.")}
                         </div>
 
                         <div class="field">
@@ -1765,16 +1823,10 @@
                                 spellcheck="false"
                                 autocomplete="off"
                             />
-                            {@render hint(
-                                "Defaults to sparkle/. Files are stored as &lt;hash&gt;.jpg under this prefix.",
-                            )}
+                            {@render hint("Defaults to sparkle/.")}
                         </div>
 
-                        <p class="hint">
-                            Credentials are stored in Sparkle’s local settings
-                            and excluded from backups. Endpoint and bucket are
-                            required when S3 is selected.
-                        </p>
+                        <p class="hint">Credentials stay local.</p>
                     </div>
                 {/if}
 
@@ -1790,13 +1842,13 @@
                             {artworkStorageTestBusy
                                 ? "Testing…"
                                 : settings.discord_artwork_store === "s3"
-                                  ? "Test S3 upload & cleanup"
-                                  : "Test Catbox access & upload"}
+                                  ? "Test S3"
+                                  : "Test Catbox"}
                         </button>
                         {@render hint(
                             settings.discord_artwork_store === "s3"
-                                ? "Uploads and verifies a small test image, then deletes it automatically."
-                                : "Uploads a small test image to Catbox. The test image remains available.",
+                                ? "Uploads, verifies, then deletes."
+                                : "Uploads a test image.",
                         )}
                         {#if artworkStorageTestUrl}
                             <a
@@ -1811,12 +1863,8 @@
             {/if}
         </div>
 
-        <div class="form-card">
+        <div class="form-card" hidden={activeCategory !== "data"}>
             {@render sectionTitle("Cache")}
-            <p class="hint">
-                Clear cached online metadata to force a fresh fetch the next
-                time you view lyrics, artist info, or artwork.
-            </p>
             <div class="cache-list">
                 {#each [{ name: "Lyrics", clear: clearLyricsCache }, { name: "Artist info", clear: clearArtistInfoCache }, { name: "Images", clear: clearImagesCache }] as entry (entry.name)}
                     {@const stat = statFor(entry.name)}
@@ -1852,7 +1900,7 @@
                         </span>
                     </div>
                     <button
-                        class="btn-pill btn-primary"
+                        class="btn-pill btn-secondary"
                         disabled={clearing === "All"}
                         onclick={() => clearCache("All", clearAllCaches)}
                     >
@@ -1862,7 +1910,7 @@
             </div>
         </div>
 
-        <div class="form-card">
+        <div class="form-card" hidden={activeCategory !== "advanced"}>
             {@render sectionTitle("Keyboard shortcuts")}
             <ul class="shortcut-list">
                 {#each SHORTCUTS as shortcut (shortcut.keys)}
@@ -1874,8 +1922,8 @@
             </ul>
         </div>
 
-        <div class="form-card">
-            {@render sectionTitle("Debug info")}
+        <div class="form-card" hidden={activeCategory !== "advanced"}>
+            {@render sectionTitle("Diagnostics")}
             {#if status}
                 <div class="debug-list">
                     <div class="debug-row">
@@ -1972,19 +2020,12 @@
                     </div>
                     <div class="debug-row">
                         <span class="debug-label">Log rotation</span>
-                        <span class="debug-value"
-                            >2 MiB per file · 3 files kept</span
-                        >
+                        <span class="debug-value">2 MiB · 3 files</span>
                     </div>
                     {#if settings}
                         <div class="debug-row debug-row-toggle">
                             <div class="debug-toggle-copy">
                                 <span class="debug-label">Verbose logging</span>
-                                <span class="debug-description">
-                                    Include Sparkle debug and trace events.
-                                    Playback logs use local IDs, never music
-                                    names or paths.
-                                </span>
                             </div>
                             <label class="toggle">
                                 <input
@@ -2004,81 +2045,155 @@
                             </label>
                         </div>
                     {/if}
-                    <div class="debug-row debug-row-toggle">
-                        <div class="debug-toggle-copy">
-                            <span class="debug-label">Third-party licenses</span
-                            >
-                            <span class="debug-description">
-                                Sparkle includes adapted open-source components.
-                            </span>
-                        </div>
-                    </div>
-                    <div class="third-party-notices">
-                        <p class="hint">
-                            Sparkle's own code is MIT-licensed. Adapted upstream
-                            projects:
-                        </p>
-                        <ul>
-                            <li>
-                                <a
-                                    href="https://github.com/cqjjjzr/MusicBee-NeteaseLyrics"
-                                    target="_blank"
-                                    rel="noreferrer">MusicBee-NeteaseLyrics</a
-                                > — Apache-2.0
-                            </li>
-                            <li>
-                                <a
-                                    href="https://github.com/mslxl/MusicBee-QQLyrics"
-                                    target="_blank"
-                                    rel="noreferrer">MusicBee-QQLyrics</a
-                                > — Apache-2.0
-                            </li>
-                            <li>
-                                <a
-                                    href="https://github.com/real-zony/ZonyLrcToolsX"
-                                    target="_blank"
-                                    rel="noreferrer">ZonyLrcToolsX</a
-                                > — MIT
-                            </li>
-                            <li>
-                                <a
-                                    href="https://github.com/noriokun4649/mb_KashiNaviLyricsPlugin"
-                                    target="_blank"
-                                    rel="noreferrer">mb_KashiNaviLyricsPlugin</a
-                                > — MIT
-                            </li>
-                            <li>
-                                <a
-                                    href="https://github.com/htsign/MusicBeePluginTemplate"
-                                    target="_blank"
-                                    rel="noreferrer">MusicBeePluginTemplate</a
-                                > — MIT
-                            </li>
-                            <li>
-                                <a
-                                    href="https://github.com/sll552/DiscordBee"
-                                    target="_blank"
-                                    rel="noreferrer">DiscordBee</a
-                                > — Apache-2.0
-                            </li>
-                        </ul>
-                    </div>
                 </div>
             {:else}
-                <p class="hint">Debug info unavailable.</p>
+                <p class="hint">Unavailable</p>
             {/if}
         </div>
+
+        <div class="form-card" hidden={activeCategory !== "advanced"}>
+            {@render sectionTitle("Licenses")}
+            <ul class="license-list">
+                {#each LICENSES as item (item.name)}
+                    <li class="license-row">
+                        {#if item.href}
+                            <a
+                                href={item.href}
+                                target="_blank"
+                                rel="noreferrer"
+                            >
+                                {item.name}
+                            </a>
+                        {:else}
+                            <span>{item.name}</span>
+                        {/if}
+                        <span class="license-type">{item.license}</span>
+                    </li>
+                {/each}
+            </ul>
+        </div>
     {:else}
-        <Loading />
+        <div class="settings-loading">
+            <Loading />
+        </div>
     {/if}
 </div>
 
 <style>
     .settings-page {
+        display: grid;
+        grid-template-columns: 13rem minmax(0, 1fr);
+        align-items: start;
+        gap: var(--spacing-lg) var(--spacing-xl);
+        width: 100%;
+        max-width: 1120px;
+        margin: 0 auto;
+    }
+
+    .header {
+        grid-column: 1 / -1;
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: var(--spacing-lg);
+    }
+
+    .page-heading {
         display: flex;
         flex-direction: column;
-        gap: var(--spacing-xl);
-        max-width: 720px;
+        gap: var(--spacing-xs);
+    }
+
+    .settings-index {
+        grid-column: 1;
+        grid-row: 2 / span 20;
+        position: sticky;
+        top: 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xs);
+        min-width: 0;
+        padding: var(--spacing-xs);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        background: color-mix(in srgb, var(--color-surface) 82%, transparent);
+        backdrop-filter: blur(18px) saturate(1.4);
+        -webkit-backdrop-filter: blur(18px) saturate(1.4);
+    }
+
+    .settings-index button {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.1rem;
+        width: 100%;
+        min-width: 0;
+        padding: 0.65rem var(--spacing-md);
+        border-radius: var(--radius);
+        color: var(--color-text-secondary);
+        text-align: left;
+        transition:
+            background-color var(--transition-fast),
+            color var(--transition-fast);
+    }
+
+    .settings-index button::before {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 0.25rem;
+        width: 3px;
+        height: 1.25rem;
+        border-radius: var(--radius-full);
+        background: transparent;
+        transform: translateY(-50%);
+    }
+
+    .settings-index button:hover {
+        background: color-mix(in srgb, var(--color-text) 7%, transparent);
+        color: var(--color-text);
+    }
+
+    .settings-index button.active {
+        background: var(--color-surface-elevated);
+        color: var(--color-text);
+    }
+
+    .settings-index button.active::before {
+        background: var(--color-accent-graphic);
+    }
+
+    .settings-index button span {
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-semibold);
+    }
+
+    .settings-index button small {
+        max-width: 100%;
+        overflow: hidden;
+        color: var(--color-text-muted);
+        font-size: var(--font-size-xs);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .category-heading {
+        grid-column: 2;
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xs);
+        padding: var(--spacing-xs) var(--spacing-xs) var(--spacing-sm);
+    }
+
+    .category-heading h2 {
+        font-size: var(--font-size-2xl);
+        line-height: var(--line-height-tight);
+        letter-spacing: -0.02em;
+    }
+
+    .settings-loading {
+        grid-column: 1 / -1;
     }
 
     .backup-grid {
@@ -2219,25 +2334,48 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: var(--spacing-md);
-    }
-
     .form-card {
-        background-color: var(--color-surface);
-        border-radius: var(--radius-lg);
-        padding: var(--spacing-xl);
+        grid-column: 2;
         display: flex;
         flex-direction: column;
         gap: var(--spacing-lg);
+        min-width: 0;
+        padding: var(--spacing-xl);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-xl);
+        background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+        box-shadow: var(--shadow-sm);
     }
 
-    .form-card .section-title {
+    .form-card[hidden] {
+        display: none;
+    }
+
+    .section-heading {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xs);
+        padding-bottom: var(--spacing-md);
+        border-bottom: 1px solid var(--color-border);
+    }
+
+    .section-title {
         font-size: var(--font-size-lg);
-        margin-bottom: var(--spacing-xs);
+        letter-spacing: -0.01em;
+    }
+
+    .privacy-note {
+        margin: 0;
+        padding: var(--spacing-sm) var(--spacing-md);
+        border-radius: var(--radius);
+        background: color-mix(
+            in srgb,
+            var(--color-accent-subtle) 52%,
+            transparent
+        );
+        color: var(--color-text-secondary);
+        font-size: var(--font-size-sm);
+        line-height: var(--line-height);
     }
 
     .field {
@@ -2250,8 +2388,10 @@
         display: flex;
         flex-direction: column;
         gap: var(--spacing-lg);
-        padding-top: var(--spacing-lg);
-        border-top: 1px solid var(--color-border);
+        padding: var(--spacing-lg);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        background: var(--color-surface-elevated);
     }
 
     .s3-section h3 {
@@ -2437,9 +2577,15 @@
     }
 
     .save-indicator {
-        font-size: var(--font-size-sm);
+        min-height: 1.75rem;
+        padding: var(--spacing-xs) var(--spacing-sm);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-full);
+        background: var(--color-surface);
         color: var(--color-text-muted);
-        min-height: 1.25rem;
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-medium);
+        white-space: nowrap;
     }
 
     .rescan-note {
@@ -2648,9 +2794,18 @@
         flex-direction: column;
         gap: var(--spacing-sm);
         padding: var(--spacing-md);
-        border: 1px solid var(--color-border);
+        border: 1px solid
+            color-mix(
+                in srgb,
+                var(--color-accent-graphic) 24%,
+                var(--color-border)
+            );
         border-radius: var(--radius);
-        background: var(--color-surface-elevated);
+        background: color-mix(
+            in srgb,
+            var(--color-accent-subtle) 42%,
+            var(--color-surface-elevated)
+        );
     }
 
     .sound-check-summary {
@@ -2713,7 +2868,7 @@
     .shortcut-list {
         display: flex;
         flex-direction: column;
-        gap: var(--spacing-sm);
+        gap: var(--spacing-xs);
     }
 
     .shortcut-row {
@@ -2721,6 +2876,10 @@
         align-items: center;
         justify-content: space-between;
         gap: var(--spacing-md);
+        padding: var(--spacing-sm) var(--spacing-md);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius);
+        background: var(--color-surface-elevated);
     }
 
     .shortcut-action {
@@ -2744,7 +2903,7 @@
     .debug-list {
         display: flex;
         flex-direction: column;
-        gap: var(--spacing-sm);
+        gap: var(--spacing-xs);
     }
 
     .debug-row {
@@ -2752,6 +2911,11 @@
         align-items: baseline;
         justify-content: space-between;
         gap: var(--spacing-md);
+        min-width: 0;
+        padding: var(--spacing-sm) var(--spacing-md);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius);
+        background: var(--color-surface-elevated);
         font-size: var(--font-size-sm);
     }
 
@@ -2779,12 +2943,6 @@
         min-width: 0;
     }
 
-    .debug-description {
-        color: var(--color-text-muted);
-        font-size: var(--font-size-xs);
-        line-height: var(--line-height);
-    }
-
     .debug-open {
         display: flex;
         align-items: center;
@@ -2807,6 +2965,47 @@
     .debug-open svg {
         width: 0.875rem;
         height: 0.875rem;
+    }
+
+    .license-list {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xs);
+    }
+
+    .license-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--spacing-md);
+        min-width: 0;
+        padding: var(--spacing-sm) var(--spacing-md);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius);
+        background: var(--color-surface-elevated);
+        font-size: var(--font-size-sm);
+    }
+
+    .license-row > :first-child {
+        overflow: hidden;
+        color: var(--color-text);
+        font-weight: var(--font-weight-medium);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .license-row a:hover {
+        text-decoration: underline;
+    }
+
+    .license-type {
+        flex-shrink: 0;
+        padding: 0.15rem var(--spacing-sm);
+        border-radius: var(--radius-full);
+        background: var(--color-surface-raised);
+        color: var(--color-text-muted);
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-semibold);
     }
 
     .field-inline {
@@ -2836,9 +3035,10 @@
 
     .toggle-slider {
         position: relative;
-        width: 2.5rem;
-        height: 1.375rem;
-        background-color: var(--color-surface-elevated);
+        width: 2.25rem;
+        height: 1.25rem;
+        flex-shrink: 0;
+        background-color: var(--color-surface-raised);
         border: 1px solid var(--color-border);
         border-radius: var(--radius-full);
         transition:
@@ -2849,12 +3049,13 @@
     .toggle-slider::after {
         content: "";
         position: absolute;
-        top: 0.125rem;
+        top: 50%;
         left: 0.125rem;
-        width: 1rem;
-        height: 1rem;
+        width: 0.875rem;
+        height: 0.875rem;
         background-color: var(--color-text-muted);
         border-radius: 50%;
+        transform: translateY(-50%);
         transition:
             transform var(--transition-fast),
             background-color var(--transition-fast);
@@ -2866,12 +3067,80 @@
     }
 
     .toggle input:checked + .toggle-slider::after {
-        transform: translateX(1.125rem);
+        transform: translate(1rem, -50%);
         background-color: var(--color-on-accent-fill);
     }
 
-    .toggle input:focus + .toggle-slider {
-        box-shadow: 0 0 0 2px var(--color-accent-focus);
+    .toggle input:focus-visible + .toggle-slider {
+        outline: 2px solid var(--color-accent-focus);
+        outline-offset: 2px;
+    }
+
+    @media (max-width: 900px) {
+        .settings-page {
+            grid-template-columns: minmax(0, 1fr);
+        }
+
+        .settings-index {
+            grid-column: 1;
+            grid-row: auto;
+            position: static;
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .category-heading,
+        .form-card {
+            grid-column: 1;
+        }
+    }
+
+    @media (max-width: 640px) {
+        .header {
+            align-items: flex-start;
+        }
+
+        .settings-index {
+            display: flex;
+            flex-direction: row;
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+
+        .settings-index::-webkit-scrollbar {
+            display: none;
+        }
+
+        .settings-index button {
+            width: auto;
+            min-width: max-content;
+            padding: var(--spacing-sm) var(--spacing-md);
+        }
+
+        .settings-index button::before {
+            top: auto;
+            right: var(--spacing-sm);
+            bottom: 0.2rem;
+            left: var(--spacing-sm);
+            width: auto;
+            height: 2px;
+            transform: none;
+        }
+
+        .settings-index button small {
+            display: none;
+        }
+
+        .sound-check-summary,
+        .cache-row,
+        .debug-row {
+            align-items: flex-start;
+            flex-direction: column;
+        }
+
+        .debug-value {
+            text-align: left;
+        }
     }
 
     @media (max-width: 480px) {
@@ -2884,6 +3153,11 @@
         }
 
         .form-card {
+            padding: var(--spacing-md);
+        }
+
+        .backup-panel,
+        .s3-section {
             padding: var(--spacing-md);
         }
     }
