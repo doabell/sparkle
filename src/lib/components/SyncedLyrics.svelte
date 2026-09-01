@@ -1,4 +1,10 @@
 <script lang="ts">
+    import {
+        activeLineIndex,
+        anticipatedLineIndex,
+        parseLrc,
+    } from "$lib/utils/lrc";
+    import { onMount } from "svelte";
     import type { Action } from "svelte/action";
 
     interface Props {
@@ -17,59 +23,63 @@
         onSeek,
     }: Props = $props();
 
-    interface Line {
-        timeMs: number;
-        text: string;
-    }
-
-    function parseLrc(text: string): Line[] {
-        const lines: Line[] = [];
-        for (const raw of text.split(/\r?\n/)) {
-            const trimmed = raw.trim();
-            if (!trimmed) continue;
-            const tagRegex = /\[(\d+):(\d+(?:\.\d+)?)\]/g;
-            const times: number[] = [];
-            let match: RegExpExecArray | null;
-            while ((match = tagRegex.exec(trimmed)) !== null) {
-                const minutes = parseInt(match[1], 10);
-                const seconds = parseFloat(match[2]);
-                times.push(Math.round((minutes * 60 + seconds) * 1000));
-            }
-            const textOnly = trimmed.replace(tagRegex, "").trim();
-            if (times.length === 0 || textOnly.length === 0) continue;
-            for (const timeMs of times) {
-                lines.push({ timeMs, text: textOnly });
-            }
-        }
-        return lines.sort((a, b) => a.timeMs - b.timeMs);
-    }
-
     let parsedLines = $derived(parseLrc(syncedText));
     let hasTimestamps = $derived(parsedLines.length > 0);
+    // Stay conservative until the client preference is known. This prevents a
+    // reduced-motion user from seeing the upcoming line change early on mount.
+    let reducedMotion = $state(true);
+    let hasCenteredLine = false;
 
     let activeIndex = $derived.by(() => {
         if (!hasTimestamps) return -1;
         const adjusted = currentTimeMs - offsetMs;
-        let index = -1;
-        for (let i = 0; i < parsedLines.length; i++) {
-            if (parsedLines[i].timeMs <= adjusted) {
-                index = i;
-            } else {
-                break;
-            }
-        }
-        return index;
+        return reducedMotion
+            ? activeLineIndex(parsedLines, adjusted)
+            : anticipatedLineIndex(parsedLines, adjusted);
     });
 
-    const scrollIntoCenter: Action<HTMLElement, { active: boolean }> = (
-        node,
-        params,
-    ) => {
+    $effect.pre(() => {
+        syncedText;
+        hasCenteredLine = false;
+    });
+
+    onMount(() => {
+        const mediaQuery = window.matchMedia(
+            "(prefers-reduced-motion: reduce)",
+        );
+        const root = document.documentElement;
+        const updateReducedMotion = () => {
+            reducedMotion =
+                mediaQuery.matches || root.dataset.motion !== "full";
+        };
+        const motionSettingObserver = new MutationObserver(updateReducedMotion);
+
+        updateReducedMotion();
+        mediaQuery.addEventListener("change", updateReducedMotion);
+        motionSettingObserver.observe(root, {
+            attributes: true,
+            attributeFilter: ["data-motion"],
+        });
+
+        return () => {
+            mediaQuery.removeEventListener("change", updateReducedMotion);
+            motionSettingObserver.disconnect();
+        };
+    });
+
+    const scrollIntoCenter: Action<
+        HTMLElement,
+        { active: boolean; animate: boolean }
+    > = (node, params) => {
         let wasActive = false;
 
         function update(p: typeof params) {
             if (p.active && !wasActive) {
-                node.scrollIntoView({ behavior: "auto", block: "center" });
+                node.scrollIntoView({
+                    behavior: p.animate && hasCenteredLine ? "smooth" : "auto",
+                    block: "center",
+                });
+                hasCenteredLine = true;
             }
             wasActive = p.active;
         }
@@ -91,7 +101,10 @@
                     type="button"
                     class="lyrics-line"
                     class:active={index === activeIndex}
-                    use:scrollIntoCenter={{ active: index === activeIndex }}
+                    use:scrollIntoCenter={{
+                        active: index === activeIndex,
+                        animate: !reducedMotion,
+                    }}
                     onclick={() => handleLineClick(line.timeMs)}
                     disabled={!onSeek}
                 >
@@ -142,7 +155,12 @@
        full-width punctuation (、；。), instead of refusing to break near
        them (kinsoku prohibitions leave ugly gaps or overflow). */
         line-break: anywhere;
-        transition: none;
+        transition:
+            color var(--transition-base),
+            transform var(--transition-base),
+            font-size var(--transition-base),
+            font-weight var(--transition-base),
+            text-shadow var(--transition-base);
         cursor: pointer;
     }
 
@@ -171,5 +189,15 @@
     .empty {
         color: var(--color-text-muted);
         text-align: center;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .lyrics-line {
+            transition: none;
+        }
+    }
+
+    :global(:root[data-motion="reduced"]) .lyrics-line {
+        transition: none;
     }
 </style>
