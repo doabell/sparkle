@@ -36,7 +36,9 @@
     // first-class here, not buried in the now-playing page.
     let lyricLines = $state<LrcLine[]>([]);
     let lyricTrackId = $state<number | null>(null);
+    let hasLoadedSyncedLyrics = $state<boolean | null>(null);
     let lyricRequest = 0;
+    let displayedTrackId: number | null = null;
 
     async function updateLyrics(trackId: number | null | undefined) {
         if (!trackId || trackId === lyricTrackId) return;
@@ -47,11 +49,31 @@
             const lyrics = await getLyrics(trackId);
             if (request !== lyricRequest || lyricTrackId !== trackId) return;
             lyricLines = lyrics.synced_text ? parseLrc(lyrics.synced_text) : [];
+            hasLoadedSyncedLyrics = lyricLines.length > 0;
         } catch {
             if (request !== lyricRequest || lyricTrackId !== trackId) return;
             lyricLines = [];
+            hasLoadedSyncedLyrics = false;
         }
     }
+
+    $effect.pre(() => {
+        const trackId = $playback.current_track?.id ?? null;
+        if (trackId === displayedTrackId) return;
+
+        displayedTrackId = trackId;
+        art = $playback.album_art;
+        lastAlbumId = null;
+        lyricRequest += 1;
+        lyricTrackId = null;
+        lyricLines = [];
+        hasLoadedSyncedLyrics = null;
+    });
+
+    let showLyricRow = $derived(
+        !!$playback.current_track &&
+            (hasLoadedSyncedLyrics ?? !!$playback.first_lyric_line),
+    );
 
     let currentLyricLine = $derived.by(() => {
         if (lyricLines.length === 0) return "";
@@ -380,13 +402,16 @@
                         >
                     {/if}
                 </span>
-                {#if currentLyricLine}
+                {#if showLyricRow}
                     <button
                         class="lyric-line ellipsis"
                         onclick={() => smartGo("/now-playing")}
                         title="Open lyrics"
                     >
-                        {currentLyricLine}
+                        {currentLyricLine ||
+                            lyricLines[0]?.text ||
+                            $playback.first_lyric_line ||
+                            "\u00a0"}
                     </button>
                 {/if}
             {:else}

@@ -4,6 +4,7 @@ import { test } from "bun:test";
 import {
     activeLineIndex,
     anticipatedLineIndex,
+    normalizeLyricSpacing,
     type LrcLine,
 } from "../src/lib/utils/lrc.ts";
 
@@ -34,4 +35,11 @@ test("uses the lyric state at the end of the transition window", () => {
 
     assert.equal(anticipatedLineIndex(closeLines, 9_899), 0);
     assert.equal(anticipatedLineIndex(closeLines, 9_900), 1);
+});
+
+test("normalizes lyric spaces for balanced wrapping", () => {
+    assert.equal(
+        normalizeLyricSpacing("  first　 second   third　"),
+        "first second third",
+    );
 });

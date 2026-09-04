@@ -310,7 +310,7 @@ fn save_json<T: Serialize>(conn: &Connection, key: &str, value: &T) -> Result<()
     Ok(())
 }
 
-pub fn load_settings(conn: &Connection) -> Result<Settings, String> {
+pub fn load_lyrics_sources(conn: &Connection) -> Result<Vec<String>, String> {
     let mut lyrics_sources: Vec<String> =
         load_json(conn, LYRICS_SOURCES_KEY, default_lyrics_sources())?;
     for source in &mut lyrics_sources {
@@ -319,6 +319,16 @@ pub fn load_settings(conn: &Connection) -> Result<Settings, String> {
         }
     }
     lyrics_sources.dedup();
+    Ok(lyrics_sources)
+}
+
+pub fn load_album_art_sources(conn: &Connection) -> Result<Vec<String>, String> {
+    load_json(conn, ALBUM_ART_SOURCES_KEY, default_album_art_sources())
+}
+
+pub fn load_settings(conn: &Connection) -> Result<Settings, String> {
+    let lyrics_sources = load_lyrics_sources(conn)?;
+    let album_art_sources = load_album_art_sources(conn)?;
     let stored_accent_color: String = load_json(conn, ACCENT_COLOR_KEY, default_accent_color())?;
     let accent_color = normalize_accent_color(&stored_accent_color);
     if accent_color != stored_accent_color {
@@ -404,7 +414,7 @@ pub fn load_settings(conn: &Connection) -> Result<Settings, String> {
             ARTIST_IMAGE_SOURCES_KEY,
             default_artist_image_sources(),
         )?,
-        album_art_sources: load_json(conn, ALBUM_ART_SOURCES_KEY, default_album_art_sources())?,
+        album_art_sources,
     })
 }
 

@@ -78,6 +78,14 @@ pub fn fetch_lyrics_from_sources_with_custom(
     })
 }
 
+pub fn no_lyrics() -> Lyrics {
+    Lyrics {
+        source: "none".to_string(),
+        synced_text: None,
+        plain_text: None,
+    }
+}
+
 fn fetch_from_sources<T, F>(sources: &[String], mut fetch: F) -> Result<Option<T>, String>
 where
     F: FnMut(&str) -> Result<Option<T>, String>,
@@ -103,6 +111,7 @@ fn fetch_lyrics_from_source(
     metadata: &TrackMetadata,
 ) -> Result<Option<Lyrics>, String> {
     match source {
+        "none" => Ok(Some(no_lyrics())),
         "embedded" => embedded::fetch(metadata),
         "lrc" => lrc::fetch(metadata),
         "lrclib" => lrclib::fetch(metadata),
@@ -159,6 +168,25 @@ pub fn strip_lrc_timestamps(synced: &str) -> String {
         .filter(|l| !l.is_empty())
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+pub fn first_synced_line(text: &str) -> Option<String> {
+    let timestamp = Regex::new(r"\[(\d+):(\d+(?:\.\d+)?)\]").unwrap();
+    text.lines()
+        .filter_map(|line| {
+            let first_time_ms = timestamp
+                .captures_iter(line)
+                .filter_map(|captures| {
+                    let minutes = captures.get(1)?.as_str().parse::<f64>().ok()?;
+                    let seconds = captures.get(2)?.as_str().parse::<f64>().ok()?;
+                    Some(((minutes * 60.0 + seconds) * 1000.0).round() as i64)
+                })
+                .min()?;
+            let lyric = timestamp.replace_all(line.trim(), "").trim().to_string();
+            (!lyric.is_empty()).then_some((first_time_ms, lyric))
+        })
+        .min_by_key(|(time_ms, _)| *time_ms)
+        .map(|(_, lyric)| lyric)
 }
 
 pub fn inject_translation(original: &str, translation: &str) -> String {
@@ -249,5 +277,38 @@ mod tests {
         .unwrap();
 
         assert_eq!(result.unwrap().source, "custom");
+    }
+
+    #[test]
+    fn no_lyrics_provider_returns_an_explicit_empty_result() {
+        let result = fetch_lyrics_from_sources_with_custom(
+            &["none".to_string()],
+            &TrackMetadata::default(),
+            None,
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(result.source, "none");
+        assert!(result.synced_text.is_none());
+        assert!(result.plain_text.is_none());
+    }
+
+    #[test]
+    fn first_synced_line_requires_a_timestamp_and_text() {
+        assert_eq!(
+            first_synced_line("[00:01.25]hello").as_deref(),
+            Some("hello")
+        );
+        assert!(first_synced_line("plain lyrics").is_none());
+        assert!(first_synced_line("[00:01.25]").is_none());
+    }
+
+    #[test]
+    fn first_synced_line_uses_timestamp_order() {
+        assert_eq!(
+            first_synced_line("[00:10.00]second\n[00:02.50]first").as_deref(),
+            Some("first")
+        );
     }
 }

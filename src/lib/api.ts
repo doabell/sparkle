@@ -87,6 +87,8 @@ export interface PlaybackContext {
 export interface PlaybackState {
     is_playing: boolean;
     current_track: Track | null;
+    first_lyric_line: string | null;
+    album_art: CachedImage | null;
     position_ms: number;
     duration_ms: number;
     volume: number;

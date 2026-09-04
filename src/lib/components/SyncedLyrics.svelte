@@ -2,6 +2,7 @@
     import {
         activeLineIndex,
         anticipatedLineIndex,
+        normalizeLyricSpacing,
         parseLrc,
     } from "$lib/utils/lrc";
     import { onMount } from "svelte";
@@ -108,14 +109,14 @@
                     onclick={() => handleLineClick(line.timeMs)}
                     disabled={!onSeek}
                 >
-                    {line.text}
+                    {normalizeLyricSpacing(line.text)}
                 </button>
             {/each}
         </div>
     {:else if plainText}
         <div class="lines plain">
             {#each plainText.split(/\r?\n/) as line, index (index)}
-                <p class="lyrics-line plain">{line}</p>
+                <p class="lyrics-line plain">{normalizeLyricSpacing(line)}</p>
             {/each}
         </div>
     {:else}
@@ -148,17 +149,16 @@
         border: none;
         padding: var(--spacing-sm) 0;
         color: var(--color-text-secondary);
-        font-size: var(--font-size-xl);
+        font-size: var(--font-size-2xl);
         line-height: 1.5;
         text-align: center;
-        /* East Asian text: allow a soft wrap around every character, including
-       full-width punctuation (、；。), instead of refusing to break near
-       them (kinsoku prohibitions leave ugly gaps or overflow). */
-        line-break: anywhere;
+        line-break: auto;
+        overflow-wrap: anywhere;
+        text-wrap: balance;
+        transform: scale(0.833333);
         transition:
             color var(--transition-base),
             transform var(--transition-base),
-            font-size var(--transition-base),
             font-weight var(--transition-base),
             text-shadow var(--transition-base);
         cursor: pointer;
@@ -171,7 +171,6 @@
     .lyrics-line.active {
         color: var(--color-text);
         font-weight: var(--font-weight-bold);
-        font-size: var(--font-size-2xl);
         transform: scale(1.05);
         text-shadow: 0 2px 16px rgba(0, 0, 0, 0.6);
     }
@@ -184,6 +183,7 @@
         text-align: left;
         cursor: default;
         font-size: var(--font-size-lg);
+        transform: none;
     }
 
     .empty {
