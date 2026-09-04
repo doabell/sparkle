@@ -84,6 +84,7 @@ pub struct PlaybackState {
     pub is_playing: bool,
     pub current_track: Option<Track>,
     pub first_lyric_line: Option<String>,
+    pub album_art: Option<CachedImage>,
     pub position_ms: i64,
     pub duration_ms: i64,
     pub volume: f64,
@@ -149,7 +150,7 @@ pub struct ImageData {
 /// A cached image that can be loaded directly by the webview's asset
 /// protocol. Keeping image bytes out of command responses avoids duplicating
 /// them across Rust, IPC, JavaScript arrays, and base64 data URLs.
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct CachedImage {
     pub source: String,
     pub file_path: Option<String>,

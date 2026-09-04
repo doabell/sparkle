@@ -62,6 +62,8 @@
         if (trackId === displayedTrackId) return;
 
         displayedTrackId = trackId;
+        art = $playback.album_art;
+        lastAlbumId = null;
         lyricRequest += 1;
         lyricTrackId = null;
         lyricLines = [];

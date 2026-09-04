@@ -33,6 +33,7 @@ const initialState: PlaybackState = {
     is_playing: false,
     current_track: null,
     first_lyric_line: null,
+    album_art: null,
     position_ms: 0,
     duration_ms: 0,
     volume: 0.8,
@@ -60,6 +61,7 @@ function createPlaybackStore() {
                 is_playing: boolean;
                 current_track: Track | null;
                 first_lyric_line: string | null;
+                album_art: ApiPlaybackState["album_art"];
                 position_ms: number;
                 duration_ms: number;
                 shuffle: boolean;
@@ -70,6 +72,7 @@ function createPlaybackStore() {
                     is_playing: event.payload.is_playing,
                     current_track: event.payload.current_track,
                     first_lyric_line: event.payload.first_lyric_line,
+                    album_art: event.payload.album_art,
                     position_ms: event.payload.position_ms,
                     duration_ms: event.payload.duration_ms,
                     shuffle: event.payload.shuffle,
