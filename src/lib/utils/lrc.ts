@@ -5,6 +5,10 @@ export interface LrcLine {
 
 export const LYRIC_TRANSITION_DURATION_MS = 200;
 
+export function normalizeLyricSpacing(text: string): string {
+    return text.replace(/[ \u3000]+/g, " ").trim();
+}
+
 export function parseLrc(text: string): LrcLine[] {
     const lines: LrcLine[] = [];
     for (const raw of text.split(/\r?\n/)) {
