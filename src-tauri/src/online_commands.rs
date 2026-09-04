@@ -76,6 +76,9 @@ pub async fn get_lyrics(state: State<'_, AppState>, trackId: i64) -> Result<Lyri
     .map_err(|e| e.to_string())??;
 
     if let Some(source) = override_source.as_deref() {
+        if source == "none" {
+            return Ok(lyrics::no_lyrics());
+        }
         if source == "custom" {
             if let Some(lyrics) = custom.clone() {
                 return Ok(lyrics);

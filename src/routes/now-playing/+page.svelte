@@ -51,6 +51,7 @@
         { value: "netease", label: "NetEase" },
         { value: "kashinavi", label: "KashiNavi" },
         { value: "qq", label: "QQ Music" },
+        { value: "none", label: "No lyrics" },
     ];
 
     const PROVIDER_LABELS: Record<string, string> = {
@@ -61,6 +62,7 @@
         kashinavi: "KashiNavi",
         qq: "QQ Music",
         custom: "Custom lyrics",
+        none: "No lyrics",
     };
 
     let providerLabel = $derived(
@@ -524,7 +526,7 @@
                 <p class="hint">
                     Choose this song's lyrics provider. Custom lyrics are saved
                     for this song; a sidecar .lrc file is read from beside the
-                    audio file.
+                    audio file. No lyrics disables lookup for this song.
                 </p>
 
                 {#if providerChoice === "custom"}

@@ -78,6 +78,14 @@ pub fn fetch_lyrics_from_sources_with_custom(
     })
 }
 
+pub fn no_lyrics() -> Lyrics {
+    Lyrics {
+        source: "none".to_string(),
+        synced_text: None,
+        plain_text: None,
+    }
+}
+
 fn fetch_from_sources<T, F>(sources: &[String], mut fetch: F) -> Result<Option<T>, String>
 where
     F: FnMut(&str) -> Result<Option<T>, String>,
@@ -103,6 +111,7 @@ fn fetch_lyrics_from_source(
     metadata: &TrackMetadata,
 ) -> Result<Option<Lyrics>, String> {
     match source {
+        "none" => Ok(Some(no_lyrics())),
         "embedded" => embedded::fetch(metadata),
         "lrc" => lrc::fetch(metadata),
         "lrclib" => lrclib::fetch(metadata),
@@ -268,6 +277,21 @@ mod tests {
         .unwrap();
 
         assert_eq!(result.unwrap().source, "custom");
+    }
+
+    #[test]
+    fn no_lyrics_provider_returns_an_explicit_empty_result() {
+        let result = fetch_lyrics_from_sources_with_custom(
+            &["none".to_string()],
+            &TrackMetadata::default(),
+            None,
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(result.source, "none");
+        assert!(result.synced_text.is_none());
+        assert!(result.plain_text.is_none());
     }
 
     #[test]
