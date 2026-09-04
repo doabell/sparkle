@@ -3,6 +3,8 @@ export interface LrcLine {
     text: string;
 }
 
+export const LYRIC_TRANSITION_DURATION_MS = 200;
+
 export function parseLrc(text: string): LrcLine[] {
     const lines: LrcLine[] = [];
     for (const raw of text.split(/\r?\n/)) {
@@ -35,4 +37,12 @@ export function activeLineIndex(lines: LrcLine[], timeMs: number): number {
         }
     }
     return index;
+}
+
+export function anticipatedLineIndex(
+    lines: LrcLine[],
+    timeMs: number,
+    leadMs = LYRIC_TRANSITION_DURATION_MS,
+): number {
+    return activeLineIndex(lines, timeMs + Math.max(0, leadMs));
 }
