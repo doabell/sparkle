@@ -668,6 +668,8 @@
     }
 
     .track-info {
+        position: relative;
+        flex: 1;
         display: flex;
         flex-direction: column;
         align-items: flex-start;
@@ -713,7 +715,12 @@
     }
 
     .lyric-line {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        width: 100%;
         font-size: var(--font-size-sm);
+        line-height: 1;
         color: var(--color-text-secondary);
         background: none;
         border: none;
