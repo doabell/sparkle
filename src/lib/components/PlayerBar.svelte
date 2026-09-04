@@ -37,6 +37,7 @@
     let lyricLines = $state<LrcLine[]>([]);
     let lyricTrackId = $state<number | null>(null);
     let lyricRequest = 0;
+    let displayedTrackId: number | null = null;
 
     async function updateLyrics(trackId: number | null | undefined) {
         if (!trackId || trackId === lyricTrackId) return;
@@ -52,6 +53,16 @@
             lyricLines = [];
         }
     }
+
+    $effect.pre(() => {
+        const trackId = $playback.current_track?.id ?? null;
+        if (trackId === displayedTrackId) return;
+
+        displayedTrackId = trackId;
+        lyricRequest += 1;
+        lyricTrackId = null;
+        lyricLines = [];
+    });
 
     let currentLyricLine = $derived.by(() => {
         if (lyricLines.length === 0) return "";
@@ -388,11 +399,6 @@
                     >
                         {currentLyricLine}
                     </button>
-                {:else}
-                    <span
-                        class="lyric-line lyric-placeholder"
-                        aria-hidden="true">&nbsp;</span
-                    >
                 {/if}
             {:else}
                 <span class="title ellipsis text-muted">No track selected</span>
@@ -732,11 +738,6 @@
     .lyric-line:hover {
         color: var(--color-text);
         text-decoration: underline;
-    }
-
-    .lyric-placeholder {
-        visibility: hidden;
-        cursor: default;
     }
 
     .center {
