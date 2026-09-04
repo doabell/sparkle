@@ -3,11 +3,13 @@ use crate::analytics::{
     ListenStartReason, PlaybackContext, PlaybackEventKind, PlaybackEventRecord, PlaybackSource,
     LISTENING_SESSION_GAP_MS,
 };
+use crate::cache;
 use crate::db_writer::DbWriter;
 use crate::discord::DiscordPresence;
 use crate::loudness::{GainAvailability, LoudnessController, NEXT_UP_COUNT};
 use crate::models::{PlaybackState, QueueView, RepeatMode, Track};
-use crate::settings::{load_session, SessionSnapshot};
+use crate::providers::lyrics::{self, TrackMetadata};
+use crate::settings::{load_lyrics_sources, load_session, SessionSnapshot};
 use rodio::{Decoder, DeviceSinkBuilder, Float, MixerDeviceSink, Player};
 use serde::Serialize;
 use std::fs::File;
@@ -245,6 +247,7 @@ impl AudioController {
             play_order: Vec::new(),
             order_pos: None,
             current_track: None,
+            has_synced_lyrics: false,
             is_playing: false,
             play_when_device_ready: false,
             pending_play_source: PlaybackSource::Unknown,
@@ -539,6 +542,7 @@ struct SharedState {
     play_order: Vec<usize>,
     order_pos: Option<usize>,
     current_track: Option<Track>,
+    has_synced_lyrics: bool,
     is_playing: bool,
     /// User intent retained while the OS output endpoint is unavailable.
     play_when_device_ready: bool,
@@ -573,6 +577,7 @@ struct SharedState {
 struct PlaybackStateChangedEvent {
     is_playing: bool,
     current_track: Option<Track>,
+    has_synced_lyrics: bool,
     position_ms: i64,
     duration_ms: i64,
     shuffle: bool,
@@ -1481,6 +1486,7 @@ fn handle_command(
                 s.pending_play_source = source;
                 s.context = context;
                 s.current_track = None;
+                s.has_synced_lyrics = false;
                 s.position_ms = 0;
                 s.duration_ms = 0;
                 s.listened_ms = 0;
@@ -2224,6 +2230,7 @@ fn update_state_for_stop(
     s.latched_sound_check_gain_db = 0.0;
     s.pending_play_source = PlaybackSource::Unknown;
     s.current_track = None;
+    s.has_synced_lyrics = false;
     s.position_ms = 0;
     s.duration_ms = 0;
     s.seek_target = None;
@@ -2289,6 +2296,13 @@ fn load_track_at_index_with_autoplay(
             return false;
         }
     };
+    let has_synced_lyrics = known_synced_lyrics_available(db, &track).unwrap_or_else(|error| {
+        log::warn!(
+            target: "sparkle::lyrics",
+            "event=lyrics_availability_check_failed track_id={track_id} error={error}"
+        );
+        false
+    });
 
     // Make the newly selected track and its next three successors the
     // scanner's urgent work. Pending analysis never delays playback.
@@ -2309,6 +2323,7 @@ fn load_track_at_index_with_autoplay(
     {
         let mut s = lock_state(state);
         s.current_track = Some(track.clone());
+        s.has_synced_lyrics = has_synced_lyrics;
         s.is_playing = autoplay;
         s.play_when_device_ready = play_when_device_ready;
         s.pending_play_source = source;
@@ -2488,6 +2503,59 @@ fn load_track_from_db(
     Ok(track)
 }
 
+fn known_synced_lyrics_available(
+    db: &Arc<Mutex<rusqlite::Connection>>,
+    track: &Track,
+) -> Result<bool, String> {
+    let conn = lock_db(db);
+    let override_source: Option<String> = conn
+        .query_row(
+            "SELECT NULLIF(lyrics_source, '') FROM tracks WHERE id = ?",
+            [track.id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    let sources = match override_source {
+        Some(source) => vec![source],
+        None => load_lyrics_sources(&conn)?,
+    };
+
+    // get_lyrics returns a cached provider before probing any source. Mirror
+    // that choice so the layout hint describes the lyrics it will return.
+    for source in &sources {
+        if let Some(cached) = cache::get_lyrics_from_source(&conn, track.id, source)? {
+            return Ok(cached
+                .synced_text
+                .as_deref()
+                .is_some_and(lyrics::has_synced_lines));
+        }
+    }
+    drop(conn);
+
+    // Embedded and sidecar lyrics can be established without a network
+    // lookup. Remote providers stay unknown until get_lyrics finishes.
+    let metadata = TrackMetadata {
+        file_path: Some(track.file_path.clone()),
+        embedded_lyrics: track.embedded_lyrics.clone(),
+        ..TrackMetadata::default()
+    };
+    for source in sources {
+        let lyrics = match source.as_str() {
+            "custom" => None,
+            "embedded" => lyrics::embedded::fetch(&metadata)?,
+            "lrc" => lyrics::lrc::fetch(&metadata)?,
+            _ => return Ok(false),
+        };
+        if let Some(lyrics) = lyrics {
+            return Ok(lyrics
+                .synced_text
+                .as_deref()
+                .is_some_and(lyrics::has_synced_lines));
+        }
+    }
+    Ok(false)
+}
+
 fn load_track_artists(
     conn: &rusqlite::Connection,
     track_id: i64,
@@ -2538,6 +2606,7 @@ fn emit_state_changed(app_handle: &AppHandle, state: &Arc<Mutex<SharedState>>) {
     let event = PlaybackStateChangedEvent {
         is_playing: ps.is_playing,
         current_track: ps.current_track,
+        has_synced_lyrics: ps.has_synced_lyrics,
         position_ms: ps.position_ms,
         duration_ms: ps.duration_ms,
         shuffle: ps.shuffle,
@@ -2584,6 +2653,7 @@ fn build_playback_state(state: &Arc<Mutex<SharedState>>) -> PlaybackState {
     PlaybackState {
         is_playing: s.is_playing,
         current_track: s.current_track.clone(),
+        has_synced_lyrics: s.has_synced_lyrics,
         position_ms: s.position_ms,
         duration_ms: s.duration_ms,
         volume: s.volume,

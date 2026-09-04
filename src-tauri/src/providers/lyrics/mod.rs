@@ -161,6 +161,12 @@ pub fn strip_lrc_timestamps(synced: &str) -> String {
         .join("\n")
 }
 
+pub fn has_synced_lines(text: &str) -> bool {
+    let timestamp = Regex::new(r"\[(\d+):(\d+(?:\.\d+)?)\]").unwrap();
+    text.lines()
+        .any(|line| timestamp.is_match(line) && !timestamp.replace_all(line, "").trim().is_empty())
+}
+
 pub fn inject_translation(original: &str, translation: &str) -> String {
     let re = Regex::new(r"((?:\[.+?\])+)(.*)").unwrap();
     let time_re = Regex::new(r"\[.+?\]").unwrap();
@@ -249,5 +255,12 @@ mod tests {
         .unwrap();
 
         assert_eq!(result.unwrap().source, "custom");
+    }
+
+    #[test]
+    fn synced_lines_require_a_timestamp_and_text() {
+        assert!(has_synced_lines("[00:01.25]hello"));
+        assert!(!has_synced_lines("plain lyrics"));
+        assert!(!has_synced_lines("[00:01.25]"));
     }
 }

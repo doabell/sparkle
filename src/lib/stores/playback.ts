@@ -32,6 +32,7 @@ export interface PlaybackState extends ApiPlaybackState {
 const initialState: PlaybackState = {
     is_playing: false,
     current_track: null,
+    has_synced_lyrics: false,
     position_ms: 0,
     duration_ms: 0,
     volume: 0.8,
@@ -58,6 +59,7 @@ function createPlaybackStore() {
             await listen<{
                 is_playing: boolean;
                 current_track: Track | null;
+                has_synced_lyrics: boolean;
                 position_ms: number;
                 duration_ms: number;
                 shuffle: boolean;
@@ -67,6 +69,7 @@ function createPlaybackStore() {
                     ...state,
                     is_playing: event.payload.is_playing,
                     current_track: event.payload.current_track,
+                    has_synced_lyrics: event.payload.has_synced_lyrics,
                     position_ms: event.payload.position_ms,
                     duration_ms: event.payload.duration_ms,
                     shuffle: event.payload.shuffle,

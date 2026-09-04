@@ -83,6 +83,7 @@ impl RepeatMode {
 pub struct PlaybackState {
     pub is_playing: bool,
     pub current_track: Option<Track>,
+    pub has_synced_lyrics: bool,
     pub position_ms: i64,
     pub duration_ms: i64,
     pub volume: f64,

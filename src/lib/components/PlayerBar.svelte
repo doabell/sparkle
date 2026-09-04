@@ -36,6 +36,7 @@
     // first-class here, not buried in the now-playing page.
     let lyricLines = $state<LrcLine[]>([]);
     let lyricTrackId = $state<number | null>(null);
+    let hasLoadedSyncedLyrics = $state<boolean | null>(null);
     let lyricRequest = 0;
     let displayedTrackId: number | null = null;
 
@@ -48,9 +49,11 @@
             const lyrics = await getLyrics(trackId);
             if (request !== lyricRequest || lyricTrackId !== trackId) return;
             lyricLines = lyrics.synced_text ? parseLrc(lyrics.synced_text) : [];
+            hasLoadedSyncedLyrics = lyricLines.length > 0;
         } catch {
             if (request !== lyricRequest || lyricTrackId !== trackId) return;
             lyricLines = [];
+            hasLoadedSyncedLyrics = false;
         }
     }
 
@@ -62,7 +65,13 @@
         lyricRequest += 1;
         lyricTrackId = null;
         lyricLines = [];
+        hasLoadedSyncedLyrics = null;
     });
+
+    let showLyricRow = $derived(
+        !!$playback.current_track &&
+            (hasLoadedSyncedLyrics ?? $playback.has_synced_lyrics),
+    );
 
     let currentLyricLine = $derived.by(() => {
         if (lyricLines.length === 0) return "";
@@ -391,13 +400,13 @@
                         >
                     {/if}
                 </span>
-                {#if currentLyricLine}
+                {#if showLyricRow}
                     <button
                         class="lyric-line ellipsis"
                         onclick={() => smartGo("/now-playing")}
                         title="Open lyrics"
                     >
-                        {currentLyricLine}
+                        {currentLyricLine || "\u00a0"}
                     </button>
                 {/if}
             {:else}
