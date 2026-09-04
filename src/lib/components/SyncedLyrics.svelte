@@ -116,9 +116,7 @@
     {:else if plainText}
         <div class="lines plain">
             {#each plainText.split(/\r?\n/) as line, index (index)}
-                <p class="lyrics-line plain"
-                    >{normalizeLyricSpacing(line)}</p
-                >
+                <p class="lyrics-line plain">{normalizeLyricSpacing(line)}</p>
             {/each}
         </div>
     {:else}
