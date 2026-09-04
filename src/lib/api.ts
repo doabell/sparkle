@@ -87,7 +87,7 @@ export interface PlaybackContext {
 export interface PlaybackState {
     is_playing: boolean;
     current_track: Track | null;
-    has_synced_lyrics: boolean;
+    first_lyric_line: string | null;
     position_ms: number;
     duration_ms: number;
     volume: number;

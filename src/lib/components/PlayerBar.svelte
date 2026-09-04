@@ -70,7 +70,7 @@
 
     let showLyricRow = $derived(
         !!$playback.current_track &&
-            (hasLoadedSyncedLyrics ?? $playback.has_synced_lyrics),
+            (hasLoadedSyncedLyrics ?? !!$playback.first_lyric_line),
     );
 
     let currentLyricLine = $derived.by(() => {
@@ -406,7 +406,10 @@
                         onclick={() => smartGo("/now-playing")}
                         title="Open lyrics"
                     >
-                        {currentLyricLine || "\u00a0"}
+                        {currentLyricLine ||
+                            lyricLines[0]?.text ||
+                            $playback.first_lyric_line ||
+                            "\u00a0"}
                     </button>
                 {/if}
             {:else}

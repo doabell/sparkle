@@ -161,10 +161,23 @@ pub fn strip_lrc_timestamps(synced: &str) -> String {
         .join("\n")
 }
 
-pub fn has_synced_lines(text: &str) -> bool {
+pub fn first_synced_line(text: &str) -> Option<String> {
     let timestamp = Regex::new(r"\[(\d+):(\d+(?:\.\d+)?)\]").unwrap();
     text.lines()
-        .any(|line| timestamp.is_match(line) && !timestamp.replace_all(line, "").trim().is_empty())
+        .filter_map(|line| {
+            let first_time_ms = timestamp
+                .captures_iter(line)
+                .filter_map(|captures| {
+                    let minutes = captures.get(1)?.as_str().parse::<f64>().ok()?;
+                    let seconds = captures.get(2)?.as_str().parse::<f64>().ok()?;
+                    Some(((minutes * 60.0 + seconds) * 1000.0).round() as i64)
+                })
+                .min()?;
+            let lyric = timestamp.replace_all(line.trim(), "").trim().to_string();
+            (!lyric.is_empty()).then_some((first_time_ms, lyric))
+        })
+        .min_by_key(|(time_ms, _)| *time_ms)
+        .map(|(_, lyric)| lyric)
 }
 
 pub fn inject_translation(original: &str, translation: &str) -> String {
@@ -258,9 +271,20 @@ mod tests {
     }
 
     #[test]
-    fn synced_lines_require_a_timestamp_and_text() {
-        assert!(has_synced_lines("[00:01.25]hello"));
-        assert!(!has_synced_lines("plain lyrics"));
-        assert!(!has_synced_lines("[00:01.25]"));
+    fn first_synced_line_requires_a_timestamp_and_text() {
+        assert_eq!(
+            first_synced_line("[00:01.25]hello").as_deref(),
+            Some("hello")
+        );
+        assert!(first_synced_line("plain lyrics").is_none());
+        assert!(first_synced_line("[00:01.25]").is_none());
+    }
+
+    #[test]
+    fn first_synced_line_uses_timestamp_order() {
+        assert_eq!(
+            first_synced_line("[00:10.00]second\n[00:02.50]first").as_deref(),
+            Some("first")
+        );
     }
 }

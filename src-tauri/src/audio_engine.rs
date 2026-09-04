@@ -247,7 +247,7 @@ impl AudioController {
             play_order: Vec::new(),
             order_pos: None,
             current_track: None,
-            has_synced_lyrics: false,
+            first_lyric_line: None,
             is_playing: false,
             play_when_device_ready: false,
             pending_play_source: PlaybackSource::Unknown,
@@ -542,7 +542,7 @@ struct SharedState {
     play_order: Vec<usize>,
     order_pos: Option<usize>,
     current_track: Option<Track>,
-    has_synced_lyrics: bool,
+    first_lyric_line: Option<String>,
     is_playing: bool,
     /// User intent retained while the OS output endpoint is unavailable.
     play_when_device_ready: bool,
@@ -577,7 +577,7 @@ struct SharedState {
 struct PlaybackStateChangedEvent {
     is_playing: bool,
     current_track: Option<Track>,
-    has_synced_lyrics: bool,
+    first_lyric_line: Option<String>,
     position_ms: i64,
     duration_ms: i64,
     shuffle: bool,
@@ -1486,7 +1486,7 @@ fn handle_command(
                 s.pending_play_source = source;
                 s.context = context;
                 s.current_track = None;
-                s.has_synced_lyrics = false;
+                s.first_lyric_line = None;
                 s.position_ms = 0;
                 s.duration_ms = 0;
                 s.listened_ms = 0;
@@ -2230,7 +2230,7 @@ fn update_state_for_stop(
     s.latched_sound_check_gain_db = 0.0;
     s.pending_play_source = PlaybackSource::Unknown;
     s.current_track = None;
-    s.has_synced_lyrics = false;
+    s.first_lyric_line = None;
     s.position_ms = 0;
     s.duration_ms = 0;
     s.seek_target = None;
@@ -2296,12 +2296,12 @@ fn load_track_at_index_with_autoplay(
             return false;
         }
     };
-    let has_synced_lyrics = known_synced_lyrics_available(db, &track).unwrap_or_else(|error| {
+    let first_lyric_line = known_first_lyric_line(db, &track).unwrap_or_else(|error| {
         log::warn!(
             target: "sparkle::lyrics",
             "event=lyrics_availability_check_failed track_id={track_id} error={error}"
         );
-        false
+        None
     });
 
     // Make the newly selected track and its next three successors the
@@ -2323,7 +2323,7 @@ fn load_track_at_index_with_autoplay(
     {
         let mut s = lock_state(state);
         s.current_track = Some(track.clone());
-        s.has_synced_lyrics = has_synced_lyrics;
+        s.first_lyric_line = first_lyric_line;
         s.is_playing = autoplay;
         s.play_when_device_ready = play_when_device_ready;
         s.pending_play_source = source;
@@ -2503,10 +2503,10 @@ fn load_track_from_db(
     Ok(track)
 }
 
-fn known_synced_lyrics_available(
+fn known_first_lyric_line(
     db: &Arc<Mutex<rusqlite::Connection>>,
     track: &Track,
-) -> Result<bool, String> {
+) -> Result<Option<String>, String> {
     let conn = lock_db(db);
     let override_source: Option<String> = conn
         .query_row(
@@ -2527,7 +2527,7 @@ fn known_synced_lyrics_available(
             return Ok(cached
                 .synced_text
                 .as_deref()
-                .is_some_and(lyrics::has_synced_lines));
+                .and_then(lyrics::first_synced_line));
         }
     }
     drop(conn);
@@ -2544,16 +2544,16 @@ fn known_synced_lyrics_available(
             "custom" => None,
             "embedded" => lyrics::embedded::fetch(&metadata)?,
             "lrc" => lyrics::lrc::fetch(&metadata)?,
-            _ => return Ok(false),
+            _ => return Ok(None),
         };
         if let Some(lyrics) = lyrics {
             return Ok(lyrics
                 .synced_text
                 .as_deref()
-                .is_some_and(lyrics::has_synced_lines));
+                .and_then(lyrics::first_synced_line));
         }
     }
-    Ok(false)
+    Ok(None)
 }
 
 fn load_track_artists(
@@ -2606,7 +2606,7 @@ fn emit_state_changed(app_handle: &AppHandle, state: &Arc<Mutex<SharedState>>) {
     let event = PlaybackStateChangedEvent {
         is_playing: ps.is_playing,
         current_track: ps.current_track,
-        has_synced_lyrics: ps.has_synced_lyrics,
+        first_lyric_line: ps.first_lyric_line,
         position_ms: ps.position_ms,
         duration_ms: ps.duration_ms,
         shuffle: ps.shuffle,
@@ -2653,7 +2653,7 @@ fn build_playback_state(state: &Arc<Mutex<SharedState>>) -> PlaybackState {
     PlaybackState {
         is_playing: s.is_playing,
         current_track: s.current_track.clone(),
-        has_synced_lyrics: s.has_synced_lyrics,
+        first_lyric_line: s.first_lyric_line.clone(),
         position_ms: s.position_ms,
         duration_ms: s.duration_ms,
         volume: s.volume,
