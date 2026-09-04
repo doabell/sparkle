@@ -36,22 +36,13 @@
     // first-class here, not buried in the now-playing page.
     let lyricLines = $state<LrcLine[]>([]);
     let lyricTrackId = $state<number | null>(null);
-    let lyricsLoading = $state(false);
     let lyricRequest = 0;
 
     async function updateLyrics(trackId: number | null | undefined) {
-        if (!trackId) {
-            lyricRequest += 1;
-            lyricTrackId = null;
-            lyricLines = [];
-            lyricsLoading = false;
-            return;
-        }
-        if (trackId === lyricTrackId) return;
+        if (!trackId || trackId === lyricTrackId) return;
         const request = ++lyricRequest;
         lyricTrackId = trackId;
         lyricLines = [];
-        lyricsLoading = true;
         try {
             const lyrics = await getLyrics(trackId);
             if (request !== lyricRequest || lyricTrackId !== trackId) return;
@@ -59,10 +50,6 @@
         } catch {
             if (request !== lyricRequest || lyricTrackId !== trackId) return;
             lyricLines = [];
-        } finally {
-            if (request === lyricRequest && lyricTrackId === trackId) {
-                lyricsLoading = false;
-            }
         }
     }
 
@@ -73,13 +60,6 @@
         const adjusted = $interpolatedPositionMs - (track.lrc_offset_ms ?? 0);
         const index = activeLineIndex(lyricLines, adjusted);
         return index >= 0 ? lyricLines[index].text : "";
-    });
-
-    let showLyricLine = $derived.by(() => {
-        const track = $playback.current_track;
-        if (!track) return false;
-        if (track.id !== lyricTrackId) return true;
-        return lyricsLoading || lyricLines.length > 0;
     });
 
     async function updateArt(albumId: number | null | undefined) {
@@ -400,21 +380,19 @@
                         >
                     {/if}
                 </span>
-                {#if showLyricLine}
-                    {#if currentLyricLine}
-                        <button
-                            class="lyric-line ellipsis"
-                            onclick={() => smartGo("/now-playing")}
-                            title="Open lyrics"
-                        >
-                            {currentLyricLine}
-                        </button>
-                    {:else}
-                        <span
-                            class="lyric-line lyric-placeholder"
-                            aria-hidden="true">&nbsp;</span
-                        >
-                    {/if}
+                {#if currentLyricLine}
+                    <button
+                        class="lyric-line ellipsis"
+                        onclick={() => smartGo("/now-playing")}
+                        title="Open lyrics"
+                    >
+                        {currentLyricLine}
+                    </button>
+                {:else}
+                    <span
+                        class="lyric-line lyric-placeholder"
+                        aria-hidden="true">&nbsp;</span
+                    >
                 {/if}
             {:else}
                 <span class="title ellipsis text-muted">No track selected</span>
