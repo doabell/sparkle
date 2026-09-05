@@ -42,7 +42,7 @@ const initialState: PlaybackState = {
     error: null,
 };
 
-function createPlaybackStore() {
+export function createPlaybackStore() {
     const { subscribe, set, update } = writable<PlaybackState>({
         ...initialState,
     });
@@ -90,11 +90,17 @@ function createPlaybackStore() {
                 position_ms: number;
                 duration_ms: number;
             }>("playback-progress", (event) => {
-                update((state) => ({
-                    ...state,
-                    position_ms: event.payload.position_ms,
-                    duration_ms: event.payload.duration_ms,
-                }));
+                update((state) => {
+                    // A queued progress event can arrive after a track change
+                    // or stop. Only the current track may advance its clock.
+                    if (state.current_track?.id !== event.payload.track_id)
+                        return state;
+                    return {
+                        ...state,
+                        position_ms: event.payload.position_ms,
+                        duration_ms: event.payload.duration_ms,
+                    };
+                });
             });
         } catch (err) {
             console.error("Failed to listen to playback-progress:", err);

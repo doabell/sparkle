@@ -33,7 +33,11 @@ pub fn fetch_by_mbid(mbid: &str) -> Result<Option<ImageData>, String> {
         .build()
         .map_err(|e| e.to_string())?;
     let url = format!("https://coverartarchive.org/release/{}", mbid);
-    let response = client.get(&url).send().map_err(|e| e.to_string())?;
+    fetch_from_url(&client, &url)
+}
+
+fn fetch_from_url(client: &Client, url: &str) -> Result<Option<ImageData>, String> {
+    let response = client.get(url).send().map_err(|e| e.to_string())?;
     if !response.status().is_success() {
         return Ok(None);
     }
@@ -60,3 +64,7 @@ pub fn fetch_by_mbid(mbid: &str) -> Result<Option<ImageData>, String> {
         mime_type,
     }))
 }
+
+#[cfg(test)]
+#[path = "tests/cover_art_archive.rs"]
+mod tests;

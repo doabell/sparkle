@@ -15,6 +15,7 @@ fn http_client() -> Result<Client, String> {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 struct LrclibResult {
     #[serde(default)]
     synced_lyrics: Option<String>,
@@ -23,19 +24,26 @@ struct LrclibResult {
 }
 
 pub fn fetch(metadata: &TrackMetadata) -> Result<Option<Lyrics>, String> {
+    if metadata.title.is_none() {
+        return Ok(None);
+    }
+    fetch_with_client(metadata, &http_client()?, "https://lrclib.net/api/get")
+}
+
+fn fetch_with_client(
+    metadata: &TrackMetadata,
+    client: &Client,
+    endpoint: &str,
+) -> Result<Option<Lyrics>, String> {
     let title = match metadata.title.as_deref() {
         Some(t) => t,
         None => return Ok(None),
     };
     let artist = metadata.artist.as_deref().unwrap_or("");
 
-    let url = Url::parse_with_params(
-        "https://lrclib.net/api/get",
-        &[("artist_name", artist), ("track_name", title)],
-    )
-    .map_err(|e| e.to_string())?;
+    let url = Url::parse_with_params(endpoint, &[("artist_name", artist), ("track_name", title)])
+        .map_err(|e| e.to_string())?;
 
-    let client = http_client()?;
     let response = client.get(url.as_str()).send().map_err(|e| e.to_string())?;
 
     if !response.status().is_success() {
@@ -62,9 +70,25 @@ pub fn fetch_candidates(query: &str, count: usize) -> Result<Vec<Lyrics>, String
     if query.trim().is_empty() {
         return Ok(Vec::new());
     }
-    let url = Url::parse_with_params("https://lrclib.net/api/search", &[("q", query.trim())])
-        .map_err(|e| e.to_string())?;
-    let client = http_client()?;
+    candidates_with_client(
+        query,
+        count,
+        &http_client()?,
+        "https://lrclib.net/api/search",
+    )
+}
+
+fn candidates_with_client(
+    query: &str,
+    count: usize,
+    client: &Client,
+    endpoint: &str,
+) -> Result<Vec<Lyrics>, String> {
+    if query.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    let url =
+        Url::parse_with_params(endpoint, &[("q", query.trim())]).map_err(|e| e.to_string())?;
     let response = client.get(url.as_str()).send().map_err(|e| e.to_string())?;
     if !response.status().is_success() {
         return Ok(Vec::new());
@@ -86,3 +110,7 @@ pub fn fetch_candidates(query: &str, count: usize) -> Result<Vec<Lyrics>, String
         })
         .collect())
 }
+
+#[cfg(test)]
+#[path = "tests/lrclib.rs"]
+mod tests;

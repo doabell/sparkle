@@ -26,14 +26,15 @@ function btoaFallback(binary: string): string {
     let i = 0;
     while (i < binary.length) {
         const a = binary.charCodeAt(i++);
-        const b = i < binary.length ? binary.charCodeAt(i++) : 0;
-        const c = i < binary.length ? binary.charCodeAt(i++) : 0;
+        const hasB = i < binary.length;
+        const b = hasB ? binary.charCodeAt(i++) : 0;
+        const hasC = i < binary.length;
+        const c = hasC ? binary.charCodeAt(i++) : 0;
         const bitmap = (a << 16) | (b << 8) | c;
         result += chars.charAt((bitmap >> 18) & 63);
         result += chars.charAt((bitmap >> 12) & 63);
-        result +=
-            i - 2 < binary.length ? chars.charAt((bitmap >> 6) & 63) : "=";
-        result += i - 1 < binary.length ? chars.charAt(bitmap & 63) : "=";
+        result += hasB ? chars.charAt((bitmap >> 6) & 63) : "=";
+        result += hasC ? chars.charAt(bitmap & 63) : "=";
     }
     return result;
 }

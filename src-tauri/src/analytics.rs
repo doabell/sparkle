@@ -284,57 +284,5 @@ pub fn new_trace_id(prefix: &str) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn meaningful_listens_ignore_previews_but_keep_short_tracks() {
-        assert!(!is_meaningful_listen(4_999, 8_000));
-        assert!(is_meaningful_listen(5_000, 8_000));
-        assert!(!is_meaningful_listen(29_999, 180_000));
-        assert!(is_meaningful_listen(30_000, 180_000));
-    }
-
-    #[test]
-    fn completion_uses_the_final_ten_percent() {
-        assert!(!is_completed(89_999, 100_000));
-        assert!(is_completed(90_000, 100_000));
-        assert!(!is_completed(90_000, 0));
-    }
-
-    #[test]
-    fn context_rejects_free_form_kinds_and_content_ids() {
-        let context = PlaybackContext {
-            kind: " Filesystem ".to_string(),
-            id: Some("x".repeat(200)),
-        }
-        .sanitized();
-        assert_eq!(context.kind, "unknown");
-        assert_eq!(context.id, None);
-
-        assert_eq!(
-            PlaybackContext {
-                kind: "album".to_string(),
-                id: Some("42".to_string()),
-            }
-            .sanitized()
-            .id
-            .as_deref(),
-            Some("42")
-        );
-        assert_eq!(
-            PlaybackContext {
-                kind: "search".to_string(),
-                id: Some("private query".to_string()),
-            }
-            .sanitized()
-            .id,
-            None
-        );
-    }
-
-    #[test]
-    fn generated_trace_ids_are_distinct() {
-        assert_ne!(new_trace_id("listen"), new_trace_id("listen"));
-    }
-}
+#[path = "tests/analytics.rs"]
+mod tests;

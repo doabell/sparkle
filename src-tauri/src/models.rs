@@ -183,6 +183,10 @@ pub fn detect_image_mime_type(data: &[u8]) -> String {
     }
 }
 
+#[cfg(test)]
+#[path = "tests/models.rs"]
+mod tests;
+
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum AccentForegroundPreference {

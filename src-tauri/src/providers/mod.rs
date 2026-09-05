@@ -27,3 +27,7 @@ pub fn read_image_response(response: reqwest::blocking::Response) -> Result<Vec<
     }
     Ok(data)
 }
+
+#[cfg(test)]
+#[path = "tests/mod.rs"]
+mod tests;
