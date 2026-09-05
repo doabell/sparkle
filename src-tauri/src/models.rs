@@ -193,6 +193,16 @@ pub enum AccentForegroundPreference {
     Auto,
 }
 
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ThemeMode {
+    Light,
+    Dark,
+    #[default]
+    #[serde(other)]
+    System,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct OnlineSettings {
     pub scan_on_startup: bool,
@@ -207,6 +217,8 @@ pub struct OnlineSettings {
     pub ui_font: String,
     pub lyrics_font: String,
     pub reduce_motion: bool,
+    #[serde(default)]
+    pub theme_mode: ThemeMode,
     pub brave_api_key: String,
     #[serde(default)]
     pub accent_color: String,

@@ -54,8 +54,7 @@
     }
 
     .sort-dir:hover {
-        background-color: rgba(255, 255, 255, 0.12);
-        border-color: rgba(255, 255, 255, 0.18);
+        background-color: var(--interactive-hover);
         color: var(--color-text);
     }
 

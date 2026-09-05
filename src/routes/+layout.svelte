@@ -8,11 +8,18 @@
     import Toaster from "$lib/components/Toaster.svelte";
     import MediaSession from "$lib/components/MediaSession.svelte";
     import CommandPalette from "$lib/components/CommandPalette.svelte";
+    import WindowControls from "$lib/components/WindowControls.svelte";
+    import PageScrollbar from "$lib/components/PageScrollbar.svelte";
     import { onMount } from "svelte";
     import { listen } from "@tauri-apps/api/event";
     import { getCurrentWindow } from "@tauri-apps/api/window";
     import { getOnlineSettings } from "$lib/api";
     import { getFontStack } from "$lib/utils/fonts";
+    import {
+        applyCachedThemeMode,
+        applyThemeMode,
+        cacheThemeMode,
+    } from "$lib/utils/themeMode";
     import {
         DEFAULT_ACCENT_COLOR,
         applyAccent,
@@ -40,7 +47,12 @@
     } from "$lib/stores/playback";
 
     const SEEK_STEP_MS = 5000;
-    if (browser) applyCachedAccent();
+    const overlayScrollbarSupported =
+        browser && CSS.supports("selector(::-webkit-scrollbar)");
+    if (browser) {
+        applyCachedAccent();
+        applyCachedThemeMode();
+    }
     const VOLUME_STEP = 0.05;
 
     // Back only makes sense on detail pages drilled into from a list — never
@@ -52,14 +64,10 @@
         "/playlists/",
         "/now-playing",
     ];
-    // Hero pages reach the very top of the content; the floating back button
-    // overlays their blurred backdrop, so they need no clearance. Other detail
-    // pages get extra top padding so the button never touches the title.
-    const HERO_ROUTES = ["/artists/", "/albums/", "/now-playing"];
+    // Preserve the originating grid position when returning from a detail page.
     const SCROLLBACK_ROUTES = new Set(["/albums", "/artists"]);
 
     let canGoBack = $state(false);
-    let backClearance = $state(false);
     let contentElement = $state<HTMLElement | null>(null);
     let paletteOpen = $state(false);
     const scrollRestorer = createContentScrollRestorer(
@@ -168,8 +176,6 @@
         canGoBack =
             window.history.length > 1 &&
             BACK_ROUTES.some((r) => path.startsWith(r));
-        backClearance =
-            canGoBack && !HERO_ROUTES.some((r) => path.startsWith(r));
     });
 
     $effect(() => {
@@ -212,7 +218,7 @@
         if (!(target instanceof Element)) return false;
         return Boolean(
             target.closest(
-                "input, textarea, select, button, a[href], label, [contenteditable='true'], [role='button'], [role='combobox'], [role='link'], [role='listbox'], [role='menuitem'], [role='option'], [role='slider'], [role='textbox']",
+                "input, textarea, select, button, a[href], label, [contenteditable='true'], [role='button'], [role='combobox'], [role='link'], [role='listbox'], [role='menuitem'], [role='option'], [role='slider'], [role='scrollbar'], [role='textbox']",
             ),
         );
     }
@@ -224,6 +230,8 @@
     async function loadUiSettings() {
         try {
             const settings = await getOnlineSettings();
+            applyThemeMode(settings.theme_mode);
+            cacheThemeMode(settings.theme_mode);
             document.documentElement.style.setProperty(
                 "--font-family",
                 getFontStack(settings.ui_font || "System"),
@@ -353,12 +361,14 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
+<WindowControls />
 <div class="app">
     <Sidebar />
     <main
+        id="page-content"
         bind:this={contentElement}
         class="content"
-        class:back-clearance={backClearance}
+        class:now-playing-content={$page.url.pathname === "/now-playing"}
     >
         {#if canGoBack}
             <button
@@ -371,7 +381,7 @@
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
-                    stroke-width="2.75"
+                    stroke-width="2"
                     stroke-linecap="round"
                     stroke-linejoin="round"
                     aria-hidden="true"
@@ -382,6 +392,11 @@
         {/if}
         {@render children()}
     </main>
+    <PageScrollbar
+        target={contentElement}
+        enabled={overlayScrollbarSupported &&
+            $page.url.pathname !== "/now-playing"}
+    />
     <div class="player-wrapper">
         <PlayerBar />
     </div>
@@ -407,14 +422,29 @@
     }
 
     .content {
+        --content-padding-top: calc(
+            var(--window-chrome-height) + var(--spacing-sm)
+        );
+        --content-padding-inline: var(--spacing-2xl);
         grid-area: content;
+        min-width: 0;
+        min-height: 0;
         overflow-y: auto;
-        padding: var(--spacing-xl) var(--spacing-2xl) var(--spacing-2xl);
+        padding: var(--content-padding-top) var(--content-padding-inline)
+            var(--spacing-2xl);
     }
 
-    /* Detail pages without a hero reserve room for the floating back button. */
-    .content.back-clearance {
-        padding-top: calc(var(--spacing-xl) + 2.75rem);
+    /* WebView2 lets us replace only the vertical gutter. Native horizontal
+       scrolling remains visible; unsupported browsers keep their native bars. */
+    .content::-webkit-scrollbar:vertical {
+        display: none;
+    }
+
+    .content.now-playing-content {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        padding-bottom: var(--spacing-md);
     }
 
     .player-wrapper {
@@ -431,35 +461,38 @@
 
     .back-fab {
         position: fixed;
-        top: var(--spacing-md);
+        top: var(--spacing-sm);
         left: calc(var(--sidebar-width) + var(--spacing-md));
-        z-index: 40;
+        z-index: 200;
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 2.25rem;
-        height: 2.25rem;
-        border-radius: var(--radius-full);
-        /* Same language as every secondary button: subtle fill + border, text
-       glyph; backdrop blur only so it stays legible over hero artwork. */
-        background: rgba(var(--color-surface-rgb), 0.65);
-        backdrop-filter: blur(20px) saturate(1.8);
-        -webkit-backdrop-filter: blur(20px) saturate(1.8);
-        border: 1px solid var(--color-border);
+        width: 2.5rem;
+        height: var(--window-chrome-height);
+        border-radius: var(--radius);
+        background: transparent;
+        border: none;
         color: var(--color-text-secondary);
-        box-shadow: var(--shadow-sm);
         transition:
             color var(--transition-fast),
-            transform var(--transition-fast),
-            background-color var(--transition-fast),
-            border-color var(--transition-fast);
+            background-color var(--transition-fast);
     }
 
     .back-fab:hover {
-        background-color: rgba(255, 255, 255, 0.12);
-        border-color: rgba(255, 255, 255, 0.18);
+        background-color: var(--interactive-hover);
         color: var(--color-text);
-        transform: scale(1.04);
+    }
+
+    .back-fab:hover svg {
+        transform: scale(var(--motion-hover-scale));
+    }
+
+    .back-fab:active svg {
+        transform: scale(var(--motion-press-scale));
+    }
+
+    .back-fab:focus-visible {
+        outline-offset: -3px;
     }
 
     .back-fab svg {
@@ -467,6 +500,7 @@
         height: 1.25rem;
         /* Optical balance: a lone chevron reads better nudged left of center. */
         margin-right: 2px;
+        transition: transform var(--transition-fast);
     }
 
     @media (max-width: 767px) {
@@ -478,11 +512,12 @@
         }
 
         .back-fab {
-            left: var(--spacing-md);
+            left: calc(var(--spacing-md) + 2.5rem);
         }
 
         .content {
-            padding: var(--spacing-2xl) var(--spacing-md) var(--spacing-md);
+            --content-padding-inline: var(--spacing-md);
+            padding-bottom: var(--spacing-md);
         }
     }
 </style>

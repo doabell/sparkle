@@ -299,6 +299,10 @@ test("main's focused accent treatments use accessible semantic roles", () => {
             /\.hero-label\s*\{[^}]*color:\s*var\(--color-accent-content\)/s,
         ],
         [
+            path.resolve("src", "app.css"),
+            /\.page-kicker\s*\{[^}]*color:\s*var\(--color-accent-content\)/s,
+        ],
+        [
             path.resolve("src", "lib", "components", "CommandPalette.svelte"),
             /\.search-action\s*\{[^}]*color:\s*var\(--color-accent-content\)/s,
         ],
@@ -331,10 +335,6 @@ test("main's focused accent treatments use accessible semantic roles", () => {
             /\.track-snippet\s*\{[^}]*color:\s*var\(--color-accent-content\)/s,
         ],
         [
-            path.resolve("src", "routes", "health", "+page.svelte"),
-            /\.eyebrow\s*\{[^}]*color:\s*var\(--color-accent-content\)/s,
-        ],
-        [
             path.resolve("src", "routes", "now-playing", "+page.svelte"),
             /--np-lyrics-active-color:\s*var\(--color-accent-content\)/s,
         ],
@@ -347,6 +347,14 @@ test("main's focused accent treatments use accessible semantic roles", () => {
             /\.rescan-note\s*\{[^}]*color:\s*var\(--color-accent-content\)/s,
         ],
         [
+            path.resolve("src", "routes", "settings", "+page.svelte"),
+            /\.license-row a:hover\s*\{[^}]*color:\s*var\(--color-accent-content\)/s,
+        ],
+        [
+            path.resolve("src", "routes", "stats", "+page.svelte"),
+            /\.stat-card\.primary \.stat-value\s*\{[^}]*color:\s*var\(--color-accent-content\)/s,
+        ],
+        [
             path.resolve("src", "routes", "stats", "+page.svelte"),
             /\.insight-kicker\s*\{[^}]*color:\s*var\(--color-accent-content\)/s,
         ],
@@ -357,7 +365,7 @@ test("main's focused accent treatments use accessible semantic roles", () => {
     ] as const;
 
     assert.equal(directUses, focusedContentTreatments.length);
-    assert.equal(mixedUses, 1);
+    assert.equal(mixedUses, 0);
     for (const [file, pattern] of focusedContentTreatments) {
         assert.match(fs.readFileSync(file, "utf8"), pattern);
     }
@@ -373,15 +381,6 @@ test("main's focused accent treatments use accessible semantic roles", () => {
     ]) {
         assert.match(player, pattern);
     }
-
-    const stats = fs.readFileSync(
-        path.resolve("src", "routes", "stats", "+page.svelte"),
-        "utf8",
-    );
-    assert.match(
-        stats,
-        /\.stat-card\.primary \.stat-value\s*\{[^}]*color:\s*color-mix\(\s*in srgb,\s*var\(--color-accent-seed\)/s,
-    );
 });
 
 test("initial CSS palette matches the generated canonical default", () => {

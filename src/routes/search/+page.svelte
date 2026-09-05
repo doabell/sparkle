@@ -422,7 +422,6 @@
 
     .history-clear:hover {
         color: var(--color-text);
-        text-decoration: underline;
     }
 
     .history-chips {
@@ -448,7 +447,6 @@
 
     .history-chip:hover {
         background-color: var(--color-surface-raised);
-        border-color: var(--color-accent-graphic);
     }
 
     .history-chip svg {

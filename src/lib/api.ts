@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import type { ThemeMode } from "$lib/utils/themeMode";
 
 export interface AppStatus {
     db_path: string;
@@ -169,6 +170,7 @@ export interface OnlineSettings {
     ui_font: string;
     lyrics_font: string;
     reduce_motion: boolean;
+    theme_mode: ThemeMode;
     brave_api_key: string;
     accent_color: string;
     accent_foreground_preference: AccentForegroundPreference;

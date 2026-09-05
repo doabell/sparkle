@@ -39,6 +39,11 @@
     } from "$lib/stores/uiPrefs";
     import { getFontStack } from "$lib/utils/fonts";
     import {
+        applyThemeMode,
+        cacheThemeMode,
+        normalizeThemeMode,
+    } from "$lib/utils/themeMode";
+    import {
         DEFAULT_ACCENT_COLOR,
         applyAccent,
         cacheAccent,
@@ -184,7 +189,6 @@
             | "artist_image_sources"
             | "album_art_sources";
         label: string;
-        hint: string;
         builtins: readonly string[];
         wikipedia: boolean;
     }
@@ -193,7 +197,6 @@
         {
             key: "lyrics_sources",
             label: "Lyrics",
-            hint: "Tried from top to bottom.",
             builtins: [
                 "custom",
                 "embedded",
@@ -208,14 +211,12 @@
         {
             key: "artist_info_sources",
             label: "Artist info",
-            hint: "Tried from top to bottom.",
             builtins: ["custom"],
             wikipedia: true,
         },
         {
             key: "artist_image_sources",
             label: "Artist images",
-            hint: "Tried from top to bottom.",
             builtins: [
                 "custom",
                 "wikipedia:en",
@@ -228,7 +229,6 @@
         {
             key: "album_art_sources",
             label: "Album art",
-            hint: "Tried from top to bottom.",
             builtins: ["custom", "embedded", "cover_art_archive"],
             wikipedia: false,
         },
@@ -292,6 +292,12 @@
         "th",
         "vi",
     ];
+
+    const THEME_MODES = [
+        { value: "system", label: "System" },
+        { value: "light", label: "Light" },
+        { value: "dark", label: "Dark" },
+    ] as const;
 
     let settings = $state<OnlineSettings | null>(null);
     let activeCategory = $state<SettingsCategory>("appearance");
@@ -368,16 +374,18 @@
         if (!settings) return;
         saveState = "saving";
         try {
-            await setOnlineSettings(settings);
+            const snapshot: OnlineSettings = JSON.parse(json);
+            await setOnlineSettings(snapshot);
+            cacheThemeMode(snapshot.theme_mode);
             cacheAccent(
-                settings.accent_color,
-                settings.accent_foreground_preference,
+                snapshot.accent_color,
+                snapshot.accent_foreground_preference,
             );
             lastSavedJson = json;
             saveState = "saved";
             const splitKey = JSON.stringify([
-                settings.artist_split_regex,
-                settings.artist_split_exceptions,
+                snapshot.artist_split_regex,
+                snapshot.artist_split_exceptions,
             ]);
             if (lastSplitKey && splitKey !== lastSplitKey) {
                 rulesNeedRescan = true;
@@ -519,6 +527,8 @@
     }
 
     function normalizeLoadedAppearance(loaded: OnlineSettings) {
+        loaded.theme_mode = normalizeThemeMode(loaded.theme_mode);
+        cacheThemeMode(loaded.theme_mode);
         loaded.accent_color =
             normalizeHex(loaded.accent_color ?? "") ?? DEFAULT_ACCENT_COLOR;
         loaded.accent_foreground_preference =
@@ -663,6 +673,7 @@
     $effect(() => {
         if (settings) {
             applyMotion(settings.reduce_motion);
+            applyThemeMode(settings.theme_mode);
         }
     });
 
@@ -721,6 +732,7 @@
             `--preview-surface: ${surface}`,
             `--preview-text: ${text}`,
             `--preview-muted: ${muted}`,
+            `--preview-content: ${palette.content}`,
             `--preview-fill: ${palette.fill}`,
             `--preview-fill-hover: ${palette.fillHover}`,
             `--preview-fill-disabled: ${palette.fillDisabled}`,
@@ -994,7 +1006,7 @@
                     </div>
                 {/each}
                 {#if category.wikipedia}
-                    <div class="source-row add-row" role="listitem">
+                    <div class="source-row" role="listitem">
                         <span class="source-name add-label"
                             >Add Wikipedia language</span
                         >
@@ -1022,13 +1034,12 @@
                     </div>
                 {/if}
             </div>
-            {@render hint(category.hint)}
         </div>
     {/if}
 {/snippet}
 
-<div class="settings-page">
-    <div class="header">
+<div class="settings-page page-shell page-enter">
+    <div class="header page-header">
         <div class="page-heading">
             <h1 class="page-title">Settings</h1>
         </div>
@@ -1040,8 +1051,6 @@
                     Saved
                 {:else if saveState === "dirty"}
                     Editing…
-                {:else}
-                    Saves automatically
                 {/if}
             </span>
         {/if}
@@ -1066,967 +1075,1028 @@
         </nav>
 
         <div
-            class="category-heading"
+            class="settings-content"
             id="settings-category-content"
-            tabindex="-1"
+            role="region"
+            aria-labelledby="settings-category-title"
         >
-            <h2>{activeCategoryInfo.label}</h2>
-        </div>
+            <div class="category-heading">
+                <h2 id="settings-category-title">{activeCategoryInfo.label}</h2>
+                <p>{activeCategoryInfo.description}</p>
+            </div>
 
-        <div class="form-card" hidden={activeCategory !== "data"}>
-            {@render sectionTitle("Backup & restore")}
-            <p class="privacy-note">Files and keys stay local.</p>
-            <div class="backup-grid">
-                <section
-                    class="backup-panel"
-                    aria-labelledby="create-backup-title"
-                >
-                    <div class="backup-panel-heading">
-                        <h3 id="create-backup-title">Create backup</h3>
-                        <span>Compressed</span>
-                    </div>
-                    <div class="backup-options">
-                        <label class="backup-option">
-                            <input
-                                type="checkbox"
-                                bind:checked={exportSections.settings}
-                            />
-                            <span
-                                ><strong>Settings</strong><small
-                                    >Appearance and providers</small
-                                ></span
-                            >
-                        </label>
-                        <label class="backup-option">
-                            <input
-                                type="checkbox"
-                                bind:checked={exportSections.playlists}
-                            />
-                            <span
-                                ><strong>Playlists</strong><small
-                                    >Order and descriptions</small
-                                ></span
-                            >
-                        </label>
-                        <label class="backup-option">
-                            <input
-                                type="checkbox"
-                                bind:checked={exportSections.custom_metadata}
-                            />
-                            <span
-                                ><strong>Custom metadata</strong><small
-                                    >Lyrics, bios, and artwork</small
-                                ></span
-                            >
-                        </label>
-                        <label class="backup-option">
-                            <input
-                                type="checkbox"
-                                bind:checked={exportSections.history}
-                            />
-                            <span
-                                ><strong>Listening history</strong><small
-                                    >Playback history</small
-                                ></span
-                            >
-                        </label>
-                    </div>
-                    <button
-                        class="btn-pill btn-primary backup-button"
-                        disabled={backupBusy !== null || !canExport}
-                        onclick={backupLibrary}
+            <div class="settings-section" hidden={activeCategory !== "data"}>
+                {@render sectionTitle("Backup & restore")}
+                <div class="backup-grid">
+                    <section
+                        class="backup-panel"
+                        aria-labelledby="create-backup-title"
                     >
-                        {backupBusy === "export"
-                            ? "Creating…"
-                            : "Create backup"}
-                    </button>
-                    {#if lastBackup}
-                        <p class="backup-status">
-                            Saved {formatBackupSize(lastBackup.file_size_bytes)} ·
-                            {lastBackup.tracks.toLocaleString()} songs
-                        </p>
-                    {/if}
-                </section>
-
-                <section
-                    class="backup-panel"
-                    aria-labelledby="restore-backup-title"
-                >
-                    <div class="backup-panel-heading">
-                        <h3 id="restore-backup-title">Restore backup</h3>
-                        <span>Preview first</span>
-                    </div>
-                    <button
-                        class="btn-pill btn-secondary backup-button"
-                        disabled={backupBusy !== null}
-                        onclick={chooseBackup}
-                    >
-                        {backupBusy === "inspect"
-                            ? "Checking…"
-                            : pendingBackup
-                              ? "Choose another file"
-                              : "Choose backup"}
-                    </button>
-
-                    {#if pendingBackup}
-                        <div class="backup-preview">
-                            <strong>{pendingBackup.name}</strong>
-                            <small>
-                                {formatBackupDate(
-                                    pendingBackup.manifest.created_at,
-                                )} · {formatBackupSize(
-                                    pendingBackup.manifest.file_size_bytes,
-                                )}
-                            </small>
-                            <dl>
-                                <div>
-                                    <dt>Songs</dt>
-                                    <dd>
-                                        {pendingBackup.manifest.tracks.toLocaleString()}
-                                    </dd>
-                                </div>
-                                <div>
-                                    <dt>Playlists</dt>
-                                    <dd>
-                                        {pendingBackup.manifest.playlists.toLocaleString()}
-                                    </dd>
-                                </div>
-                                <div>
-                                    <dt>Custom items</dt>
-                                    <dd>
-                                        {(
-                                            pendingBackup.manifest.lyrics +
-                                            pendingBackup.manifest.artist_bios +
-                                            pendingBackup.manifest.artwork
-                                        ).toLocaleString()}
-                                    </dd>
-                                </div>
-                                <div>
-                                    <dt>Listens</dt>
-                                    <dd>
-                                        {pendingBackup.manifest.history.toLocaleString()}
-                                    </dd>
-                                </div>
-                            </dl>
+                        <div class="backup-panel-heading">
+                            <h3 id="create-backup-title">Create backup</h3>
+                            <span>Compressed</span>
                         </div>
-                        <div class="backup-options restore-options">
-                            <label
-                                class:unavailable={!pendingBackup.manifest
-                                    .settings}
-                                class="backup-option"
-                            >
+                        <div class="backup-options">
+                            <label class="backup-option">
                                 <input
                                     type="checkbox"
-                                    bind:checked={restoreSections.settings}
-                                    disabled={!pendingBackup.manifest.settings}
+                                    bind:checked={exportSections.settings}
                                 />
-                                <span><strong>Settings</strong></span>
+                                <span
+                                    ><strong>Settings</strong><small
+                                        >Appearance and providers</small
+                                    ></span
+                                >
                             </label>
-                            <label
-                                class:unavailable={pendingBackup.manifest
-                                    .playlists === 0}
-                                class="backup-option"
-                            >
+                            <label class="backup-option">
                                 <input
                                     type="checkbox"
-                                    bind:checked={restoreSections.playlists}
-                                    disabled={pendingBackup.manifest
-                                        .playlists === 0}
+                                    bind:checked={exportSections.playlists}
                                 />
-                                <span><strong>Playlists</strong></span>
+                                <span
+                                    ><strong>Playlists</strong><small
+                                        >Order and descriptions</small
+                                    ></span
+                                >
                             </label>
-                            <label
-                                class:unavailable={pendingBackup.manifest
-                                    .lyrics +
-                                    pendingBackup.manifest.artist_bios +
-                                    pendingBackup.manifest.artwork ===
-                                    0}
-                                class="backup-option"
-                            >
+                            <label class="backup-option">
                                 <input
                                     type="checkbox"
                                     bind:checked={
-                                        restoreSections.custom_metadata
+                                        exportSections.custom_metadata
                                     }
-                                    disabled={pendingBackup.manifest.lyrics +
-                                        pendingBackup.manifest.artist_bios +
-                                        pendingBackup.manifest.artwork ===
-                                        0}
                                 />
-                                <span><strong>Custom metadata</strong></span>
+                                <span
+                                    ><strong>Custom metadata</strong><small
+                                        >Lyrics, bios, and artwork</small
+                                    ></span
+                                >
                             </label>
-                            <label
-                                class:unavailable={pendingBackup.manifest
-                                    .history === 0}
-                                class="backup-option"
-                            >
+                            <label class="backup-option">
                                 <input
                                     type="checkbox"
-                                    bind:checked={restoreSections.history}
-                                    disabled={pendingBackup.manifest.history ===
-                                        0}
+                                    bind:checked={exportSections.history}
                                 />
                                 <span
                                     ><strong>Listening history</strong><small
-                                        >Includes the playback trace when
-                                        available</small
+                                        >Playback history</small
                                     ></span
                                 >
                             </label>
                         </div>
-                        <p class="backup-status">
-                            Updates matches; skips missing songs.
-                        </p>
                         <button
                             class="btn-pill btn-primary backup-button"
-                            disabled={backupBusy !== null || !canRestore}
-                            onclick={restoreLibrary}
+                            disabled={backupBusy !== null || !canExport}
+                            onclick={backupLibrary}
                         >
-                            {backupBusy === "import"
-                                ? "Restoring…"
-                                : "Restore selected"}
+                            {backupBusy === "export"
+                                ? "Creating…"
+                                : "Create backup"}
                         </button>
-                    {:else}
-                        <p class="backup-empty">Choose a backup file.</p>
-                    {/if}
-                </section>
-            </div>
-        </div>
+                        {#if lastBackup}
+                            <p class="backup-status">
+                                Saved {formatBackupSize(
+                                    lastBackup.file_size_bytes,
+                                )} ·
+                                {lastBackup.tracks.toLocaleString()} songs
+                            </p>
+                        {/if}
+                    </section>
 
-        <div class="form-card" hidden={activeCategory !== "library"}>
-            {@render sectionTitle("Library")}
+                    <section
+                        class="backup-panel"
+                        aria-labelledby="restore-backup-title"
+                    >
+                        <div class="backup-panel-heading">
+                            <h3 id="restore-backup-title">Restore backup</h3>
+                            <span>Preview first</span>
+                        </div>
+                        <button
+                            class="btn-pill btn-secondary backup-button"
+                            disabled={backupBusy !== null}
+                            onclick={chooseBackup}
+                        >
+                            {backupBusy === "inspect"
+                                ? "Checking…"
+                                : pendingBackup
+                                  ? "Choose another file"
+                                  : "Choose backup"}
+                        </button>
 
-            <div class="field field-inline">
-                <label class="toggle">
-                    <input
-                        id="scan-on-startup"
-                        type="checkbox"
-                        bind:checked={settings.scan_on_startup}
-                    />
-                    <span class="toggle-slider" aria-hidden="true"></span>
-                    <span>Scan library on startup</span>
-                </label>
-                {@render hint("Rescans folders when Sparkle opens.")}
-            </div>
-
-            <div class="field">
-                {@render fieldLabel(
-                    "Artist name separators",
-                    "artist-split-regex",
-                )}
-                <input
-                    id="artist-split-regex"
-                    type="text"
-                    bind:value={settings.artist_split_regex}
-                />
-                {@render hint("Splits combined artist names.")}
-            </div>
-
-            <div class="field">
-                {@render fieldLabel(
-                    "Never split these artists",
-                    "artist-split-exceptions",
-                )}
-                {@render pillList(
-                    "artist_split_exceptions",
-                    "Add an artist name…",
-                )}
-                {@render hint("Keeps these names together.")}
-            </div>
-
-            {#if rulesNeedRescan}
-                <div class="field field-inline">
-                    <span class="rescan-note">
-                        Rescan changed rules in <a
-                            class="rescan-link"
-                            href="/folders">Folders</a
-                        >.
-                    </span>
+                        {#if pendingBackup}
+                            <div class="backup-preview">
+                                <strong>{pendingBackup.name}</strong>
+                                <small>
+                                    {formatBackupDate(
+                                        pendingBackup.manifest.created_at,
+                                    )} · {formatBackupSize(
+                                        pendingBackup.manifest.file_size_bytes,
+                                    )}
+                                </small>
+                                <dl>
+                                    <div>
+                                        <dt>Songs</dt>
+                                        <dd>
+                                            {pendingBackup.manifest.tracks.toLocaleString()}
+                                        </dd>
+                                    </div>
+                                    <div>
+                                        <dt>Playlists</dt>
+                                        <dd>
+                                            {pendingBackup.manifest.playlists.toLocaleString()}
+                                        </dd>
+                                    </div>
+                                    <div>
+                                        <dt>Custom items</dt>
+                                        <dd>
+                                            {(
+                                                pendingBackup.manifest.lyrics +
+                                                pendingBackup.manifest
+                                                    .artist_bios +
+                                                pendingBackup.manifest.artwork
+                                            ).toLocaleString()}
+                                        </dd>
+                                    </div>
+                                    <div>
+                                        <dt>Listens</dt>
+                                        <dd>
+                                            {pendingBackup.manifest.history.toLocaleString()}
+                                        </dd>
+                                    </div>
+                                </dl>
+                            </div>
+                            <div class="backup-options restore-options">
+                                <label
+                                    class:unavailable={!pendingBackup.manifest
+                                        .settings}
+                                    class="backup-option"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        bind:checked={restoreSections.settings}
+                                        disabled={!pendingBackup.manifest
+                                            .settings}
+                                    />
+                                    <span><strong>Settings</strong></span>
+                                </label>
+                                <label
+                                    class:unavailable={pendingBackup.manifest
+                                        .playlists === 0}
+                                    class="backup-option"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        bind:checked={restoreSections.playlists}
+                                        disabled={pendingBackup.manifest
+                                            .playlists === 0}
+                                    />
+                                    <span><strong>Playlists</strong></span>
+                                </label>
+                                <label
+                                    class:unavailable={pendingBackup.manifest
+                                        .lyrics +
+                                        pendingBackup.manifest.artist_bios +
+                                        pendingBackup.manifest.artwork ===
+                                        0}
+                                    class="backup-option"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        bind:checked={
+                                            restoreSections.custom_metadata
+                                        }
+                                        disabled={pendingBackup.manifest
+                                            .lyrics +
+                                            pendingBackup.manifest.artist_bios +
+                                            pendingBackup.manifest.artwork ===
+                                            0}
+                                    />
+                                    <span><strong>Custom metadata</strong></span
+                                    >
+                                </label>
+                                <label
+                                    class:unavailable={pendingBackup.manifest
+                                        .history === 0}
+                                    class="backup-option"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        bind:checked={restoreSections.history}
+                                        disabled={pendingBackup.manifest
+                                            .history === 0}
+                                    />
+                                    <span
+                                        ><strong>Listening history</strong
+                                        ><small
+                                            >Includes the playback trace when
+                                            available</small
+                                        ></span
+                                    >
+                                </label>
+                            </div>
+                            <p class="backup-status">
+                                Updates matches; skips missing songs.
+                            </p>
+                            <button
+                                class="btn-pill btn-primary backup-button"
+                                disabled={backupBusy !== null || !canRestore}
+                                onclick={restoreLibrary}
+                            >
+                                {backupBusy === "import"
+                                    ? "Restoring…"
+                                    : "Restore selected"}
+                            </button>
+                        {:else}
+                            <p class="backup-empty">Choose a backup file.</p>
+                        {/if}
+                    </section>
                 </div>
-            {/if}
-        </div>
-
-        <div class="form-card" hidden={activeCategory !== "playback"}>
-            {@render sectionTitle("Sound Check")}
-
-            <div class="field field-inline">
-                <label class="toggle">
-                    <input
-                        id="sound-check-enabled"
-                        type="checkbox"
-                        bind:checked={settings.sound_check_enabled}
-                    />
-                    <span class="toggle-slider" aria-hidden="true"></span>
-                    <span>Normalize song loudness</span>
-                </label>
             </div>
 
-            <p class="hint">Lowers louder songs automatically.</p>
+            <div class="settings-section" hidden={activeCategory !== "library"}>
+                {@render sectionTitle("Scanning & artist names")}
 
-            {#if loudnessStatus}
-                <div class="sound-check-status" aria-live="polite">
-                    <div class="sound-check-summary">
-                        <strong>
-                            {loudnessStatus.analyzed} of {loudnessStatus.total}
-                            songs analyzed
-                        </strong>
-                        <span>
-                            {#if settings.sound_check_enabled && loudnessStatus.running}
-                                Scanning {loudnessStatus.prioritized_pending > 0
-                                    ? "next-up songs"
-                                    : "library"}…
-                            {:else if !settings.sound_check_enabled && loudnessStatus.pending > 0}
-                                Paused · {loudnessStatus.pending} pending
-                            {:else if loudnessStatus.pending > 0}
-                                {loudnessStatus.pending} pending
-                            {:else if loudnessStatus.failed > 0}
-                                Finished with skipped songs
-                            {:else}
-                                Up to date
-                            {/if}
+                <div class="field field-inline">
+                    <label class="toggle">
+                        <input
+                            id="scan-on-startup"
+                            type="checkbox"
+                            bind:checked={settings.scan_on_startup}
+                        />
+                        <span class="toggle-slider" aria-hidden="true"></span>
+                        <span>Scan library on startup</span>
+                    </label>
+                </div>
+
+                <div class="field">
+                    {@render fieldLabel(
+                        "Artist name separators",
+                        "artist-split-regex",
+                    )}
+                    <input
+                        id="artist-split-regex"
+                        type="text"
+                        bind:value={settings.artist_split_regex}
+                    />
+                    {@render hint("Splits combined artist names.")}
+                </div>
+
+                <div class="field">
+                    {@render fieldLabel(
+                        "Never split these artists",
+                        "artist-split-exceptions",
+                    )}
+                    {@render pillList(
+                        "artist_split_exceptions",
+                        "Add an artist name…",
+                    )}
+                </div>
+
+                {#if rulesNeedRescan}
+                    <div class="field field-inline">
+                        <span class="rescan-note">
+                            Rescan changed rules in <a
+                                class="rescan-link"
+                                href="/folders">Folders</a
+                            >.
                         </span>
                     </div>
-                    <progress
-                        class="sound-check-progress"
-                        max={Math.max(loudnessStatus.total, 1)}
-                        value={loudnessStatus.analyzed + loudnessStatus.failed}
-                    ></progress>
-                    {#if loudnessStatus.failed > 0}
-                        <p class="hint">
-                            {loudnessStatus.failed} scan{loudnessStatus.failed ===
-                            1
-                                ? ""
-                                : "s"} failed.
-                        </p>
-                    {/if}
-                </div>
-            {/if}
-
-            <div class="field field-inline sound-check-actions">
-                <button
-                    type="button"
-                    class="btn-pill btn-primary"
-                    onclick={() => runSoundCheckScan("scan")}
-                    disabled={loudnessActionBusy !== null ||
-                        !settings.sound_check_enabled ||
-                        !loudnessStatus?.total ||
-                        !loudnessStatus.pending}
-                >
-                    {loudnessActionBusy === "scan" ? "Starting…" : "Scan"}
-                </button>
-                <button
-                    type="button"
-                    class="btn-pill btn-secondary"
-                    onclick={() => runSoundCheckScan("rescan")}
-                    disabled={loudnessActionBusy !== null ||
-                        !settings.sound_check_enabled ||
-                        !loudnessStatus?.total}
-                >
-                    {loudnessActionBusy === "rescan" ? "Starting…" : "Rescan"}
-                </button>
+                {/if}
             </div>
-        </div>
 
-        <div class="form-card" hidden={activeCategory !== "appearance"}>
-            {@render sectionTitle("Appearance")}
+            <div
+                class="settings-section"
+                hidden={activeCategory !== "playback"}
+            >
+                {@render sectionTitle("Sound Check")}
 
-            <div class="field">
-                <span class="field-label" id="accent-label">Theme color</span>
-                <div
-                    class="accent-row"
-                    role="group"
-                    aria-labelledby="accent-label"
-                >
-                    {#each ACCENT_PRESETS as color (color)}
-                        <button
-                            type="button"
-                            class="accent-swatch"
-                            class:active={settings.accent_color?.toLowerCase() ===
-                                color.toLowerCase()}
-                            style:background-color={color}
-                            style:color={swatchForeground(color)}
-                            onclick={() => chooseAccent(color)}
-                            aria-label={`Theme color ${color}`}
-                            aria-pressed={settings.accent_color?.toLowerCase() ===
-                                color.toLowerCase()}
-                        >
-                            {#if settings.accent_color?.toLowerCase() === color.toLowerCase()}
-                                <span aria-hidden="true">✓</span>
-                            {/if}
-                        </button>
-                    {/each}
-                    <label class="accent-picker">
+                <div class="field field-inline">
+                    <label class="toggle">
                         <input
-                            type="color"
-                            value={settings.accent_color}
-                            oninput={(event) =>
-                                chooseAccent(
-                                    (event.currentTarget as HTMLInputElement)
-                                        .value,
-                                )}
-                            aria-label="Choose a custom theme color"
+                            id="sound-check-enabled"
+                            type="checkbox"
+                            bind:checked={settings.sound_check_enabled}
                         />
-                        <span>Custom</span>
+                        <span class="toggle-slider" aria-hidden="true"></span>
+                        <span>Normalize song loudness</span>
                     </label>
-                    <input
-                        type="text"
-                        class="accent-hex"
-                        value={accentInput}
-                        oninput={handleAccentInput}
-                        onblur={normalizeAccentInput}
-                        spellcheck="false"
-                        aria-label="Custom theme color (hex)"
-                        aria-invalid={accentInputInvalid}
-                        aria-describedby="accent-help accent-error"
-                        placeholder={DEFAULT_ACCENT_COLOR}
-                    />
-                    <button
-                        type="button"
-                        class="btn-pill btn-secondary accent-reset"
-                        onclick={() => chooseAccent(DEFAULT_ACCENT_COLOR)}
-                        disabled={!accentInputInvalid &&
-                            accentInput === DEFAULT_ACCENT_COLOR &&
-                            settings.accent_color === DEFAULT_ACCENT_COLOR}
-                    >
-                        Reset
-                    </button>
-                </div>
-                <p class="hint" id="accent-help">Accessible in both themes.</p>
-                <p
-                    class="accent-error"
-                    id="accent-error"
-                    role={accentInputInvalid ? "alert" : undefined}
-                >
-                    {accentInputInvalid ? "Use six-digit hex." : ""}
-                </p>
-            </div>
-
-            <div class="field">
-                <span class="field-label" id="accent-foreground-label"
-                    >Filled-control text</span
-                >
-                <div
-                    class="select-field"
-                    role="group"
-                    aria-labelledby="accent-foreground-label"
-                >
-                    <Select
-                        options={ACCENT_FOREGROUND_OPTIONS}
-                        value={settings.accent_foreground_preference}
-                        onchange={chooseAccentForeground}
-                        ariaLabel="Filled-control text preference"
-                    />
-                </div>
-                {@render hint("Adjusts filled-control contrast.")}
-            </div>
-
-            <div class="field">
-                <span class="field-label">Theme preview</span>
-                <div class="accent-preview-grid">
-                    <div
-                        class="accent-preview"
-                        style={accentPreviewStyle(accentTheme.dark, "dark")}
-                        role="img"
-                        aria-label="Dark theme accent preview"
-                    >
-                        <span class="accent-preview-mode">Dark</span>
-                        <strong>Custom color</strong>
-                        <span class="accent-preview-link">Accent text</span>
-                        <div class="accent-preview-controls">
-                            <span class="accent-preview-button">Play</span>
-                            <span class="accent-preview-button hover-sample"
-                                >Hover</span
-                            >
-                            <span class="accent-preview-chip">Selected</span>
-                            <span class="accent-preview-focus">Focus</span>
-                            <span class="accent-preview-button disabled"
-                                >Disabled</span
-                            >
-                        </div>
-                    </div>
-                    <div
-                        class="accent-preview"
-                        style={accentPreviewStyle(accentTheme.light, "light")}
-                        role="img"
-                        aria-label="Light theme accent preview"
-                    >
-                        <span class="accent-preview-mode">Light</span>
-                        <strong>Custom color</strong>
-                        <span class="accent-preview-link">Accent text</span>
-                        <div class="accent-preview-controls">
-                            <span class="accent-preview-button">Play</span>
-                            <span class="accent-preview-button hover-sample"
-                                >Hover</span
-                            >
-                            <span class="accent-preview-chip">Selected</span>
-                            <span class="accent-preview-focus">Focus</span>
-                            <span class="accent-preview-button disabled"
-                                >Disabled</span
-                            >
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="field">
-                <span class="field-label" id="now-playing-layout-label"
-                    >Now playing layout</span
-                >
-                <div
-                    class="now-playing-layouts"
-                    role="radiogroup"
-                    aria-labelledby="now-playing-layout-label"
-                >
-                    {#each NOW_PLAYING_LAYOUTS as layout (layout.value)}
-                        <button
-                            type="button"
-                            class="now-playing-layout"
-                            class:active={$nowPlayingLayout === layout.value}
-                            role="radio"
-                            aria-checked={$nowPlayingLayout === layout.value}
-                            onclick={() => nowPlayingLayout.set(layout.value)}
-                        >
-                            <span
-                                class="now-playing-preview"
-                                data-layout={layout.value}
-                                aria-hidden="true"
-                            >
-                                <span class="preview-artist"></span>
-                                <span class="preview-album"></span>
-                                <span class="preview-lyrics"></span>
-                            </span>
-                            <span class="layout-copy">
-                                <strong>{layout.label}</strong>
-                                <small>{layout.description}</small>
-                            </span>
-                            <span class="layout-check" aria-hidden="true"
-                                >✓</span
-                            >
-                        </button>
-                    {/each}
-                </div>
-                {@render hint(
-                    "Changes the page opened from the player thumbnail.",
-                )}
-            </div>
-
-            <div class="field">
-                {@render fieldLabel("UI font", "ui-font")}
-                <input
-                    id="ui-font"
-                    type="text"
-                    bind:value={settings.ui_font}
-                    placeholder="Font family, e.g. Inter"
-                    spellcheck="false"
-                />
-                {@render hint("Uses an installed font.")}
-            </div>
-
-            <div class="field">
-                {@render fieldLabel("Lyrics font", "lyrics-font")}
-                <input
-                    id="lyrics-font"
-                    type="text"
-                    bind:value={settings.lyrics_font}
-                    placeholder="Font family, e.g. Monospace"
-                    spellcheck="false"
-                />
-                {@render hint("Changes now-playing lyrics.")}
-            </div>
-
-            <div class="field">
-                <span class="field-label" id="song-index-language-label"
-                    >Songs scroll index</span
-                >
-                <div
-                    class="select-field"
-                    role="group"
-                    aria-labelledby="song-index-language-label"
-                >
-                    <Select
-                        options={SONG_INDEX_LANGUAGE_OPTIONS}
-                        value={$songIndexLanguage}
-                        onchange={(v) =>
-                            ($songIndexLanguage = v as SongIndexLanguage)}
-                        ariaLabel="Songs scroll index language"
-                    />
-                </div>
-                {@render hint("Sets alphabet grouping.")}
-            </div>
-
-            <div class="field field-inline">
-                <label class="toggle">
-                    <input
-                        id="reduce-motion"
-                        type="checkbox"
-                        bind:checked={settings.reduce_motion}
-                    />
-                    <span class="toggle-slider" aria-hidden="true"></span>
-                    <span>Reduce motion</span>
-                </label>
-                {@render hint("Disables interface animations.")}
-            </div>
-        </div>
-
-        <div class="form-card" hidden={activeCategory !== "library"}>
-            {@render sectionTitle("Online sources")}
-
-            {#each SOURCE_CATEGORIES as category (category.key)}
-                {@render sortableSourceList(category)}
-            {/each}
-
-            <div class="field">
-                {@render fieldLabel("Brave Search API key", "brave-api-key")}
-                <input
-                    id="brave-api-key"
-                    type="password"
-                    bind:value={settings.brave_api_key}
-                    placeholder="Paste your API key"
-                    spellcheck="false"
-                    autocomplete="off"
-                />
-                {@render hint("Enables Brave image search.")}
-            </div>
-        </div>
-
-        <div class="form-card" hidden={activeCategory !== "sharing"}>
-            {@render sectionTitle("Discord")}
-
-            <div class="field field-inline">
-                <label class="toggle">
-                    <input
-                        id="discord-enabled"
-                        type="checkbox"
-                        bind:checked={settings.discord_enabled}
-                    />
-                    <span class="toggle-slider" aria-hidden="true"></span>
-                    <span>Share playback on Discord</span>
-                </label>
-            </div>
-
-            {#if settings.discord_enabled}
-                <div class="field">
-                    {@render fieldLabel(
-                        "Discord application ID",
-                        "discord-app-id",
-                    )}
-                    <input
-                        id="discord-app-id"
-                        type="text"
-                        bind:value={settings.discord_app_id}
-                        inputmode="numeric"
-                        spellcheck="false"
-                        autocomplete="off"
-                    />
                 </div>
 
-                <div class="field">
-                    {@render fieldLabel(
-                        "Artwork storage",
-                        "discord-artwork-store",
-                    )}
-                    <div
-                        class="select-field"
-                        role="group"
-                        aria-labelledby="discord-artwork-store"
-                    >
-                        <Select
-                            options={ARTWORK_STORE_OPTIONS}
-                            value={settings.discord_artwork_store}
-                            onchange={chooseArtworkStore}
-                            ariaLabel="Discord artwork storage"
-                        />
-                    </div>
-                    {@render hint("Hosts Discord artwork.")}
-                </div>
-
-                {#if settings.discord_artwork_store === "catbox"}
-                    <div class="field">
-                        {@render fieldLabel(
-                            "Catbox user hash",
-                            "discord-catbox-user-hash",
-                        )}
-                        <input
-                            id="discord-catbox-user-hash"
-                            type="password"
-                            bind:value={settings.discord_catbox_user_hash}
-                            spellcheck="false"
-                            autocomplete="off"
-                        />
-                        {@render hint("Optional Catbox account hash.")}
-                    </div>
-                {/if}
-
-                {#if settings.discord_artwork_store === "s3"}
-                    <div class="s3-section">
-                        <div>
-                            <h3>S3 artwork</h3>
-                        </div>
-
-                        <div class="field">
-                            {@render fieldLabel(
-                                "S3 endpoint",
-                                "discord-artwork-s3-endpoint",
-                            )}
-                            <input
-                                id="discord-artwork-s3-endpoint"
-                                type="url"
-                                bind:value={
-                                    settings.discord_artwork_s3_endpoint
-                                }
-                                placeholder="https://s3.example.com"
-                                spellcheck="false"
-                                autocomplete="off"
-                            />
-                            {@render hint("S3-compatible API URL.")}
-                        </div>
-
-                        <div class="field">
-                            {@render fieldLabel(
-                                "S3 bucket",
-                                "discord-artwork-s3-bucket",
-                            )}
-                            <input
-                                id="discord-artwork-s3-bucket"
-                                type="text"
-                                bind:value={settings.discord_artwork_s3_bucket}
-                                placeholder="sparkle-artwork"
-                                spellcheck="false"
-                                autocomplete="off"
-                            />
-                        </div>
-
-                        <div class="field">
-                            {@render fieldLabel(
-                                "Public artwork URL",
-                                "discord-artwork-s3-public-url",
-                            )}
-                            <input
-                                id="discord-artwork-s3-public-url"
-                                type="url"
-                                bind:value={
-                                    settings.discord_artwork_s3_public_url
-                                }
-                                placeholder="https://cdn.example.com/sparkle"
-                                spellcheck="false"
-                                autocomplete="off"
-                            />
-                            {@render hint("Public Discord artwork URL.")}
-                        </div>
-
-                        <div class="field">
-                            {@render fieldLabel(
-                                "S3 access key",
-                                "discord-artwork-s3-access-key",
-                            )}
-                            <input
-                                id="discord-artwork-s3-access-key"
-                                type="text"
-                                bind:value={
-                                    settings.discord_artwork_s3_access_key
-                                }
-                                spellcheck="false"
-                                autocomplete="off"
-                            />
-                        </div>
-
-                        <div class="field">
-                            {@render fieldLabel(
-                                "S3 secret key",
-                                "discord-artwork-s3-secret-key",
-                            )}
-                            <input
-                                id="discord-artwork-s3-secret-key"
-                                type="password"
-                                bind:value={
-                                    settings.discord_artwork_s3_secret_key
-                                }
-                                spellcheck="false"
-                                autocomplete="new-password"
-                            />
-                        </div>
-
-                        <div class="field">
-                            {@render fieldLabel(
-                                "S3 session token",
-                                "discord-artwork-s3-session-token",
-                            )}
-                            <input
-                                id="discord-artwork-s3-session-token"
-                                type="password"
-                                bind:value={
-                                    settings.discord_artwork_s3_session_token
-                                }
-                                spellcheck="false"
-                                autocomplete="new-password"
-                            />
-                            {@render hint("Optional temporary credential.")}
-                        </div>
-
-                        <div class="field">
-                            {@render fieldLabel(
-                                "S3 region",
-                                "discord-artwork-s3-region",
-                            )}
-                            <input
-                                id="discord-artwork-s3-region"
-                                type="text"
-                                bind:value={settings.discord_artwork_s3_region}
-                                placeholder="us-east-1"
-                                spellcheck="false"
-                                autocomplete="off"
-                            />
-                        </div>
-
-                        <div class="field">
-                            {@render fieldLabel(
-                                "S3 object prefix",
-                                "discord-artwork-s3-prefix",
-                            )}
-                            <input
-                                id="discord-artwork-s3-prefix"
-                                type="text"
-                                bind:value={settings.discord_artwork_s3_prefix}
-                                placeholder="sparkle/"
-                                spellcheck="false"
-                                autocomplete="off"
-                            />
-                            {@render hint("Defaults to sparkle/.")}
-                        </div>
-
-                        <p class="hint">Credentials stay local.</p>
-                    </div>
-                {/if}
-
-                {#if settings.discord_artwork_store !== "disabled"}
-                    <div class="storage-test">
-                        <button
-                            class="btn-pill btn-secondary"
-                            disabled={artworkStorageTestBusy ||
-                                saveState === "dirty" ||
-                                saveState === "saving"}
-                            onclick={testArtworkStorage}
-                        >
-                            {artworkStorageTestBusy
-                                ? "Testing…"
-                                : settings.discord_artwork_store === "s3"
-                                  ? "Test S3"
-                                  : "Test Catbox"}
-                        </button>
-                        {@render hint(
-                            settings.discord_artwork_store === "s3"
-                                ? "Uploads, verifies, then deletes."
-                                : "Uploads a test image.",
-                        )}
-                        {#if artworkStorageTestUrl}
-                            <a
-                                class="storage-test-url"
-                                href={artworkStorageTestUrl}
-                                target="_blank"
-                                rel="noreferrer">Open test upload</a
-                            >
-                        {/if}
-                    </div>
-                {/if}
-            {/if}
-        </div>
-
-        <div class="form-card" hidden={activeCategory !== "data"}>
-            {@render sectionTitle("Cache")}
-            <div class="cache-list">
-                {#each [{ name: "Lyrics", clear: clearLyricsCache }, { name: "Artist info", clear: clearArtistInfoCache }, { name: "Images", clear: clearImagesCache }] as entry (entry.name)}
-                    {@const stat = statFor(entry.name)}
-                    <div class="cache-row">
-                        <div class="cache-info">
-                            <span class="cache-name">{entry.name}</span>
-                            <span class="cache-meta">
-                                {#if stat}
-                                    {stat.items} item{stat.items === 1
-                                        ? ""
-                                        : "s"} · {formatBytes(stat.bytes)}
+                {#if loudnessStatus}
+                    <div class="sound-check-status" aria-live="polite">
+                        <div class="sound-check-summary">
+                            <strong>
+                                {loudnessStatus.analyzed} of {loudnessStatus.total}
+                                songs analyzed
+                            </strong>
+                            <span>
+                                {#if settings.sound_check_enabled && loudnessStatus.running}
+                                    Scanning {loudnessStatus.prioritized_pending >
+                                    0
+                                        ? "next-up songs"
+                                        : "library"}…
+                                {:else if !settings.sound_check_enabled && loudnessStatus.pending > 0}
+                                    Paused · {loudnessStatus.pending} pending
+                                {:else if loudnessStatus.pending > 0}
+                                    {loudnessStatus.pending} pending
+                                {:else if loudnessStatus.failed > 0}
+                                    Finished with skipped songs
                                 {:else}
-                                    —
+                                    Up to date
                                 {/if}
                             </span>
                         </div>
-                        <button
-                            class="btn-pill btn-secondary"
-                            disabled={clearing === entry.name}
-                            onclick={() => clearCache(entry.name, entry.clear)}
-                        >
-                            {clearing === entry.name ? "Clearing…" : "Clear"}
-                        </button>
+                        <progress
+                            class="sound-check-progress"
+                            max={Math.max(loudnessStatus.total, 1)}
+                            value={loudnessStatus.analyzed +
+                                loudnessStatus.failed}
+                        ></progress>
+                        {#if loudnessStatus.failed > 0}
+                            <p class="hint">
+                                {loudnessStatus.failed} scan{loudnessStatus.failed ===
+                                1
+                                    ? ""
+                                    : "s"} failed.
+                            </p>
+                        {/if}
                     </div>
-                {/each}
-                <div class="cache-row total">
-                    <div class="cache-info">
-                        <span class="cache-name">All caches</span>
-                        <span class="cache-meta">
-                            {formatBytes(
-                                cacheStats.reduce((sum, s) => sum + s.bytes, 0),
-                            )} total
-                        </span>
-                    </div>
+                {/if}
+
+                <div class="field field-inline sound-check-actions">
                     <button
-                        class="btn-pill btn-secondary"
-                        disabled={clearing === "All"}
-                        onclick={() => clearCache("All", clearAllCaches)}
+                        type="button"
+                        class="btn-pill btn-primary"
+                        onclick={() => runSoundCheckScan("scan")}
+                        disabled={loudnessActionBusy !== null ||
+                            !settings.sound_check_enabled ||
+                            !loudnessStatus?.total ||
+                            !loudnessStatus.pending}
                     >
-                        {clearing === "All" ? "Clearing…" : "Clear all"}
+                        {loudnessActionBusy === "scan" ? "Starting…" : "Scan"}
+                    </button>
+                    <button
+                        type="button"
+                        class="btn-pill btn-secondary"
+                        onclick={() => runSoundCheckScan("rescan")}
+                        disabled={loudnessActionBusy !== null ||
+                            !settings.sound_check_enabled ||
+                            !loudnessStatus?.total}
+                    >
+                        {loudnessActionBusy === "rescan"
+                            ? "Starting…"
+                            : "Rescan"}
                     </button>
                 </div>
             </div>
-        </div>
 
-        <div class="form-card" hidden={activeCategory !== "advanced"}>
-            {@render sectionTitle("Keyboard shortcuts")}
-            <ul class="shortcut-list">
-                {#each SHORTCUTS as shortcut (shortcut.keys)}
-                    <li class="shortcut-row">
-                        <kbd>{shortcut.keys}</kbd>
-                        <span class="shortcut-action">{shortcut.action}</span>
-                    </li>
-                {/each}
-            </ul>
-        </div>
+            <div
+                class="settings-section"
+                hidden={activeCategory !== "appearance"}
+            >
+                {@render sectionTitle("Theme")}
 
-        <div class="form-card" hidden={activeCategory !== "advanced"}>
-            {@render sectionTitle("Diagnostics")}
-            {#if status}
-                <div class="debug-list">
-                    <div class="debug-row">
-                        <span class="debug-label">Library path</span>
-                        <span class="debug-value">{status.db_path}</span>
-                        <button
-                            class="debug-open"
-                            onclick={() => revealInExplorer(status!.db_path)}
-                            aria-label="Show in Explorer"
-                            title="Show in Explorer"
-                        >
-                            <svg
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                aria-hidden="true"
+                <div class="field">
+                    <span class="field-label" id="theme-mode-label">Mode</span>
+                    <div
+                        class="segmented-control theme-mode-control"
+                        role="group"
+                        aria-labelledby="theme-mode-label"
+                    >
+                        {#each THEME_MODES as mode (mode.value)}
+                            <button
+                                type="button"
+                                class:active={settings.theme_mode ===
+                                    mode.value}
+                                aria-pressed={settings.theme_mode ===
+                                    mode.value}
+                                onclick={() => {
+                                    if (settings)
+                                        settings.theme_mode = mode.value;
+                                }}>{mode.label}</button
                             >
-                                <path d="M15 3h6v6" />
-                                <path d="M10 14 21 3" />
-                                <path
-                                    d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"
-                                />
-                            </svg>
+                        {/each}
+                    </div>
+                </div>
+
+                <div class="field">
+                    <span class="field-label" id="accent-label"
+                        >Accent Color</span
+                    >
+                    <div
+                        class="accent-row"
+                        role="group"
+                        aria-labelledby="accent-label"
+                    >
+                        {#each ACCENT_PRESETS as color (color)}
+                            <button
+                                type="button"
+                                class="accent-swatch"
+                                class:active={settings.accent_color?.toLowerCase() ===
+                                    color.toLowerCase()}
+                                style:background-color={color}
+                                style:color={swatchForeground(color)}
+                                onclick={() => chooseAccent(color)}
+                                aria-label={`Theme color ${color}`}
+                                aria-pressed={settings.accent_color?.toLowerCase() ===
+                                    color.toLowerCase()}
+                            >
+                                {#if settings.accent_color?.toLowerCase() === color.toLowerCase()}
+                                    <span aria-hidden="true">✓</span>
+                                {/if}
+                            </button>
+                        {/each}
+                        <label class="accent-picker">
+                            <input
+                                type="color"
+                                value={settings.accent_color}
+                                oninput={(event) =>
+                                    chooseAccent(
+                                        (
+                                            event.currentTarget as HTMLInputElement
+                                        ).value,
+                                    )}
+                                aria-label="Choose a custom theme color"
+                            />
+                            <span>Custom</span>
+                        </label>
+                        <input
+                            type="text"
+                            class="accent-hex"
+                            value={accentInput}
+                            oninput={handleAccentInput}
+                            onblur={normalizeAccentInput}
+                            spellcheck="false"
+                            aria-label="Custom theme color (hex)"
+                            aria-invalid={accentInputInvalid}
+                            aria-describedby="accent-error"
+                            placeholder={DEFAULT_ACCENT_COLOR}
+                        />
+                        <button
+                            type="button"
+                            class="btn-pill btn-secondary accent-reset"
+                            onclick={() => chooseAccent(DEFAULT_ACCENT_COLOR)}
+                            disabled={!accentInputInvalid &&
+                                accentInput === DEFAULT_ACCENT_COLOR &&
+                                settings.accent_color === DEFAULT_ACCENT_COLOR}
+                        >
+                            Reset
                         </button>
                     </div>
-                    {#if cacheDir}
+                    <p
+                        class="accent-error"
+                        id="accent-error"
+                        role={accentInputInvalid ? "alert" : undefined}
+                    >
+                        {accentInputInvalid ? "Use six-digit hex." : ""}
+                    </p>
+                </div>
+
+                <div class="field">
+                    <span class="field-label" id="accent-foreground-label"
+                        >Accent button content</span
+                    >
+                    <div
+                        class="select-field"
+                        role="group"
+                        aria-labelledby="accent-foreground-label"
+                    >
+                        <Select
+                            options={ACCENT_FOREGROUND_OPTIONS}
+                            value={settings.accent_foreground_preference}
+                            onchange={chooseAccentForeground}
+                            ariaLabel="Accent button content preference"
+                        />
+                    </div>
+                    {@render hint(
+                        "Controls text and icons on accent buttons. Automatic is recommended.",
+                    )}
+                </div>
+
+                <div class="field">
+                    <span class="field-label">Theme preview</span>
+                    <div class="accent-preview-grid">
+                        <div
+                            class="accent-preview"
+                            style={accentPreviewStyle(accentTheme.dark, "dark")}
+                            role="img"
+                            aria-label="Dark theme accent preview"
+                        >
+                            <span class="accent-preview-mode">Dark</span>
+                            <strong>Custom color</strong>
+                            <span class="accent-preview-link">Accent text</span>
+                            <div class="accent-preview-controls">
+                                <span class="accent-preview-button">Play</span>
+                                <span class="accent-preview-button hover-sample"
+                                    >Hover</span
+                                >
+                                <span class="accent-preview-chip">Selected</span
+                                >
+                                <span class="accent-preview-focus">Focus</span>
+                                <span class="accent-preview-button disabled"
+                                    >Disabled</span
+                                >
+                            </div>
+                        </div>
+                        <div
+                            class="accent-preview"
+                            style={accentPreviewStyle(
+                                accentTheme.light,
+                                "light",
+                            )}
+                            role="img"
+                            aria-label="Light theme accent preview"
+                        >
+                            <span class="accent-preview-mode">Light</span>
+                            <strong>Custom color</strong>
+                            <span class="accent-preview-link">Accent text</span>
+                            <div class="accent-preview-controls">
+                                <span class="accent-preview-button">Play</span>
+                                <span class="accent-preview-button hover-sample"
+                                    >Hover</span
+                                >
+                                <span class="accent-preview-chip">Selected</span
+                                >
+                                <span class="accent-preview-focus">Focus</span>
+                                <span class="accent-preview-button disabled"
+                                    >Disabled</span
+                                >
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div
+                class="settings-section"
+                hidden={activeCategory !== "appearance"}
+            >
+                {@render sectionTitle("Now playing")}
+
+                <div class="field">
+                    <span class="field-label" id="now-playing-layout-label"
+                        >Choose a layout</span
+                    >
+                    <div
+                        class="now-playing-layouts"
+                        role="radiogroup"
+                        aria-labelledby="now-playing-layout-label"
+                    >
+                        {#each NOW_PLAYING_LAYOUTS as layout (layout.value)}
+                            <label
+                                class="now-playing-layout"
+                                class:active={$nowPlayingLayout ===
+                                    layout.value}
+                            >
+                                <input
+                                    class="layout-radio"
+                                    type="radio"
+                                    name="now-playing-layout"
+                                    value={layout.value}
+                                    checked={$nowPlayingLayout === layout.value}
+                                    onchange={() =>
+                                        nowPlayingLayout.set(layout.value)}
+                                />
+                                <span
+                                    class="now-playing-preview"
+                                    data-layout={layout.value}
+                                    aria-hidden="true"
+                                >
+                                    <span class="preview-artist"></span>
+                                    <span class="preview-album"></span>
+                                    <span class="preview-lyrics"></span>
+                                </span>
+                                <span class="layout-copy">
+                                    <strong>{layout.label}</strong>
+                                    <small>{layout.description}</small>
+                                </span>
+                                <span class="layout-check" aria-hidden="true"
+                                    >✓</span
+                                >
+                            </label>
+                        {/each}
+                    </div>
+                </div>
+            </div>
+
+            <div
+                class="settings-section"
+                hidden={activeCategory !== "appearance"}
+            >
+                {@render sectionTitle("Text & motion")}
+
+                <div class="field">
+                    {@render fieldLabel("UI font", "ui-font")}
+                    <input
+                        id="ui-font"
+                        type="text"
+                        bind:value={settings.ui_font}
+                        placeholder="Font family, e.g. Inter"
+                        spellcheck="false"
+                    />
+                </div>
+
+                <div class="field">
+                    {@render fieldLabel("Lyrics font", "lyrics-font")}
+                    <input
+                        id="lyrics-font"
+                        type="text"
+                        bind:value={settings.lyrics_font}
+                        placeholder="Font family, e.g. Monospace"
+                        spellcheck="false"
+                    />
+                </div>
+
+                <div class="field">
+                    <span class="field-label" id="song-index-language-label"
+                        >Songs scroll index</span
+                    >
+                    <div
+                        class="select-field"
+                        role="group"
+                        aria-labelledby="song-index-language-label"
+                    >
+                        <Select
+                            options={SONG_INDEX_LANGUAGE_OPTIONS}
+                            value={$songIndexLanguage}
+                            onchange={(v) =>
+                                ($songIndexLanguage = v as SongIndexLanguage)}
+                            ariaLabel="Songs scroll index language"
+                        />
+                    </div>
+                    {@render hint("Sets alphabet grouping.")}
+                </div>
+
+                <div class="field field-inline">
+                    <label class="toggle">
+                        <input
+                            id="reduce-motion"
+                            type="checkbox"
+                            bind:checked={settings.reduce_motion}
+                        />
+                        <span class="toggle-slider" aria-hidden="true"></span>
+                        <span>Reduce motion</span>
+                    </label>
+                    {@render hint("Disables interface animations.")}
+                </div>
+            </div>
+
+            <div class="settings-section" hidden={activeCategory !== "library"}>
+                {@render sectionTitle("Online sources")}
+
+                {#each SOURCE_CATEGORIES as category (category.key)}
+                    {@render sortableSourceList(category)}
+                {/each}
+
+                <div class="field">
+                    {@render fieldLabel(
+                        "Brave Search API key",
+                        "brave-api-key",
+                    )}
+                    <input
+                        id="brave-api-key"
+                        type="password"
+                        bind:value={settings.brave_api_key}
+                        placeholder="Paste your API key"
+                        spellcheck="false"
+                        autocomplete="off"
+                    />
+                    {@render hint("Enables Brave image search.")}
+                </div>
+            </div>
+
+            <div class="settings-section" hidden={activeCategory !== "sharing"}>
+                {@render sectionTitle("Discord")}
+
+                <div class="field field-inline">
+                    <label class="toggle">
+                        <input
+                            id="discord-enabled"
+                            type="checkbox"
+                            bind:checked={settings.discord_enabled}
+                        />
+                        <span class="toggle-slider" aria-hidden="true"></span>
+                        <span>Share playback on Discord</span>
+                    </label>
+                </div>
+
+                {#if settings.discord_enabled}
+                    <div class="field">
+                        {@render fieldLabel(
+                            "Discord application ID",
+                            "discord-app-id",
+                        )}
+                        <input
+                            id="discord-app-id"
+                            type="text"
+                            bind:value={settings.discord_app_id}
+                            inputmode="numeric"
+                            spellcheck="false"
+                            autocomplete="off"
+                        />
+                    </div>
+
+                    <div class="field">
+                        {@render fieldLabel(
+                            "Artwork storage",
+                            "discord-artwork-store",
+                        )}
+                        <div
+                            class="select-field"
+                            role="group"
+                            aria-labelledby="discord-artwork-store"
+                        >
+                            <Select
+                                options={ARTWORK_STORE_OPTIONS}
+                                value={settings.discord_artwork_store}
+                                onchange={chooseArtworkStore}
+                                ariaLabel="Discord artwork storage"
+                            />
+                        </div>
+                        {@render hint("Hosts Discord artwork.")}
+                    </div>
+
+                    {#if settings.discord_artwork_store === "catbox"}
+                        <div class="field">
+                            {@render fieldLabel(
+                                "Catbox user hash",
+                                "discord-catbox-user-hash",
+                            )}
+                            <input
+                                id="discord-catbox-user-hash"
+                                type="password"
+                                bind:value={settings.discord_catbox_user_hash}
+                                spellcheck="false"
+                                autocomplete="off"
+                            />
+                            {@render hint("Optional Catbox account hash.")}
+                        </div>
+                    {/if}
+
+                    {#if settings.discord_artwork_store === "s3"}
+                        <div class="s3-section">
+                            <div>
+                                <h3>S3 artwork</h3>
+                            </div>
+
+                            <div class="field">
+                                {@render fieldLabel(
+                                    "S3 endpoint",
+                                    "discord-artwork-s3-endpoint",
+                                )}
+                                <input
+                                    id="discord-artwork-s3-endpoint"
+                                    type="url"
+                                    bind:value={
+                                        settings.discord_artwork_s3_endpoint
+                                    }
+                                    placeholder="https://s3.example.com"
+                                    spellcheck="false"
+                                    autocomplete="off"
+                                />
+                                {@render hint("S3-compatible API URL.")}
+                            </div>
+
+                            <div class="field">
+                                {@render fieldLabel(
+                                    "S3 bucket",
+                                    "discord-artwork-s3-bucket",
+                                )}
+                                <input
+                                    id="discord-artwork-s3-bucket"
+                                    type="text"
+                                    bind:value={
+                                        settings.discord_artwork_s3_bucket
+                                    }
+                                    placeholder="sparkle-artwork"
+                                    spellcheck="false"
+                                    autocomplete="off"
+                                />
+                            </div>
+
+                            <div class="field">
+                                {@render fieldLabel(
+                                    "Public artwork URL",
+                                    "discord-artwork-s3-public-url",
+                                )}
+                                <input
+                                    id="discord-artwork-s3-public-url"
+                                    type="url"
+                                    bind:value={
+                                        settings.discord_artwork_s3_public_url
+                                    }
+                                    placeholder="https://cdn.example.com/sparkle"
+                                    spellcheck="false"
+                                    autocomplete="off"
+                                />
+                                {@render hint("Public Discord artwork URL.")}
+                            </div>
+
+                            <div class="field">
+                                {@render fieldLabel(
+                                    "S3 access key",
+                                    "discord-artwork-s3-access-key",
+                                )}
+                                <input
+                                    id="discord-artwork-s3-access-key"
+                                    type="text"
+                                    bind:value={
+                                        settings.discord_artwork_s3_access_key
+                                    }
+                                    spellcheck="false"
+                                    autocomplete="off"
+                                />
+                            </div>
+
+                            <div class="field">
+                                {@render fieldLabel(
+                                    "S3 secret key",
+                                    "discord-artwork-s3-secret-key",
+                                )}
+                                <input
+                                    id="discord-artwork-s3-secret-key"
+                                    type="password"
+                                    bind:value={
+                                        settings.discord_artwork_s3_secret_key
+                                    }
+                                    spellcheck="false"
+                                    autocomplete="new-password"
+                                />
+                            </div>
+
+                            <div class="field">
+                                {@render fieldLabel(
+                                    "S3 session token",
+                                    "discord-artwork-s3-session-token",
+                                )}
+                                <input
+                                    id="discord-artwork-s3-session-token"
+                                    type="password"
+                                    bind:value={
+                                        settings.discord_artwork_s3_session_token
+                                    }
+                                    spellcheck="false"
+                                    autocomplete="new-password"
+                                />
+                                {@render hint("Optional temporary credential.")}
+                            </div>
+
+                            <div class="field">
+                                {@render fieldLabel(
+                                    "S3 region",
+                                    "discord-artwork-s3-region",
+                                )}
+                                <input
+                                    id="discord-artwork-s3-region"
+                                    type="text"
+                                    bind:value={
+                                        settings.discord_artwork_s3_region
+                                    }
+                                    placeholder="us-east-1"
+                                    spellcheck="false"
+                                    autocomplete="off"
+                                />
+                            </div>
+
+                            <div class="field">
+                                {@render fieldLabel(
+                                    "S3 object prefix",
+                                    "discord-artwork-s3-prefix",
+                                )}
+                                <input
+                                    id="discord-artwork-s3-prefix"
+                                    type="text"
+                                    bind:value={
+                                        settings.discord_artwork_s3_prefix
+                                    }
+                                    placeholder="sparkle/"
+                                    spellcheck="false"
+                                    autocomplete="off"
+                                />
+                                {@render hint("Defaults to sparkle/.")}
+                            </div>
+
+                            <p class="hint">Credentials stay local.</p>
+                        </div>
+                    {/if}
+
+                    {#if settings.discord_artwork_store !== "disabled"}
+                        <div class="storage-test">
+                            <button
+                                class="btn-pill btn-secondary"
+                                disabled={artworkStorageTestBusy ||
+                                    saveState === "dirty" ||
+                                    saveState === "saving"}
+                                onclick={testArtworkStorage}
+                            >
+                                {artworkStorageTestBusy
+                                    ? "Testing…"
+                                    : settings.discord_artwork_store === "s3"
+                                      ? "Test S3"
+                                      : "Test Catbox"}
+                            </button>
+                            {@render hint(
+                                settings.discord_artwork_store === "s3"
+                                    ? "Uploads, verifies, then deletes."
+                                    : "Uploads a test image.",
+                            )}
+                            {#if artworkStorageTestUrl}
+                                <a
+                                    class="storage-test-url"
+                                    href={artworkStorageTestUrl}
+                                    target="_blank"
+                                    rel="noreferrer">Open test upload</a
+                                >
+                            {/if}
+                        </div>
+                    {/if}
+                {/if}
+            </div>
+
+            <div class="settings-section" hidden={activeCategory !== "data"}>
+                {@render sectionTitle("Cache")}
+                <div class="cache-list">
+                    {#each [{ name: "Lyrics", clear: clearLyricsCache }, { name: "Artist info", clear: clearArtistInfoCache }, { name: "Images", clear: clearImagesCache }] as entry (entry.name)}
+                        {@const stat = statFor(entry.name)}
+                        <div class="cache-row">
+                            <div class="cache-info">
+                                <span class="cache-name">{entry.name}</span>
+                                <span class="cache-meta">
+                                    {#if stat}
+                                        {stat.items} item{stat.items === 1
+                                            ? ""
+                                            : "s"} · {formatBytes(stat.bytes)}
+                                    {:else}
+                                        —
+                                    {/if}
+                                </span>
+                            </div>
+                            <button
+                                class="btn-pill btn-secondary"
+                                disabled={clearing === entry.name}
+                                onclick={() =>
+                                    clearCache(entry.name, entry.clear)}
+                            >
+                                {clearing === entry.name
+                                    ? "Clearing…"
+                                    : "Clear"}
+                            </button>
+                        </div>
+                    {/each}
+                    <div class="cache-row total">
+                        <div class="cache-info">
+                            <span class="cache-name">All caches</span>
+                            <span class="cache-meta">
+                                {formatBytes(
+                                    cacheStats.reduce(
+                                        (sum, s) => sum + s.bytes,
+                                        0,
+                                    ),
+                                )} total
+                            </span>
+                        </div>
+                        <button
+                            class="btn-pill btn-secondary"
+                            disabled={clearing === "All"}
+                            onclick={() => clearCache("All", clearAllCaches)}
+                        >
+                            {clearing === "All" ? "Clearing…" : "Clear all"}
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div
+                class="settings-section"
+                hidden={activeCategory !== "advanced"}
+            >
+                {@render sectionTitle("Keyboard shortcuts")}
+                <ul class="shortcut-list">
+                    {#each SHORTCUTS as shortcut (shortcut.keys)}
+                        <li class="shortcut-row">
+                            <kbd>{shortcut.keys}</kbd>
+                            <span class="shortcut-action"
+                                >{shortcut.action}</span
+                            >
+                        </li>
+                    {/each}
+                </ul>
+            </div>
+
+            <div
+                class="settings-section"
+                hidden={activeCategory !== "advanced"}
+            >
+                {@render sectionTitle("Diagnostics")}
+                {#if status}
+                    <div class="debug-list">
                         <div class="debug-row">
-                            <span class="debug-label">Cache path</span>
-                            <span class="debug-value">{cacheDir}</span>
+                            <span class="debug-label">Library path</span>
+                            <span class="debug-value">{status.db_path}</span>
                             <button
                                 class="debug-open"
-                                onclick={() => revealInExplorer(cacheDir!)}
+                                onclick={() =>
+                                    revealInExplorer(status!.db_path)}
                                 aria-label="Show in Explorer"
                                 title="Show in Explorer"
                             >
@@ -2047,98 +2117,137 @@
                                 </svg>
                             </button>
                         </div>
-                    {/if}
-                    <div class="debug-row">
-                        <span class="debug-label">Schema version</span>
-                        <span class="debug-value">{status.schema_version}</span>
-                    </div>
-                    <div class="debug-row">
-                        <span class="debug-label">Audio output</span>
-                        <span class="debug-value">
-                            {status.audio_backend}
-                            {status.audio_output_mode} ·
-                            {status.audio_precision_bits}-bit float processing
-                        </span>
-                    </div>
-                    <div class="debug-row">
-                        <span class="debug-label">Log file</span>
-                        <span class="debug-value">{status.log_path}</span>
-                        <button
-                            class="debug-open"
-                            onclick={() => revealInExplorer(status!.log_path)}
-                            aria-label="Show log file in Explorer"
-                            title="Show log file in Explorer"
-                        >
-                            <svg
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                aria-hidden="true"
-                            >
-                                <path d="M15 3h6v6" />
-                                <path d="M10 14 21 3" />
-                                <path
-                                    d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"
-                                />
-                            </svg>
-                        </button>
-                    </div>
-                    <div class="debug-row">
-                        <span class="debug-label">Log rotation</span>
-                        <span class="debug-value">2 MiB · 3 files</span>
-                    </div>
-                    {#if settings}
-                        <div class="debug-row debug-row-toggle">
-                            <div class="debug-toggle-copy">
-                                <span class="debug-label">Verbose logging</span>
-                            </div>
-                            <label class="toggle">
-                                <input
-                                    type="checkbox"
-                                    bind:checked={
-                                        settings.debug_logging_enabled
-                                    }
-                                    aria-label="Enable verbose logging"
-                                />
-                                <span class="toggle-slider" aria-hidden="true"
-                                ></span>
-                                <span
-                                    >{settings.debug_logging_enabled
-                                        ? "On"
-                                        : "Off"}</span
+                        {#if cacheDir}
+                            <div class="debug-row">
+                                <span class="debug-label">Cache path</span>
+                                <span class="debug-value">{cacheDir}</span>
+                                <button
+                                    class="debug-open"
+                                    onclick={() => revealInExplorer(cacheDir!)}
+                                    aria-label="Show in Explorer"
+                                    title="Show in Explorer"
                                 >
-                            </label>
-                        </div>
-                    {/if}
-                </div>
-            {:else}
-                <p class="hint">Unavailable</p>
-            {/if}
-        </div>
-
-        <div class="form-card" hidden={activeCategory !== "advanced"}>
-            {@render sectionTitle("Licenses")}
-            <ul class="license-list">
-                {#each LICENSES as item (item.name)}
-                    <li class="license-row">
-                        {#if item.href}
-                            <a
-                                href={item.href}
-                                target="_blank"
-                                rel="noreferrer"
-                            >
-                                {item.name}
-                            </a>
-                        {:else}
-                            <span>{item.name}</span>
+                                    <svg
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        aria-hidden="true"
+                                    >
+                                        <path d="M15 3h6v6" />
+                                        <path d="M10 14 21 3" />
+                                        <path
+                                            d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"
+                                        />
+                                    </svg>
+                                </button>
+                            </div>
                         {/if}
-                        <span class="license-type">{item.license}</span>
-                    </li>
-                {/each}
-            </ul>
+                        <div class="debug-row">
+                            <span class="debug-label">Schema version</span>
+                            <span class="debug-value"
+                                >{status.schema_version}</span
+                            >
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Audio output</span>
+                            <span class="debug-value">
+                                {status.audio_backend}
+                                {status.audio_output_mode} ·
+                                {status.audio_precision_bits}-bit float
+                                processing
+                            </span>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Log file</span>
+                            <span class="debug-value">{status.log_path}</span>
+                            <button
+                                class="debug-open"
+                                onclick={() =>
+                                    revealInExplorer(status!.log_path)}
+                                aria-label="Show log file in Explorer"
+                                title="Show log file in Explorer"
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <path d="M15 3h6v6" />
+                                    <path d="M10 14 21 3" />
+                                    <path
+                                        d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"
+                                    />
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Log rotation</span>
+                            <span class="debug-value">2 MiB · 3 files</span>
+                        </div>
+                        {#if settings}
+                            <div class="debug-row debug-row-toggle">
+                                <div class="debug-toggle-copy">
+                                    <span class="debug-label"
+                                        >Verbose logging</span
+                                    >
+                                </div>
+                                <label class="toggle">
+                                    <input
+                                        type="checkbox"
+                                        bind:checked={
+                                            settings.debug_logging_enabled
+                                        }
+                                        aria-label="Enable verbose logging"
+                                    />
+                                    <span
+                                        class="toggle-slider"
+                                        aria-hidden="true"
+                                    ></span>
+                                    <span
+                                        >{settings.debug_logging_enabled
+                                            ? "On"
+                                            : "Off"}</span
+                                    >
+                                </label>
+                            </div>
+                        {/if}
+                    </div>
+                {:else}
+                    <p class="hint">Unavailable</p>
+                {/if}
+            </div>
+
+            <div
+                class="settings-section"
+                hidden={activeCategory !== "advanced"}
+            >
+                {@render sectionTitle("Licenses")}
+                <ul class="license-list">
+                    {#each LICENSES as item (item.name)}
+                        <li class="license-row">
+                            {#if item.href}
+                                <a
+                                    href={item.href}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                >
+                                    {item.name}
+                                </a>
+                            {:else}
+                                <span>{item.name}</span>
+                            {/if}
+                            <span class="license-type">{item.license}</span>
+                        </li>
+                    {/each}
+                </ul>
+            </div>
         </div>
     {:else}
         <div class="settings-loading">
@@ -2150,43 +2259,27 @@
 <style>
     .settings-page {
         display: grid;
-        grid-template-columns: 13rem minmax(0, 1fr);
+        grid-template-columns: 12rem minmax(0, 1fr);
         align-items: start;
-        gap: var(--spacing-lg) var(--spacing-xl);
-        width: 100%;
-        max-width: 1120px;
-        margin: 0 auto;
+        gap: var(--spacing-2xl);
     }
 
     .header {
         grid-column: 1 / -1;
         display: flex;
-        align-items: flex-end;
-        justify-content: space-between;
-        gap: var(--spacing-lg);
-    }
-
-    .page-heading {
-        display: flex;
-        flex-direction: column;
-        gap: var(--spacing-xs);
+        align-items: center;
     }
 
     .settings-index {
         grid-column: 1;
-        grid-row: 2 / span 20;
+        grid-row: 2;
         position: sticky;
-        top: 0;
+        top: calc(var(--window-chrome-height) + var(--spacing-sm));
         display: flex;
         flex-direction: column;
         gap: var(--spacing-xs);
         min-width: 0;
-        padding: var(--spacing-xs);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-lg);
-        background: color-mix(in srgb, var(--color-surface) 82%, transparent);
-        backdrop-filter: blur(18px) saturate(1.4);
-        -webkit-backdrop-filter: blur(18px) saturate(1.4);
+        padding: var(--spacing-xs) 0;
     }
 
     .settings-index button {
@@ -2206,30 +2299,14 @@
             color var(--transition-fast);
     }
 
-    .settings-index button::before {
-        content: "";
-        position: absolute;
-        top: 50%;
-        left: 0.25rem;
-        width: 3px;
-        height: 1.25rem;
-        border-radius: var(--radius-full);
-        background: transparent;
-        transform: translateY(-50%);
-    }
-
     .settings-index button:hover {
-        background: color-mix(in srgb, var(--color-text) 7%, transparent);
+        background: var(--interactive-hover);
         color: var(--color-text);
     }
 
     .settings-index button.active {
-        background: var(--color-surface-elevated);
-        color: var(--color-text);
-    }
-
-    .settings-index button.active::before {
-        background: var(--color-accent-graphic);
+        background: var(--color-accent-subtle);
+        color: var(--color-on-accent-subtle);
     }
 
     .settings-index button span {
@@ -2246,18 +2323,35 @@
         white-space: nowrap;
     }
 
-    .category-heading {
+    .settings-index button.active small {
+        color: inherit;
+    }
+
+    .settings-content {
         grid-column: 2;
+        min-width: 0;
+        container-type: inline-size;
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xl);
+    }
+
+    .category-heading {
         display: flex;
         flex-direction: column;
         gap: var(--spacing-xs);
-        padding: var(--spacing-xs) var(--spacing-xs) var(--spacing-sm);
+        padding-top: var(--spacing-xs);
     }
 
     .category-heading h2 {
         font-size: var(--font-size-2xl);
         line-height: var(--line-height-tight);
         letter-spacing: -0.02em;
+    }
+
+    .category-heading p {
+        color: var(--color-text-secondary);
+        font-size: var(--font-size-sm);
     }
 
     .settings-loading {
@@ -2267,7 +2361,7 @@
     .backup-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: var(--spacing-md);
+        gap: var(--spacing-xl);
     }
 
     .backup-panel {
@@ -2276,10 +2370,11 @@
         align-items: stretch;
         gap: var(--spacing-md);
         min-width: 0;
-        padding: var(--spacing-lg);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-lg);
-        background: var(--color-surface-elevated);
+    }
+
+    .backup-panel + .backup-panel {
+        padding-left: var(--spacing-xl);
+        border-left: 1px solid var(--color-border);
     }
 
     .backup-panel-heading {
@@ -2291,7 +2386,7 @@
 
     .backup-panel-heading h3 {
         margin: 0;
-        font-size: var(--font-size-md);
+        font-size: var(--font-size-base);
     }
 
     .backup-panel-heading span,
@@ -2360,9 +2455,7 @@
         flex-direction: column;
         gap: var(--spacing-xs);
         min-width: 0;
-        padding: var(--spacing-md);
-        border-radius: var(--radius);
-        background: var(--color-surface-raised);
+        padding: var(--spacing-sm) 0;
     }
 
     .backup-preview > strong {
@@ -2402,48 +2495,33 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .form-card {
-        grid-column: 2;
+    .settings-section {
         display: flex;
         flex-direction: column;
         gap: var(--spacing-lg);
         min-width: 0;
-        padding: var(--spacing-xl);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-xl);
-        background: color-mix(in srgb, var(--color-surface) 92%, transparent);
-        box-shadow: var(--shadow-sm);
+        padding-top: var(--spacing-xl);
+        border-top: 1px solid var(--color-border);
     }
 
-    .form-card[hidden] {
+    .settings-section[hidden] {
         display: none;
+    }
+
+    .settings-section:not([hidden]) {
+        animation: page-enter var(--motion-duration-slow)
+            var(--motion-ease-enter) both;
     }
 
     .section-heading {
         display: flex;
         flex-direction: column;
         gap: var(--spacing-xs);
-        padding-bottom: var(--spacing-md);
-        border-bottom: 1px solid var(--color-border);
     }
 
     .section-title {
         font-size: var(--font-size-lg);
         letter-spacing: -0.01em;
-    }
-
-    .privacy-note {
-        margin: 0;
-        padding: var(--spacing-sm) var(--spacing-md);
-        border-radius: var(--radius);
-        background: color-mix(
-            in srgb,
-            var(--color-accent-subtle) 52%,
-            transparent
-        );
-        color: var(--color-text-secondary);
-        font-size: var(--font-size-sm);
-        line-height: var(--line-height);
     }
 
     .field {
@@ -2456,16 +2534,14 @@
         display: flex;
         flex-direction: column;
         gap: var(--spacing-lg);
-        padding: var(--spacing-lg);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-lg);
-        background: var(--color-surface-elevated);
+        padding-top: var(--spacing-lg);
+        border-top: 1px solid var(--color-border);
     }
 
     .s3-section h3 {
         margin: 0 0 var(--spacing-xs);
         color: var(--color-text);
-        font-size: var(--font-size-md);
+        font-size: var(--font-size-base);
     }
 
     .storage-test {
@@ -2542,7 +2618,7 @@
 
     .pill-remove:hover {
         color: var(--color-text);
-        background-color: rgba(255, 255, 255, 0.1);
+        background-color: var(--interactive-hover);
     }
 
     .pill-remove svg {
@@ -2567,28 +2643,23 @@
     .source-list {
         display: flex;
         flex-direction: column;
-        gap: var(--spacing-xs);
+        gap: 0;
     }
 
     .source-row {
         display: flex;
         align-items: center;
         gap: var(--spacing-sm);
-        padding: var(--spacing-sm) var(--spacing-md);
-        border-radius: var(--radius);
-        background: var(--color-surface-elevated);
-        border: 1px solid var(--color-border);
-        transition:
-            background-color var(--transition-fast),
-            opacity var(--transition-fast);
+        padding: var(--spacing-sm) 0;
+        min-height: 3rem;
     }
 
-    .source-row:hover {
-        background: var(--color-surface-raised);
+    .source-row + .source-row {
+        border-top: 1px solid var(--color-border);
     }
 
-    .source-row.disabled {
-        opacity: 0.55;
+    .source-row.disabled .source-name {
+        color: var(--color-text-muted);
     }
 
     .source-name {
@@ -2618,7 +2689,7 @@
 
     .source-action:hover:not(:disabled) {
         color: var(--color-text);
-        background-color: rgba(255, 255, 255, 0.1);
+        background-color: var(--interactive-hover);
     }
 
     .source-action:disabled {
@@ -2631,10 +2702,6 @@
         height: 1rem;
     }
 
-    .add-row {
-        border-style: dashed;
-    }
-
     .add-label {
         color: var(--color-text-muted);
     }
@@ -2645,11 +2712,6 @@
     }
 
     .save-indicator {
-        min-height: 1.75rem;
-        padding: var(--spacing-xs) var(--spacing-sm);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-full);
-        background: var(--color-surface);
         color: var(--color-text-muted);
         font-size: var(--font-size-xs);
         font-weight: var(--font-weight-medium);
@@ -2663,7 +2725,6 @@
 
     .rescan-link {
         color: inherit;
-        text-decoration: underline;
     }
 
     .accent-row {
@@ -2671,6 +2732,10 @@
         align-items: center;
         gap: var(--spacing-sm);
         flex-wrap: wrap;
+    }
+
+    .theme-mode-control {
+        align-self: flex-start;
     }
 
     .accent-swatch {
@@ -2691,7 +2756,7 @@
     }
 
     .accent-swatch:hover {
-        transform: scale(1.1);
+        transform: scale(var(--motion-hover-scale));
     }
 
     .accent-swatch.active {
@@ -2783,12 +2848,11 @@
         color: var(--preview-muted);
         font-size: var(--font-size-xs);
         font-weight: var(--font-weight-semibold);
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
+        letter-spacing: normal;
     }
 
     .accent-preview-link {
-        color: var(--preview-text);
+        color: var(--preview-content);
         font-size: var(--font-size-sm);
         font-weight: var(--font-weight-semibold);
     }
@@ -2854,35 +2918,37 @@
         gap: var(--spacing-sm);
         min-width: 0;
         padding: var(--spacing-sm);
-        border: 1px solid var(--color-border);
+        border: 0;
         border-radius: var(--radius-lg);
-        background: var(--color-surface-elevated);
+        background: transparent;
         text-align: left;
-        transition:
-            transform var(--transition-fast),
-            border-color var(--transition-fast),
-            background-color var(--transition-fast),
-            box-shadow var(--transition-fast);
+        cursor: pointer;
+        transition: background-color var(--transition-fast);
+    }
+
+    .layout-radio {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        opacity: 0;
+    }
+
+    .now-playing-layout:has(:focus-visible) {
+        outline: 2px solid var(--color-accent-focus);
+        outline-offset: 2px;
     }
 
     .now-playing-layout:hover {
-        transform: translateY(-2px);
-        border-color: color-mix(in srgb, var(--color-text) 22%, transparent);
-        background: var(--color-surface-raised);
-        box-shadow: var(--shadow-sm);
+        background: var(--interactive-hover);
     }
 
     .now-playing-layout.active {
-        border-color: var(--color-accent-graphic);
         background: color-mix(
             in srgb,
             var(--color-accent-subtle) 42%,
             var(--color-surface-elevated)
         );
-        box-shadow:
-            0 0 0 1px
-                color-mix(in srgb, var(--color-accent-graphic) 30%, transparent),
-            var(--shadow-sm);
     }
 
     .now-playing-preview {
@@ -3063,19 +3129,6 @@
         display: flex;
         flex-direction: column;
         gap: var(--spacing-sm);
-        padding: var(--spacing-md);
-        border: 1px solid
-            color-mix(
-                in srgb,
-                var(--color-accent-graphic) 24%,
-                var(--color-border)
-            );
-        border-radius: var(--radius);
-        background: color-mix(
-            in srgb,
-            var(--color-accent-subtle) 42%,
-            var(--color-surface-elevated)
-        );
     }
 
     .sound-check-summary {
@@ -3098,7 +3151,7 @@
     .cache-list {
         display: flex;
         flex-direction: column;
-        gap: var(--spacing-xs);
+        gap: 0;
     }
 
     .cache-row {
@@ -3106,14 +3159,11 @@
         align-items: center;
         justify-content: space-between;
         gap: var(--spacing-md);
-        padding: var(--spacing-sm) var(--spacing-md);
-        border-radius: var(--radius);
-        background: var(--color-surface-elevated);
-        border: 1px solid var(--color-border);
+        padding: var(--spacing-md) 0;
     }
 
-    .cache-row.total {
-        border-color: rgba(255, 255, 255, 0.16);
+    .cache-row + .cache-row {
+        border-top: 1px solid var(--color-border);
     }
 
     .cache-info {
@@ -3138,7 +3188,7 @@
     .shortcut-list {
         display: flex;
         flex-direction: column;
-        gap: var(--spacing-xs);
+        gap: 0;
     }
 
     .shortcut-row {
@@ -3146,10 +3196,11 @@
         align-items: center;
         justify-content: space-between;
         gap: var(--spacing-md);
-        padding: var(--spacing-sm) var(--spacing-md);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius);
-        background: var(--color-surface-elevated);
+        padding: var(--spacing-sm) 0;
+    }
+
+    .shortcut-row + .shortcut-row {
+        border-top: 1px solid var(--color-border);
     }
 
     .shortcut-action {
@@ -3173,7 +3224,7 @@
     .debug-list {
         display: flex;
         flex-direction: column;
-        gap: var(--spacing-xs);
+        gap: 0;
     }
 
     .debug-row {
@@ -3182,11 +3233,12 @@
         justify-content: space-between;
         gap: var(--spacing-md);
         min-width: 0;
-        padding: var(--spacing-sm) var(--spacing-md);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius);
-        background: var(--color-surface-elevated);
+        padding: var(--spacing-md) 0;
         font-size: var(--font-size-sm);
+    }
+
+    .debug-row + .debug-row {
+        border-top: 1px solid var(--color-border);
     }
 
     .debug-label {
@@ -3229,7 +3281,7 @@
 
     .debug-open:hover {
         color: var(--color-text);
-        background-color: rgba(255, 255, 255, 0.08);
+        background-color: var(--interactive-hover);
     }
 
     .debug-open svg {
@@ -3240,7 +3292,7 @@
     .license-list {
         display: flex;
         flex-direction: column;
-        gap: var(--spacing-xs);
+        gap: 0;
     }
 
     .license-row {
@@ -3249,11 +3301,12 @@
         justify-content: space-between;
         gap: var(--spacing-md);
         min-width: 0;
-        padding: var(--spacing-sm) var(--spacing-md);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius);
-        background: var(--color-surface-elevated);
+        padding: var(--spacing-sm) 0;
         font-size: var(--font-size-sm);
+    }
+
+    .license-row + .license-row {
+        border-top: 1px solid var(--color-border);
     }
 
     .license-row > :first-child {
@@ -3265,7 +3318,7 @@
     }
 
     .license-row a:hover {
-        text-decoration: underline;
+        color: var(--color-accent-content);
     }
 
     .license-type {
@@ -3333,7 +3386,6 @@
 
     .toggle input:checked + .toggle-slider {
         background-color: var(--color-accent-fill);
-        border-color: var(--color-accent-graphic);
     }
 
     .toggle input:checked + .toggle-slider::after {
@@ -3359,8 +3411,7 @@
             grid-template-columns: repeat(3, minmax(0, 1fr));
         }
 
-        .category-heading,
-        .form-card {
+        .settings-content {
             grid-column: 1;
         }
     }
@@ -3387,16 +3438,6 @@
             padding: var(--spacing-sm) var(--spacing-md);
         }
 
-        .settings-index button::before {
-            top: auto;
-            right: var(--spacing-sm);
-            bottom: 0.2rem;
-            left: var(--spacing-sm);
-            width: auto;
-            height: 2px;
-            transform: none;
-        }
-
         .settings-index button small {
             display: none;
         }
@@ -3411,6 +3452,18 @@
         .debug-value {
             text-align: left;
         }
+    }
+
+    @container (max-width: 36rem) {
+        .backup-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .backup-panel + .backup-panel {
+            padding: var(--spacing-lg) 0 0;
+            border-left: 0;
+            border-top: 1px solid var(--color-border);
+        }
 
         .now-playing-layouts {
             grid-template-columns: 1fr;
@@ -3418,27 +3471,19 @@
 
         .now-playing-layout {
             display: grid;
-            grid-template-columns: minmax(8rem, 0.8fr) minmax(0, 1fr);
+            grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr);
             align-items: center;
         }
     }
 
-    @media (max-width: 480px) {
+    @container (max-width: 26rem) {
         .accent-preview-grid {
             grid-template-columns: 1fr;
         }
 
-        .backup-grid {
-            grid-template-columns: 1fr;
-        }
-
-        .form-card {
-            padding: var(--spacing-md);
-        }
-
-        .backup-panel,
-        .s3-section {
-            padding: var(--spacing-md);
+        .source-row,
+        .sound-check-summary {
+            flex-wrap: wrap;
         }
     }
 </style>

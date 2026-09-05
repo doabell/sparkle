@@ -27,125 +27,91 @@
             ? [
                   {
                       label: "Core metadata",
-                      description: "The tags that make browsing feel finished.",
                       items: [
                           {
                               kind: "titles",
                               label: "Missing titles",
                               value: health.missing_titles,
-                              description:
-                                  "Give every song a name you can recognize.",
                           },
                           {
                               kind: "artists",
                               label: "Missing artists",
                               value: health.missing_artists,
-                              description:
-                                  "Artist credits make browsing and search work.",
                           },
                           {
                               kind: "albums",
                               label: "Missing albums",
                               value: health.missing_albums,
-                              description:
-                                  "Album context keeps the library feeling complete.",
                           },
                           {
                               kind: "genres",
                               label: "Missing genres",
                               value: health.missing_genres,
-                              description:
-                                  "Genres help Sparkle make better shelves and mixes.",
                           },
                           {
                               kind: "lyrics",
                               label: "Missing lyrics",
                               value: health.missing_lyrics,
-                              description:
-                                  "Only indexed and cached lyrics count here.",
                           },
                           {
                               kind: "years",
                               label: "Missing release years",
                               value: health.missing_years,
-                              description:
-                                  "Years make timelines and browsing more useful.",
                           },
                           {
                               kind: "track_numbers",
                               label: "Missing track numbers",
                               value: health.missing_track_numbers,
-                              description:
-                                  "Track numbers keep albums in the right order.",
                           },
                           {
                               kind: "duplicate_titles",
                               label: "Duplicate titles",
                               value: health.duplicate_titles,
-                              description:
-                                  "Possible duplicates worth a quick look.",
                           },
                       ],
                   },
                   {
                       label: "Playback readiness",
-                      description:
-                          "Technical details Sparkle uses to describe and play your files.",
                       items: [
                           {
                               kind: "audio_properties",
                               label: "Needs technical scan",
                               value: health.missing_audio_properties,
-                              description:
-                                  "Rescan to read bitrate, sample rate, and channels.",
                           },
                           {
                               kind: "durations",
                               label: "Missing durations",
                               value: health.missing_durations,
-                              description:
-                                  "These files could not report a usable duration.",
                           },
                           {
                               kind: "low_bitrate",
                               label: "Under 192 kbps",
                               value: health.low_bitrate_tracks,
-                              description:
-                                  "Compressed files where artifacts may be easier to hear.",
                           },
                       ],
                   },
                   {
                       label: "Other checks",
-                      description:
-                          "Unusual lengths, channels, and listening gaps.",
                       items: [
                           {
                               kind: "never_played",
                               label: "Never played",
                               value: health.never_played,
-                              description: "Songs with no listening history.",
                           },
                           {
                               kind: "very_short",
                               label: "Micro tracks",
                               value: health.very_short_tracks,
-                              description:
-                                  "Under 30 seconds: intros, transitions, or scan oddities.",
                           },
                           {
                               kind: "very_long",
                               label: "Long-form tracks",
                               value: health.very_long_tracks,
-                              description:
-                                  "Over 20 minutes: mixes, movements, or hidden tracks.",
                           },
                           {
                               kind: "mono",
                               label: "Mono recordings",
                               value: health.mono_tracks,
-                              description:
-                                  "Often intentional for archival and early recordings.",
                           },
                       ],
                   },
@@ -216,14 +182,10 @@
     );
 </script>
 
-<div class="health-page page-enter">
-    <div class="header">
-        <div>
-            <p class="eyebrow">Library care</p>
+<div class="health-page page-shell page-enter">
+    <div class="header page-header">
+        <div class="page-heading">
             <h1 class="page-title">Library health</h1>
-            <p class="subtitle">
-                A quick audit of your local music collection.
-            </p>
         </div>
         <button class="btn-pill btn-secondary" onclick={() => goto("/folders")}
             >Scan folders</button
@@ -238,7 +200,6 @@
                 </div>
                 <div>
                     <h2>Tag completeness</h2>
-                    <p>Core tags filled across your library.</p>
                 </div>
             </div>
             <div class="summary">
@@ -262,11 +223,7 @@
         <section class="section sound-section">
             <div class="section-heading">
                 <div>
-                    <p class="eyebrow">Technical</p>
                     <h2 class="section-title">Audio profile</h2>
-                    <p class="subtitle">
-                        Format, resolution, channels, and disk use.
-                    </p>
                 </div>
             </div>
             <div class="sound-grid">
@@ -330,17 +287,14 @@
             {#each issueGroups as group (group.label)}
                 <div class="issue-group">
                     <h3>{group.label}</h3>
-                    <p class="group-description">{group.description}</p>
                     <div class="issue-grid">
                         {#each group.items as issue (issue.label)}<button
                                 class="issue"
                                 class:selected={selectedKind === issue.kind}
                                 onclick={() => showTracks(issue.kind)}
                             >
-                                <span class="issue-copy"
-                                    ><strong>{issue.label}</strong><small
-                                        >{issue.description}</small
-                                    ></span
+                                <strong class="issue-label"
+                                    >{issue.label}</strong
                                 ><span
                                     class="issue-count"
                                     class:healthy={issue.value === 0}
@@ -358,9 +312,6 @@
                 <div class="section-heading">
                     <div>
                         <h2 class="section-title">Tracks to review</h2>
-                        <p class="subtitle">
-                            Up to 100 songs. This view makes no changes.
-                        </p>
                     </div>
                     <button
                         class="btn-pill btn-secondary"
@@ -383,7 +334,6 @@
                     </ul>{/if}
             </section>
         {/if}
-        <p class="note">Scans read file headers and do not edit audio files.</p>
     {/if}
 </div>
 
@@ -392,27 +342,12 @@
         display: flex;
         flex-direction: column;
         gap: var(--spacing-xl);
-        max-width: 1120px;
-        padding-bottom: var(--spacing-xl);
     }
     .header {
         display: flex;
         align-items: flex-start;
         justify-content: space-between;
         gap: var(--spacing-md);
-    }
-    .eyebrow {
-        color: var(--color-accent-content);
-        font-size: var(--font-size-xs);
-        font-weight: var(--font-weight-bold);
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
-        margin-bottom: var(--spacing-xs);
-    }
-    .subtitle,
-    .note {
-        color: var(--color-text-muted);
-        margin-top: var(--spacing-xs);
     }
     .error {
         padding: var(--spacing-md);
@@ -452,11 +387,6 @@
 
     .score-card h2 {
         font-size: var(--font-size-lg);
-    }
-    .score-card p {
-        color: var(--color-text-muted);
-        margin-top: var(--spacing-xs);
-        font-size: var(--font-size-sm);
     }
 
     .score-ring {
@@ -549,23 +479,22 @@
 
     button.sound-card:hover {
         transform: translateY(-2px);
-        border-color: var(--color-accent-graphic);
         background-color: var(--color-surface-elevated);
     }
 
     .sound-card.lossless {
-        background: linear-gradient(
-            145deg,
-            color-mix(in srgb, #8e5cff 18%, var(--color-surface-elevated)),
-            var(--color-surface)
+        background: color-mix(
+            in srgb,
+            var(--color-accent-subtle) 32%,
+            var(--color-surface-elevated)
         );
     }
 
     .sound-card.hires {
-        background: linear-gradient(
-            145deg,
-            color-mix(in srgb, #ff9f0a 16%, var(--color-surface-elevated)),
-            var(--color-surface)
+        background: color-mix(
+            in srgb,
+            var(--color-accent-subtle) 18%,
+            var(--color-surface-elevated)
         );
     }
 
@@ -583,8 +512,7 @@
     }
 
     .sound-card small,
-    .format-note,
-    .group-description {
+    .format-note {
         color: var(--color-text-muted);
         font-size: var(--font-size-xs);
     }
@@ -611,7 +539,7 @@
     .format-pill strong {
         color: var(--color-text);
         font-size: 0.65rem;
-        letter-spacing: 0.06em;
+        letter-spacing: normal;
     }
 
     .format-note {
@@ -626,15 +554,12 @@
         margin-top: var(--spacing-lg);
     }
     .issue-group h3 {
-        margin: 0;
+        margin: 0 0 var(--spacing-sm);
         color: var(--color-text-secondary);
         font-size: var(--font-size-sm);
         font-weight: var(--font-weight-bold);
     }
 
-    .group-description {
-        margin: 0 0 var(--spacing-sm);
-    }
     .issue {
         display: flex;
         align-items: center;
@@ -653,25 +578,22 @@
         min-height: 6.5rem;
     }
 
-    .issue:hover,
-    .issue.selected {
-        border-color: var(--color-accent-graphic);
+    .issue:hover {
         background: var(--color-surface-raised);
         transform: translateY(-1px);
     }
-    .issue-copy {
-        display: flex;
-        flex-direction: column;
-        gap: 0.25rem;
-        min-width: 0;
+
+    .issue.selected {
+        background: color-mix(
+            in srgb,
+            var(--color-accent-subtle) 48%,
+            var(--color-surface-raised)
+        );
     }
-    .issue-copy strong {
+    .issue-label {
+        min-width: 0;
         color: var(--color-text);
         font-weight: var(--font-weight-bold);
-    }
-    .issue-copy small {
-        color: var(--color-text-muted);
-        font-size: var(--font-size-sm);
     }
     .issue-count {
         color: var(--color-text);

@@ -194,7 +194,7 @@
 
         const result: Insight[] = [
             {
-                kicker: "Listening time",
+                kicker: "Listening Time",
                 title: daypartTitle[leading.name],
                 detail: `${percentage(leading.ms, stats.total_ms)}% in the ${leading.name}. Peak: ${formatHour(stats.peak_hour)}.`,
             },
@@ -209,7 +209,7 @@
                 detail: `${finishRate}% of meaningful listens reached the final stretch.`,
             },
             {
-                kicker: "Week split",
+                kicker: "Week Split",
                 title: weekendTitle,
                 detail: `${weekendShare}% of your minutes arrived on weekends.`,
             },
@@ -217,7 +217,7 @@
         if (stats.average_year !== null) {
             const year = Math.round(stats.average_year);
             result.push({
-                kicker: "Release years",
+                kicker: "Release Years",
                 title:
                     year < 1990
                         ? "Analog soul"
@@ -231,7 +231,7 @@
         }
         if (stats.top_genre) {
             result.push({
-                kicker: "Top genre",
+                kicker: "Top Genre",
                 title: stats.top_genre,
                 detail: `${percentage(stats.top_genre_ms, stats.total_ms)}% of listening time.`,
             });
@@ -240,16 +240,16 @@
     });
 </script>
 
-<div class="stats-page page-enter">
-    <div class="header">
-        <div class="header-text">
-            <span class="hero-label">Listening history</span>
+<div class="stats-page page-shell page-enter">
+    <div class="header page-header">
+        <div class="header-text page-heading">
             <h1 class="page-title">Stats</h1>
-            <p class="header-subtitle">
-                Minutes, favorites, and listening patterns.
-            </p>
         </div>
-        <div class="range-segment" role="group" aria-label="Time range">
+        <div
+            class="range-segment segmented-control accent"
+            role="group"
+            aria-label="Time range"
+        >
             {#each RANGES as range (range.days)}
                 <button
                     class="segment"
@@ -302,7 +302,7 @@
                     </svg>
                 </span>
                 <span class="stat-value">{minutesValue(stats.total_ms)}</span>
-                <span class="stat-label">minutes listened</span>
+                <span class="stat-label">Minutes Listened</span>
                 <span class="stat-detail"
                     >{plural(stats.total_plays, "meaningful listen")}</span
                 >
@@ -324,7 +324,7 @@
                 <span class="stat-value"
                     >{stats.unique_tracks.toLocaleString()}</span
                 >
-                <span class="stat-label">tracks explored</span>
+                <span class="stat-label">Tracks Explored</span>
                 <span class="stat-detail"
                     >{stats.discovery_tracks.toLocaleString()} first-time
                     {stats.discovery_tracks === 1 ? "spin" : "spins"}</span
@@ -356,8 +356,8 @@
                 <span class="stat-value">{stats.active_days}</span>
                 <span class="stat-label"
                     >{stats.active_days === 1
-                        ? "active day"
-                        : "active days"}</span
+                        ? "Active Day"
+                        : "Active Days"}</span
                 >
                 <span class="stat-detail"
                     >{plural(stats.longest_streak_days, "day")} longest streak</span
@@ -375,7 +375,7 @@
                     </svg>
                 </span>
                 <span class="stat-value">{stats.session_count}</span>
-                <span class="stat-label">listening sessions</span>
+                <span class="stat-label">Listening Sessions</span>
                 <span class="stat-detail"
                     >{stats.unique_artists.toLocaleString()}
                     {stats.unique_artists === 1 ? "artist" : "artists"}</span
@@ -413,11 +413,6 @@
                 <div class="section-heading">
                     <div>
                         <h2 class="section-title">Activity</h2>
-                        <p class="section-subtitle">
-                            Minutes heard, {stats.activity_by_month
-                                ? "month by month"
-                                : "day by day"}
-                        </p>
                     </div>
                     <span class="chart-peak"
                         >{formatMinutes(maxBucketMs)} peak</span
@@ -602,26 +597,6 @@
         display: flex;
         flex-direction: column;
         gap: clamp(var(--spacing-lg), 3vw, var(--spacing-2xl));
-        max-width: 1120px;
-        padding-bottom: var(--spacing-xl);
-        isolation: isolate;
-    }
-
-    /* Accent glow bleeding in from the top — gives the page its own identity. */
-    .stats-page::before {
-        content: "";
-        position: absolute;
-        top: calc(-1 * var(--spacing-xl));
-        left: -10%;
-        right: -10%;
-        height: 22rem;
-        z-index: -1;
-        background: radial-gradient(
-            ellipse 60% 100% at 30% 0%,
-            color-mix(in srgb, var(--color-accent-seed) 16%, transparent) 0%,
-            transparent 70%
-        );
-        pointer-events: none;
     }
 
     .header {
@@ -638,52 +613,8 @@
         gap: var(--spacing-xs);
     }
 
-    .header-subtitle {
-        max-width: 34rem;
-        margin-top: var(--spacing-xs);
-        color: var(--color-text-secondary);
-        font-size: var(--font-size-sm);
-    }
-
-    .range-segment {
-        display: inline-flex;
-        gap: 2px;
-        padding: 2px;
-        border-radius: var(--radius-full);
-        background: color-mix(
-            in srgb,
-            var(--color-surface-elevated) 78%,
-            transparent
-        );
-        backdrop-filter: blur(20px) saturate(1.8);
-        -webkit-backdrop-filter: blur(20px) saturate(1.8);
-        border: 1px solid
-            color-mix(in srgb, var(--color-border) 60%, transparent);
-        box-shadow: var(--shadow-sm);
-    }
-
     .segment {
-        padding: var(--spacing-xs) var(--spacing-md);
-        border-radius: var(--radius-full);
-        font-size: var(--font-size-sm);
-        font-weight: var(--font-weight-medium);
-        color: var(--color-text-secondary);
-        transition:
-            background-color var(--transition-fast),
-            color var(--transition-fast);
-    }
-
-    .segment:hover {
-        color: var(--color-text);
-    }
-
-    .segment.active {
-        background: var(--color-accent-fill);
-        color: var(--color-on-accent-fill);
-        box-shadow:
-            inset 0 0 0 1px var(--color-accent-graphic),
-            0 2px 10px
-                color-mix(in srgb, var(--color-accent-seed) 35%, transparent);
+        white-space: nowrap;
     }
 
     .error {
@@ -724,13 +655,6 @@
             box-shadow var(--transition-base);
     }
 
-    .stat-card:hover {
-        transform: translateY(-2px);
-        box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.05),
-            var(--shadow-md);
-    }
-
     .stat-card:nth-child(1) {
         background: linear-gradient(
             145deg,
@@ -752,7 +676,7 @@
     }
 
     .stat-card.primary .stat-value {
-        color: color-mix(in srgb, var(--color-accent-seed) 78%, white);
+        color: var(--color-accent-content);
     }
 
     .stat-icon {
@@ -783,8 +707,7 @@
     .stat-label {
         font-size: var(--font-size-xs);
         font-weight: var(--font-weight-medium);
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
+        letter-spacing: normal;
         color: var(--color-text-muted);
     }
 
@@ -842,7 +765,7 @@
         background:
             radial-gradient(
                 circle at 88% 12%,
-                color-mix(in srgb, #8e5cff 22%, transparent),
+                color-mix(in srgb, var(--color-accent-seed) 16%, transparent),
                 transparent 48%
             ),
             linear-gradient(
@@ -856,7 +779,7 @@
         background:
             radial-gradient(
                 circle at 88% 12%,
-                color-mix(in srgb, #ff9f0a 20%, transparent),
+                color-mix(in srgb, var(--color-accent-seed) 10%, transparent),
                 transparent 48%
             ),
             linear-gradient(
@@ -882,8 +805,7 @@
         color: var(--color-accent-content);
         font-size: 0.6875rem;
         font-weight: var(--font-weight-bold);
-        letter-spacing: 0.09em;
-        text-transform: uppercase;
+        letter-spacing: normal;
     }
 
     .insight-card h3 {

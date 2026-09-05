@@ -427,8 +427,7 @@
     .genre-label {
         font-size: var(--font-size-xs);
         font-weight: var(--font-weight-semibold);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
+        letter-spacing: normal;
         color: var(--color-text-muted);
     }
 

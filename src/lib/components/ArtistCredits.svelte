@@ -142,8 +142,7 @@
     }
 
     a.artist-credit:hover :global(.artist-credit-avatar) {
-        transform: scale(1.06);
-        border-color: color-mix(in srgb, var(--color-text) 24%, transparent);
+        transform: scale(var(--motion-hover-scale));
         box-shadow: var(--shadow-md);
     }
 

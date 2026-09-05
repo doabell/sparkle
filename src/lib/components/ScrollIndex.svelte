@@ -204,7 +204,7 @@
     }
 
     .scroll-index button:active {
-        transform: scale(1.12);
+        transform: scale(var(--motion-press-scale));
     }
 
     .scroll-index.year-labels {
