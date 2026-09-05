@@ -56,7 +56,7 @@ if (language === "typescript") {
         perFileLines: 80,
     });
 } else {
-    reportGroup("Rust overall", files, { lines: 35, functions: 25 });
+    reportGroup("Rust overall", files, { lines: 45, functions: 35 });
     // Stable, offline library behavior has a higher gate than device/network
     // orchestration. These complete modules also remain in the overall gate.
     const core = files.filter(

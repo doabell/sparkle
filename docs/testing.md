@@ -23,7 +23,7 @@ provider credentials are needed.
 | ----------------------------- | ----: | --------: | -------------: |
 | TypeScript production modules |   95% |       95% |            80% |
 | Rust core library             |   85% |       65% |              — |
-| Rust full backend library     |   35% |       25% |              — |
+| Rust full backend library     |   45% |       35% |              — |
 
 These are independent gates, not a blended TS/Rust score. The checker sums
 executed/total lines and functions from LCOV, rather than averaging file
@@ -58,6 +58,19 @@ artist normalization, settings, and local lyric dispatch/embedded/sidecar
 providers. These files also count in the overall gate. Tests use in-memory
 SQLite with the real schema and isolated temporary files, plus existing fake
 storage adapters.
+
+Scanner tests ingest a tiny, tagged synthetic FLAC through Lofty and SQLite,
+then exercise rescans, changed artist-splitting rules, corrupt files, disabled
+folders, metadata updates, and stale-record cleanup. Sound Check tests decode
+synthetic FLAC/PCM files through Rodio and EBU R128, checking short signals,
+silence, attenuation, cancellation, and file-revision changes. No audio device
+is opened; FFmpeg is only needed to regenerate the committed FLAC fixture.
+
+LRCLIB and Cover Art Archive tests use bounded loopback HTTP fixtures with
+provider-shaped JSON. The real request/response and decoding code runs against
+these fixtures, including HTTP errors, malformed JSON, artwork preference,
+oversized downloads, and truncated responses. They do not validate live
+service availability. Test clients disable proxies and only target localhost.
 
 The overall floor is intentionally lower: device lifecycle/audio worker loops,
 desktop startup, Discord connections, and live online-provider flows remain

@@ -16,6 +16,10 @@ mod providers;
 mod scanner;
 mod settings;
 
+#[cfg(test)]
+#[path = "tests/support.rs"]
+mod test_support;
+
 use commands::AppState;
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};

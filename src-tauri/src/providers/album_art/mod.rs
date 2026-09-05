@@ -129,3 +129,7 @@ pub fn cache_album_art(
         image.data.as_deref(),
     )
 }
+
+#[cfg(test)]
+#[path = "tests/mod.rs"]
+mod tests;

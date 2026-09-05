@@ -1,4 +1,155 @@
 use super::*;
+use crate::test_support::TestDir;
+
+fn audio_candidate(path: &Path) -> Candidate {
+    let (file_mtime, size) = file_revision(path).unwrap();
+    Candidate {
+        track_id: 1,
+        file_path: path.to_string_lossy().into_owned(),
+        file_mtime,
+        file_size_bytes: Some(size),
+        previous_attempts: 0,
+    }
+}
+
+#[test]
+fn real_decoder_analyzes_short_audio_without_amplification() {
+    let root = TestDir::new();
+    let path = root.audio("tone.flac");
+    match analyze_candidate(&audio_candidate(&path), || false).unwrap() {
+        AnalysisResult::PeakOnly {
+            true_peak_dbtp,
+            gain_db,
+        } => {
+            assert!(true_peak_dbtp.is_finite());
+            assert!(gain_db <= 0.0);
+        }
+        other => panic!("a 250ms tone should use peak-only analysis: {other:?}"),
+    }
+}
+
+// Two seconds of stereo 16-bit PCM, decoded through the same path as user files.
+fn write_wave(path: &Path, amplitude: f64) {
+    let sample_rate = 48_000_u32;
+    let frames = sample_rate * 2;
+    let data_size = frames * 4;
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(b"RIFF");
+    bytes.extend_from_slice(&(36 + data_size).to_le_bytes());
+    bytes.extend_from_slice(b"WAVEfmt ");
+    bytes.extend_from_slice(&16_u32.to_le_bytes());
+    bytes.extend_from_slice(&1_u16.to_le_bytes()); // PCM
+    bytes.extend_from_slice(&2_u16.to_le_bytes()); // stereo
+    bytes.extend_from_slice(&sample_rate.to_le_bytes());
+    bytes.extend_from_slice(&(sample_rate * 4).to_le_bytes());
+    bytes.extend_from_slice(&4_u16.to_le_bytes()); // block alignment
+    bytes.extend_from_slice(&16_u16.to_le_bytes());
+    bytes.extend_from_slice(b"data");
+    bytes.extend_from_slice(&data_size.to_le_bytes());
+    for frame in 0..frames {
+        let phase = std::f64::consts::TAU * 1_000.0 * f64::from(frame) / f64::from(sample_rate);
+        let sample = (phase.sin() * amplitude * f64::from(i16::MAX)) as i16;
+        bytes.extend_from_slice(&sample.to_le_bytes());
+        bytes.extend_from_slice(&sample.to_le_bytes());
+    }
+    std::fs::write(path, bytes).unwrap();
+}
+
+#[test]
+fn real_decoder_distinguishes_silence_and_attenuates_a_loud_stereo_signal() {
+    let root = TestDir::new();
+    let path = root.join("signal.wav");
+    write_wave(&path, 0.0);
+    assert!(matches!(
+        analyze_candidate(&audio_candidate(&path), || false).unwrap(),
+        AnalysisResult::Silent
+    ));
+    write_wave(&path, 0.5);
+    let AnalysisResult::Complete {
+        integrated_lufs,
+        true_peak_dbtp,
+        gain_db,
+    } = analyze_candidate(&audio_candidate(&path), || false).unwrap()
+    else {
+        panic!("a two-second tone should have integrated loudness");
+    };
+    assert!(integrated_lufs > TARGET_LUFS);
+    assert!(
+        (true_peak_dbtp - -6.02).abs() < 0.2,
+        "half-scale sine peak: {true_peak_dbtp}"
+    );
+    assert!(gain_db < 0.0);
+    assert!((integrated_lufs + gain_db - TARGET_LUFS).abs() < 0.01);
+    assert!(true_peak_dbtp + gain_db <= TRUE_PEAK_CEILING_DBTP);
+}
+
+#[test]
+fn a_file_changed_mid_analysis_is_never_accepted() {
+    use std::io::Write;
+    let root = TestDir::new();
+    let path = root.audio("changing.flac");
+    let candidate = audio_candidate(&path);
+    let mut calls = 0;
+    let result = analyze_candidate(&candidate, || {
+        calls += 1;
+        if calls == 2 {
+            std::fs::OpenOptions::new()
+                .append(true)
+                .open(&path)
+                .unwrap()
+                .write_all(&[0; 64])
+                .unwrap();
+        }
+        false
+    });
+    assert!(matches!(
+        result,
+        Err(AnalysisFailure::Failed {
+            code: "file_changed",
+            ..
+        })
+    ));
+}
+
+#[test]
+fn analysis_cancellation_and_corrupt_files_do_not_become_measurements() {
+    let root = TestDir::new();
+    let path = root.audio("tone.flac");
+    let candidate = audio_candidate(&path);
+    assert!(matches!(
+        analyze_candidate(&candidate, || true),
+        Err(AnalysisFailure::Cancelled)
+    ));
+    let mut calls = 0;
+    assert!(matches!(
+        analyze_candidate(&candidate, || {
+            calls += 1;
+            calls > 1
+        }),
+        Err(AnalysisFailure::Cancelled)
+    ));
+    std::fs::write(&path, b"corrupt audio").unwrap();
+    assert!(matches!(
+        analyze_candidate(&candidate, || false),
+        Err(AnalysisFailure::Failed {
+            code: "file_changed",
+            ..
+        })
+    ));
+    let changed = audio_candidate(&path);
+    assert!(matches!(
+        analyze_candidate(&changed, || false),
+        Err(AnalysisFailure::Failed { code: "decode", .. })
+    ));
+    std::fs::remove_file(&path).unwrap();
+    assert!(matches!(
+        analyze_candidate(&changed, || false),
+        Err(AnalysisFailure::Failed {
+            code: "file_metadata",
+            ..
+        })
+    ));
+}
 
 #[test]
 fn measurement_persistence_resets_failures_and_scheduler_respects_retry_budget() {

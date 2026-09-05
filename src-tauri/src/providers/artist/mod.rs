@@ -189,3 +189,7 @@ pub fn cache_artist_image(
         image.data.as_deref(),
     )
 }
+
+#[cfg(test)]
+#[path = "tests/mod.rs"]
+mod tests;
