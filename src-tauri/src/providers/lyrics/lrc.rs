@@ -27,3 +27,7 @@ pub fn fetch(metadata: &TrackMetadata) -> Result<Option<Lyrics>, String> {
         plain_text,
     }))
 }
+
+#[cfg(test)]
+#[path = "tests/lrc.rs"]
+mod tests;

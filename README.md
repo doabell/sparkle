@@ -74,6 +74,9 @@ bun run test
 cargo test --locked --manifest-path src-tauri/Cargo.toml
 ```
 
+Run `bun run test:coverage` for the TypeScript and Rust coverage gates.
+See [Tests and coverage](docs/testing.md) for setup, scope, thresholds, and reports.
+
 Build the MSI locally with:
 
 ```sh

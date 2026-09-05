@@ -42,7 +42,7 @@ const initialState: PlaybackState = {
     error: null,
 };
 
-function createPlaybackStore() {
+export function createPlaybackStore() {
     const { subscribe, set, update } = writable<PlaybackState>({
         ...initialState,
     });

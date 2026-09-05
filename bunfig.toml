@@ -1,0 +1,6 @@
+[test]
+preload = ["./test/support/platform.ts"]
+coverageSkipTestFiles = true
+coverageReporter = ["text", "lcov"]
+coverageDir = "coverage/typescript"
+coveragePathIgnorePatterns = ["test/**", "scripts/**", "**/node_modules/**"]

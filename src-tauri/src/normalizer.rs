@@ -17,3 +17,7 @@ pub fn split_artists(input: &str, regex: &Regex, exceptions: &[String]) -> Vec<S
 pub fn normalize_artist_name(name: &str) -> String {
     name.split_whitespace().collect::<Vec<_>>().join(" ")
 }
+
+#[cfg(test)]
+#[path = "tests/normalizer.rs"]
+mod tests;

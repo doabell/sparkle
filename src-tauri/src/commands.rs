@@ -1233,6 +1233,12 @@ fn load_tracks_with_query(conn: &rusqlite::Connection, query: &str) -> Result<Ve
 #[tauri::command]
 pub fn get_discovery_tracks(state: State<'_, AppState>) -> Result<DiscoveryTracks, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
+    discovery_tracks_with_connection(&conn)
+}
+
+fn discovery_tracks_with_connection(
+    conn: &rusqlite::Connection,
+) -> Result<DiscoveryTracks, String> {
     let base =
         format!("SELECT {TRACK_COLUMNS} FROM tracks t LEFT JOIN albums al ON al.id = t.album_id ");
     let recently_added = load_tracks_with_query(
@@ -1261,6 +1267,10 @@ pub fn get_discovery_tracks(state: State<'_, AppState>) -> Result<DiscoveryTrack
 #[tauri::command]
 pub fn get_library_health(state: State<'_, AppState>) -> Result<LibraryHealth, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
+    library_health_with_connection(&conn)
+}
+
+fn library_health_with_connection(conn: &rusqlite::Connection) -> Result<LibraryHealth, String> {
     let count = |query: &str| -> Result<i64, String> {
         conn.query_row(query, [], |row| row.get(0))
             .map_err(|e| e.to_string())
@@ -1343,7 +1353,14 @@ pub fn get_library_health(state: State<'_, AppState>) -> Result<LibraryHealth, S
 #[tauri::command]
 pub fn get_health_tracks(state: State<'_, AppState>, kind: String) -> Result<Vec<Track>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let where_clause = match kind.as_str() {
+    health_tracks_with_connection(&conn, &kind)
+}
+
+fn health_tracks_with_connection(
+    conn: &rusqlite::Connection,
+    kind: &str,
+) -> Result<Vec<Track>, String> {
+    let where_clause = match kind {
         "titles" => "t.title IS NULL OR TRIM(t.title) = ''",
         "artists" => "NOT EXISTS (SELECT 1 FROM track_artists ta WHERE ta.track_id = t.id AND ta.role = 'main')",
         "albums" => "t.album_id IS NULL",
@@ -1376,6 +1393,13 @@ pub fn get_health_tracks(state: State<'_, AppState>, kind: String) -> Result<Vec
 #[tauri::command]
 pub fn search(state: State<'_, AppState>, query: String) -> Result<SearchResults, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
+    search_with_connection(&conn, &query)
+}
+
+fn search_with_connection(
+    conn: &rusqlite::Connection,
+    query: &str,
+) -> Result<SearchResults, String> {
     let trimmed = query.trim();
     if trimmed.is_empty() {
         return Ok(SearchResults {
@@ -1445,10 +1469,10 @@ pub fn search(state: State<'_, AppState>, query: String) -> Result<SearchResults
          FROM tracks t \
          LEFT JOIN albums al ON al.id = t.album_id \
          WHERE t.title LIKE ?1 ESCAPE '\\' \
-            OR t.genre LIKE ?1 \
-            OR al.title LIKE ?1 \
+            OR t.genre LIKE ?1 ESCAPE '\\' \
+            OR al.title LIKE ?1 ESCAPE '\\' \
             OR EXISTS (SELECT 1 FROM track_artists ta JOIN artists ar ON ar.id = ta.artist_id \
-                       WHERE ta.track_id = t.id AND ar.name LIKE ?1) \
+                       WHERE ta.track_id = t.id AND ar.name LIKE ?1 ESCAPE '\\') \
          ORDER BY t.title LIMIT 100"
     );
     let mut track_stmt = conn.prepare(&track_sql).map_err(|e| e.to_string())?;
@@ -1471,16 +1495,16 @@ pub fn search(state: State<'_, AppState>, query: String) -> Result<SearchResults
          JOIN lyrics l ON l.track_id = t.id \
            AND l.rowid = (SELECT l2.rowid FROM lyrics l2 \
                           WHERE l2.track_id = t.id \
-                            AND (l2.plain_text LIKE ?1 ESCAPE '\\' OR l2.synced_text LIKE ?1) \
+                            AND (l2.plain_text LIKE ?1 ESCAPE '\\' OR l2.synced_text LIKE ?1 ESCAPE '\\') \
                           ORDER BY CASE WHEN l2.source = 'custom' THEN 0 ELSE 1 END, l2.fetched_at DESC \
                           LIMIT 1) \
          LEFT JOIN albums al ON al.id = t.album_id \
-         WHERE (l.plain_text LIKE ?1 ESCAPE '\\' OR l.synced_text LIKE ?1) \
-           AND NOT (t.title LIKE ?1 \
-            OR t.genre LIKE ?1 \
-            OR al.title LIKE ?1 \
+         WHERE (l.plain_text LIKE ?1 ESCAPE '\\' OR l.synced_text LIKE ?1 ESCAPE '\\') \
+           AND NOT (COALESCE(t.title, '') LIKE ?1 ESCAPE '\\' \
+            OR COALESCE(t.genre, '') LIKE ?1 ESCAPE '\\' \
+            OR COALESCE(al.title, '') LIKE ?1 ESCAPE '\\' \
             OR EXISTS (SELECT 1 FROM track_artists ta JOIN artists ar ON ar.id = ta.artist_id \
-                       WHERE ta.track_id = t.id AND ar.name LIKE ?1)) \
+                       WHERE ta.track_id = t.id AND ar.name LIKE ?1 ESCAPE '\\')) \
          ORDER BY t.title LIMIT 50"
     );
     let mut lyric_stmt = conn.prepare(&lyric_sql).map_err(|e| e.to_string())?;
@@ -1970,120 +1994,5 @@ fn tracks_in_playlist(conn: &rusqlite::Connection, playlist_id: i64) -> Result<V
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn clearing_custom_lyrics_releases_the_custom_provider_override() {
-        let conn = rusqlite::Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE tracks (id INTEGER PRIMARY KEY, lyrics_source TEXT); \
-             CREATE TABLE lyrics (track_id INTEGER NOT NULL, source TEXT NOT NULL, PRIMARY KEY (track_id, source));",
-        )
-        .unwrap();
-        conn.execute(
-            "INSERT INTO tracks (id, lyrics_source) VALUES (1, 'custom')",
-            [],
-        )
-        .unwrap();
-
-        clear_custom_lyrics_record(&conn, 1).unwrap();
-
-        let source: Option<String> = conn
-            .query_row("SELECT lyrics_source FROM tracks WHERE id = 1", [], |row| {
-                row.get(0)
-            })
-            .unwrap();
-        assert_eq!(source, None);
-    }
-
-    #[test]
-    fn changing_lyrics_source_keeps_cached_provider_rows() {
-        let conn = rusqlite::Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE tracks (id INTEGER PRIMARY KEY, lyrics_source TEXT); \
-             CREATE TABLE lyrics (track_id INTEGER NOT NULL, source TEXT NOT NULL, PRIMARY KEY (track_id, source)); \
-             INSERT INTO tracks (id) VALUES (1); \
-             INSERT INTO lyrics (track_id, source) VALUES (1, 'lrclib'), (1, 'netease');",
-        )
-        .unwrap();
-
-        set_track_lyrics_source_record(&conn, 1, Some("netease")).unwrap();
-
-        let count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM lyrics WHERE track_id = 1",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(count, 2);
-        let source: String = conn
-            .query_row("SELECT lyrics_source FROM tracks WHERE id = 1", [], |row| {
-                row.get(0)
-            })
-            .unwrap();
-        assert_eq!(source, "netease");
-    }
-
-    #[test]
-    fn listening_stats_use_only_finalized_meaningful_listens() {
-        let conn = rusqlite::Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE artists (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
-             CREATE TABLE albums (id INTEGER PRIMARY KEY, title TEXT NOT NULL);
-             CREATE TABLE tracks (
-                id INTEGER PRIMARY KEY,
-                title TEXT,
-                album_id INTEGER,
-                genre TEXT,
-                year INTEGER
-             );
-             CREATE TABLE track_artists (
-                track_id INTEGER NOT NULL,
-                artist_id INTEGER NOT NULL,
-                role TEXT NOT NULL
-             );
-             CREATE TABLE album_artists (
-                album_id INTEGER NOT NULL,
-                artist_id INTEGER NOT NULL
-             );
-             CREATE TABLE listens (
-                track_id INTEGER NOT NULL,
-                session_id TEXT NOT NULL,
-                started_at_ms INTEGER NOT NULL,
-                listened_ms INTEGER NOT NULL,
-                meaningful INTEGER NOT NULL,
-                completed INTEGER NOT NULL,
-                finalized INTEGER NOT NULL
-             );
-             INSERT INTO artists VALUES (1, 'Artist A'), (2, 'Artist B');
-             INSERT INTO albums VALUES (1, 'Album A'), (2, 'Album B');
-             INSERT INTO tracks VALUES
-                (1, 'Track A', 1, 'Rock', 2000),
-                (2, 'Track B', 2, 'Rock', 2010);
-             INSERT INTO track_artists VALUES (1, 1, 'main'), (2, 2, 'main');
-             INSERT INTO album_artists VALUES (1, 1), (2, 2);
-             INSERT INTO listens VALUES
-                (1, 'session-a', 1700000000000, 60000, 1, 1, 1),
-                (2, 'session-a', 1700000060000, 45000, 1, 0, 1),
-                (1, 'session-b', 1700000120000, 4000, 0, 0, 1),
-                (1, 'session-c', 1700000180000, 90000, 1, 1, 0);",
-        )
-        .unwrap();
-
-        let stats = listening_stats_with_connection(&conn, None).unwrap();
-        assert_eq!(stats.total_plays, 2);
-        assert_eq!(stats.total_ms, 105_000);
-        assert_eq!(stats.unique_tracks, 2);
-        assert_eq!(stats.unique_artists, 2);
-        assert_eq!(stats.completed_plays, 1);
-        assert_eq!(stats.discovery_tracks, 2);
-        assert_eq!(stats.session_count, 1);
-        assert_eq!(stats.top_tracks.len(), 2);
-        assert_eq!(stats.top_artists.len(), 2);
-        assert_eq!(stats.top_albums.len(), 2);
-        assert_eq!(stats.top_genre.as_deref(), Some("Rock"));
-        assert_eq!(stats.top_genre_ms, 105_000);
-    }
-}
+#[path = "tests/commands.rs"]
+mod tests;
