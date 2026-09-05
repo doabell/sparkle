@@ -1,6 +1,184 @@
 use super::*;
 
 #[test]
+fn automatic_repeat_one_replays_but_manual_next_advances() {
+    for repeat in [RepeatMode::Off, RepeatMode::All, RepeatMode::One] {
+        assert_eq!(
+            advance_target(Some(1), 3, Some(0), repeat, false),
+            AdvanceTarget::NextPosition(2)
+        );
+        assert_eq!(
+            advance_target(Some(1), 3, Some(0), repeat, true),
+            if repeat == RepeatMode::One {
+                AdvanceTarget::RepeatCurrent(0)
+            } else {
+                AdvanceTarget::NextPosition(2)
+            }
+        );
+    }
+}
+
+#[test]
+fn queue_end_distinguishes_replay_wrap_finish_and_manual_noop() {
+    for len in [1, 4] {
+        let last = Some(len - 1);
+        for repeat in [RepeatMode::Off, RepeatMode::All, RepeatMode::One] {
+            assert_eq!(
+                advance_target(last, len, last, repeat, false),
+                if repeat == RepeatMode::All {
+                    AdvanceTarget::NextPosition(0)
+                } else {
+                    AdvanceTarget::Noop
+                }
+            );
+            assert_eq!(
+                advance_target(last, len, last, repeat, true),
+                match repeat {
+                    RepeatMode::Off => AdvanceTarget::Finish(last),
+                    RepeatMode::All => AdvanceTarget::NextPosition(0),
+                    RepeatMode::One => AdvanceTarget::RepeatCurrent(len - 1),
+                }
+            );
+        }
+    }
+    for repeat in [RepeatMode::Off, RepeatMode::All, RepeatMode::One] {
+        assert_eq!(
+            advance_target(None, 0, None, repeat, false),
+            AdvanceTarget::Noop
+        );
+        assert_eq!(
+            advance_target(None, 0, None, repeat, true),
+            AdvanceTarget::Finish(None)
+        );
+    }
+}
+
+#[test]
+fn previous_restarts_after_three_seconds_or_at_the_first_song() {
+    for position in [0, 2_999, 3_000] {
+        assert_eq!(
+            previous_target(position, Some(2)),
+            PreviousTarget::Position(1)
+        );
+        assert_eq!(previous_target(position, Some(0)), PreviousTarget::Restart);
+        assert_eq!(previous_target(position, None), PreviousTarget::Noop);
+    }
+    assert_eq!(previous_target(3_001, Some(2)), PreviousTarget::Restart);
+    assert_eq!(previous_target(3_001, Some(0)), PreviousTarget::Restart);
+}
+
+#[test]
+fn shuffle_changes_traversal_without_changing_the_current_song() {
+    for current in 0..8 {
+        let (order, mut pos) = build_play_order(8, current, true);
+        assert_eq!(order[pos], current);
+        let mut visited = vec![order[pos]];
+        loop {
+            match advance_target(
+                Some(pos),
+                order.len(),
+                Some(order[pos]),
+                RepeatMode::Off,
+                true,
+            ) {
+                AdvanceTarget::NextPosition(next) => {
+                    assert_eq!(
+                        previous_target(0, Some(next)),
+                        PreviousTarget::Position(pos)
+                    );
+                    pos = next;
+                    visited.push(order[pos]);
+                }
+                AdvanceTarget::Finish(index) => {
+                    assert_eq!(index, Some(order[pos]));
+                    break;
+                }
+                other => panic!("unexpected traversal: {other:?}"),
+            }
+        }
+        visited.sort_unstable();
+        assert_eq!(visited, (0..8).collect::<Vec<_>>());
+        // Disabling shuffle keeps the current song and resumes its library order.
+        let (natural, natural_pos) = build_play_order(8, order[pos], false);
+        assert_eq!(natural[natural_pos], order[pos]);
+        assert_eq!(natural, (0..8).collect::<Vec<_>>());
+    }
+}
+
+#[test]
+fn play_next_moves_existing_entries_without_losing_current_song_or_other_ordering() {
+    for order in [vec![0, 1, 2, 3], vec![3, 1, 0, 2], vec![2, 0, 3, 1]] {
+        for current_index in 0..4 {
+            for requested in [10, 20, 30, 40, 50] {
+                let mut queue = vec![10, 20, 30, 40];
+                let current_id = queue[current_index];
+                let pos = order.iter().position(|&i| i == current_index).unwrap();
+                let mut expected = order.iter().map(|&i| queue[i]).collect::<Vec<_>>();
+                if requested != current_id {
+                    expected.retain(|&id| id != requested);
+                    let current = expected.iter().position(|&id| id == current_id).unwrap();
+                    expected.insert(current + 1, requested);
+                }
+                let mut next_order = order.clone();
+                let (index, next_pos) =
+                    queue_track_next(&mut queue, &mut next_order, current_index, pos, requested);
+                assert_eq!(queue[index], current_id);
+                assert_eq!(next_order[next_pos], index);
+                assert!(is_valid_play_order(&next_order, queue.len()));
+                assert_eq!(
+                    next_order.iter().map(|&i| queue[i]).collect::<Vec<_>>(),
+                    expected
+                );
+                assert_eq!(queue.iter().filter(|&&id| id == requested).count(), 1);
+                // Repeating Play Next has no further effect on queue or cursors.
+                let snapshot = (queue.clone(), next_order.clone(), index, next_pos);
+                let cursors =
+                    queue_track_next(&mut queue, &mut next_order, index, next_pos, requested);
+                assert_eq!((queue, next_order, cursors.0, cursors.1), snapshot);
+            }
+        }
+    }
+}
+
+#[test]
+fn a_failed_source_load_can_recover_without_opening_an_output_device() {
+    let root = crate::test_support::TestDir::new();
+    let path = root.audio("tone.flac");
+    let corrupt = root.join("corrupt.flac");
+    std::fs::write(&corrupt, b"not audio").unwrap();
+    let conn = crate::db::test_connection();
+    conn.execute(
+        "INSERT INTO tracks (id,file_path) VALUES (1,?)",
+        [path.to_string_lossy().as_ref()],
+    )
+    .unwrap();
+    let mut track = load_track_from_db(&Arc::new(Mutex::new(conn)), 1).unwrap();
+    // Player::new exposes a sample iterator, with no OS mixer or audio endpoint.
+    let (player, mut samples) = Player::new();
+    for missing_or_corrupt in [root.join("missing.flac"), corrupt] {
+        track.file_path = missing_or_corrupt.to_string_lossy().into_owned();
+        assert!(!load_source_into_player(&player, &track));
+        assert!(player.empty());
+    }
+    track.file_path = path.to_string_lossy().into_owned();
+    player.set_volume(0.4);
+    assert!(load_source_into_player(&player, &track));
+    assert_eq!(player.len(), 1);
+    assert_eq!(player.volume(), 0.4);
+    assert!(player.is_paused());
+    assert!(samples.by_ref().take(1024).all(|sample| sample == 0.0));
+    player.play();
+    let decoded: Vec<_> = samples.by_ref().take(32_000).collect();
+    assert!(decoded.iter().all(|sample| sample.is_finite()));
+    assert!(decoded.iter().any(|sample| sample.abs() > 0.001));
+    assert!(player.empty());
+    // Loading again after completion is reusable and remains silent until Play.
+    assert!(load_source_into_player(&player, &track));
+    assert!(player.is_paused());
+    assert_eq!(player.len(), 1);
+}
+
+#[test]
 fn playback_metadata_keeps_all_main_artists_and_missing_tracks_are_errors() {
     let conn = crate::db::test_connection();
     conn.execute_batch("INSERT INTO artists (id,name) VALUES (1,'Bob'),(2,'Alice'),(3,'Composer');

@@ -876,6 +876,15 @@ pub fn create_playlist(
     folder_path: Option<String>,
 ) -> Result<Playlist, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
+    create_playlist_with_connection(&conn, name, description, folder_path)
+}
+
+fn create_playlist_with_connection(
+    conn: &rusqlite::Connection,
+    name: String,
+    description: Option<String>,
+    folder_path: Option<String>,
+) -> Result<Playlist, String> {
     if name.trim().is_empty() {
         return Err("playlist name is required".to_string());
     }
@@ -886,7 +895,7 @@ pub fn create_playlist(
     )
     .map_err(|e| e.to_string())?;
     let id = conn.last_insert_rowid();
-    let track_count = playlist_track_count(&conn, id, folder_path.as_deref())?;
+    let track_count = playlist_track_count(conn, id, folder_path.as_deref())?;
     Ok(Playlist {
         id,
         name: trimmed,
@@ -1055,6 +1064,18 @@ pub fn update_playlist(
         return Err("playlist name is required".to_string());
     }
     let conn = state.db.lock().map_err(|e| e.to_string())?;
+    update_playlist_with_connection(&conn, id, name, description)
+}
+
+fn update_playlist_with_connection(
+    conn: &rusqlite::Connection,
+    id: i64,
+    name: String,
+    description: Option<String>,
+) -> Result<(), String> {
+    if name.trim().is_empty() {
+        return Err("playlist name is required".to_string());
+    }
     let smart_query: Option<String> = conn
         .query_row(
             "SELECT smart_query FROM playlists WHERE id = ?",
@@ -1078,6 +1099,10 @@ pub fn update_playlist(
 #[tauri::command]
 pub fn delete_playlist(state: State<'_, AppState>, id: i64) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
+    delete_playlist_with_connection(&conn, id)
+}
+
+fn delete_playlist_with_connection(conn: &rusqlite::Connection, id: i64) -> Result<(), String> {
     let smart_query: Option<String> = conn
         .query_row(
             "SELECT smart_query FROM playlists WHERE id = ?",
@@ -1103,12 +1128,20 @@ pub fn add_tracks_to_playlist(
     trackIds: Vec<i64>,
 ) -> Result<(), String> {
     let mut conn = state.db.lock().map_err(|e| e.to_string())?;
+    add_tracks_to_playlist_with_connection(&mut conn, playlistId, &trackIds)
+}
+
+fn add_tracks_to_playlist_with_connection(
+    conn: &mut rusqlite::Connection,
+    playlist_id: i64,
+    track_ids: &[i64],
+) -> Result<(), String> {
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
     let folder: Option<String> = tx
         .query_row(
             "SELECT smart_query FROM playlists WHERE id = ?",
-            [playlistId],
+            [playlist_id],
             |row| row.get::<_, Option<String>>(0),
         )
         .optional()
@@ -1122,7 +1155,7 @@ pub fn add_tracks_to_playlist(
         .prepare("SELECT COALESCE(MAX(position), 0) FROM playlist_tracks WHERE playlist_id = ?")
         .map_err(|e| e.to_string())?;
     let next_position: i64 = position_stmt
-        .query_row([playlistId], |row| row.get(0))
+        .query_row([playlist_id], |row| row.get(0))
         .map_err(|e| e.to_string())?;
     drop(position_stmt);
 
@@ -1131,10 +1164,10 @@ pub fn add_tracks_to_playlist(
             "INSERT OR IGNORE INTO playlist_tracks (playlist_id, track_id, position) VALUES (?1, ?2, ?3)"
         )
         .map_err(|e| e.to_string())?;
-    for (offset, track_id) in trackIds.iter().enumerate() {
+    for (offset, track_id) in track_ids.iter().enumerate() {
         insert
             .execute(rusqlite::params![
-                playlistId,
+                playlist_id,
                 track_id,
                 next_position + offset as i64 + 1
             ])
@@ -1152,10 +1185,18 @@ pub fn remove_track_from_playlist(
     trackId: i64,
 ) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
+    remove_track_from_playlist_with_connection(&conn, playlistId, trackId)
+}
+
+fn remove_track_from_playlist_with_connection(
+    conn: &rusqlite::Connection,
+    playlist_id: i64,
+    track_id: i64,
+) -> Result<(), String> {
     let smart_query: Option<String> = conn
         .query_row(
             "SELECT smart_query FROM playlists WHERE id = ?",
-            [playlistId],
+            [playlist_id],
             |row| row.get(0),
         )
         .optional()
@@ -1166,7 +1207,7 @@ pub fn remove_track_from_playlist(
     }
     conn.execute(
         "DELETE FROM playlist_tracks WHERE playlist_id = ? AND track_id = ?",
-        [playlistId, trackId],
+        [playlist_id, track_id],
     )
     .map_err(|e| e.to_string())?;
     Ok(())

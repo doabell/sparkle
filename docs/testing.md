@@ -40,6 +40,9 @@ contribute to the production percentage. Native IPC, dialogs, media-session
 initialization, and SvelteKit navigation are mocked at their external boundaries;
 the app's API and stores execute normally.
 
+Playback recovery tests cover failed load/seek commands, successful retries,
+native-state reconciliation, and rejection of progress events from old tracks.
+
 Svelte component scripts, markup, CSS, and the static pre-paint JavaScript are
 not part of this metric. Some existing tests inspect their contracts, but those
 assertions are not component-rendering or visual coverage.
@@ -71,6 +74,14 @@ provider-shaped JSON. The real request/response and decoding code runs against
 these fixtures, including HTTP errors, malformed JSON, artwork preference,
 oversized downloads, and truncated responses. They do not validate live
 service availability. Test clients disable proxies and only target localhost.
+
+Queue tests exercise the decision helpers used by the real command handlers:
+manual versus automatic advance, repeat modes, the previous-button restart
+threshold, shuffled traversal, and Play Next deduplication/cursor remapping.
+Source-loading recovery uses Rodio's in-memory sample iterator, not an output
+device. Playlist tests run the actual command queries against SQLite, including
+duplicate additions, ordering, transactional rollback, managed-list protection,
+and deletion that preserves library tracks and other playlists.
 
 The overall floor is intentionally lower: device lifecycle/audio worker loops,
 desktop startup, Discord connections, and live online-provider flows remain

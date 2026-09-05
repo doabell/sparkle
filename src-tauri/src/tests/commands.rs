@@ -14,6 +14,165 @@ fn library_fixture() -> rusqlite::Connection {
     conn
 }
 
+fn playlist_members(conn: &rusqlite::Connection, id: i64) -> Vec<(i64, i64)> {
+    conn.prepare(
+        "SELECT track_id,position FROM playlist_tracks WHERE playlist_id=? ORDER BY position",
+    )
+    .unwrap()
+    .query_map([id], |row| Ok((row.get(0)?, row.get(1)?)))
+    .unwrap()
+    .collect::<Result<_, _>>()
+    .unwrap()
+}
+
+#[test]
+fn playlist_additions_are_ordered_idempotent_and_preserve_existing_positions() {
+    let mut conn = library_fixture();
+    let playlist =
+        create_playlist_with_connection(&conn, "  Mine  ".into(), Some("Description".into()), None)
+            .unwrap();
+    assert_eq!(playlist.name, "Mine");
+    assert_eq!(playlist.description.as_deref(), Some("Description"));
+    assert_eq!(playlist.track_count, 0);
+    add_tracks_to_playlist_with_connection(&mut conn, playlist.id, &[2, 1, 2]).unwrap();
+    let original = playlist_members(&conn, playlist.id);
+    assert_eq!(
+        original.iter().map(|row| row.0).collect::<Vec<_>>(),
+        vec![2, 1]
+    );
+    add_tracks_to_playlist_with_connection(&mut conn, playlist.id, &[1, 3, 2, 3]).unwrap();
+    let members = playlist_members(&conn, playlist.id);
+    assert_eq!(&members[..2], original.as_slice());
+    assert_eq!(
+        members.iter().map(|row| row.0).collect::<Vec<_>>(),
+        vec![2, 1, 3]
+    );
+    assert!(members.windows(2).all(|rows| rows[0].1 < rows[1].1));
+    add_tracks_to_playlist_with_connection(&mut conn, playlist.id, &[]).unwrap();
+    add_tracks_to_playlist_with_connection(&mut conn, playlist.id, &[2, 1, 3]).unwrap();
+    assert_eq!(playlist_members(&conn, playlist.id), members);
+    assert_eq!(playlist_track_count(&conn, playlist.id, None).unwrap(), 3);
+    assert_eq!(
+        tracks_in_playlist(&conn, playlist.id)
+            .unwrap()
+            .iter()
+            .map(|track| track.id)
+            .collect::<Vec<_>>(),
+        vec![2, 1, 3]
+    );
+}
+
+#[test]
+fn a_failed_playlist_batch_rolls_back_and_the_connection_can_retry() {
+    let mut conn = library_fixture();
+    assert!(conn
+        .pragma_query_value(None, "foreign_keys", |row| row.get::<_, bool>(0))
+        .unwrap());
+    let id = create_playlist_with_connection(&conn, "Mine".into(), None, None)
+        .unwrap()
+        .id;
+    add_tracks_to_playlist_with_connection(&mut conn, id, &[2]).unwrap();
+    let before = playlist_members(&conn, id);
+    // The valid insertion before the invalid ID must roll back as well.
+    assert!(add_tracks_to_playlist_with_connection(&mut conn, id, &[1, 999, 3]).is_err());
+    assert_eq!(playlist_members(&conn, id), before);
+    assert!(add_tracks_to_playlist_with_connection(&mut conn, 999, &[1]).is_err());
+    assert!(playlist_members(&conn, 999).is_empty());
+    add_tracks_to_playlist_with_connection(&mut conn, id, &[1, 3]).unwrap();
+    assert_eq!(
+        playlist_members(&conn, id)
+            .iter()
+            .map(|row| row.0)
+            .collect::<Vec<_>>(),
+        vec![2, 1, 3]
+    );
+}
+
+#[test]
+fn playlist_edits_and_deletion_are_scoped_and_do_not_delete_library_tracks() {
+    let mut conn = library_fixture();
+    assert!(create_playlist_with_connection(&conn, " \n ".into(), None, None).is_err());
+    let first = create_playlist_with_connection(&conn, "First".into(), None, None)
+        .unwrap()
+        .id;
+    let second = create_playlist_with_connection(&conn, "Second".into(), None, None)
+        .unwrap()
+        .id;
+    for id in [first, second] {
+        add_tracks_to_playlist_with_connection(&mut conn, id, &[1, 2, 3]).unwrap();
+    }
+    assert!(
+        update_playlist_with_connection(&conn, first, " ".into(), Some("Rejected".into())).is_err()
+    );
+    assert_eq!(
+        conn.query_row("SELECT name FROM playlists WHERE id=?", [first], |r| r
+            .get::<_, String>(
+            0
+        ))
+        .unwrap(),
+        "First"
+    );
+    update_playlist_with_connection(&conn, first, " Renamed ".into(), Some("Updated".into()))
+        .unwrap();
+    assert_eq!(
+        conn.query_row(
+            "SELECT name,description FROM playlists WHERE id=?",
+            [first],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        )
+        .unwrap(),
+        ("Renamed".into(), "Updated".into())
+    );
+    remove_track_from_playlist_with_connection(&conn, first, 2).unwrap();
+    remove_track_from_playlist_with_connection(&conn, first, 2).unwrap();
+    assert_eq!(
+        playlist_members(&conn, first)
+            .iter()
+            .map(|row| row.0)
+            .collect::<Vec<_>>(),
+        vec![1, 3]
+    );
+    assert_eq!(playlist_members(&conn, second).len(), 3);
+    delete_playlist_with_connection(&conn, first).unwrap();
+    assert!(playlist_members(&conn, first).is_empty());
+    assert_eq!(playlist_members(&conn, second).len(), 3);
+    assert_eq!(
+        conn.query_row("SELECT COUNT(*) FROM tracks", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        3
+    );
+}
+
+#[test]
+fn managed_playlists_reject_manual_membership_changes_and_live_mix_edits() {
+    let mut conn = library_fixture();
+    let folder =
+        create_playlist_with_connection(&conn, "Folder".into(), None, Some("C:/Music/".into()))
+            .unwrap();
+    assert_eq!(folder.track_count, 2);
+    assert!(
+        add_tracks_to_playlist_with_connection(&mut conn, folder.id, &[3])
+            .unwrap_err()
+            .contains("managed")
+    );
+    assert!(playlist_members(&conn, folder.id).is_empty());
+    refresh_live_mix_playlists_with_connection(&mut conn).unwrap();
+    let live_id = conn
+        .query_row(
+            "SELECT id FROM playlists WHERE smart_query='mix:never_played'",
+            [],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap();
+    let before = playlist_members(&conn, live_id);
+    assert!(!before.is_empty());
+    assert!(add_tracks_to_playlist_with_connection(&mut conn, live_id, &[1]).is_err());
+    assert!(remove_track_from_playlist_with_connection(&conn, live_id, before[0].0).is_err());
+    assert!(update_playlist_with_connection(&conn, live_id, "Changed".into(), None).is_err());
+    assert!(delete_playlist_with_connection(&conn, live_id).is_err());
+    assert_eq!(playlist_members(&conn, live_id), before);
+}
+
 #[test]
 fn library_health_counts_agree_with_every_drill_down() {
     let conn = library_fixture();

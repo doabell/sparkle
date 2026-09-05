@@ -241,6 +241,124 @@ test("playback commands preserve intent, return canonical state, and recover fro
     }
 });
 
+test("failed queue loads preserve the last metadata and a retry accepts the new canonical state", async () => {
+    const store = createPlaybackStore();
+    const log = spyOn(console, "error").mockImplementation(() => {});
+    store.set({ ...state, error: null });
+    const failure = Error("track not found");
+    try {
+        invoke.mockRejectedValueOnce(failure);
+        await expect(store.loadQueue([999], 0, true)).rejects.toBe(failure);
+        expect(get(store)).toEqual({
+            ...state,
+            is_playing: false,
+            error: String(failure),
+        });
+        const recovered = {
+            ...state,
+            current_track: { id: 8, title: "Recovered" },
+            first_lyric_line: "New lyric",
+            album_art: { file_path: "new-cover.jpg", mime_type: "image/jpeg" },
+            position_ms: 0,
+            duration_ms: 2000,
+            shuffle: true,
+        };
+        invoke.mockResolvedValueOnce(recovered);
+        expect(await store.loadQueue([7, 8], 1, true)).toBe(recovered);
+        expect(get(store)).toEqual({ ...recovered, error: null });
+    } finally {
+        invoke.mockReset();
+        log.mockRestore();
+    }
+});
+
+test("failed seeks preserve position and recover through native state events or a retry", async () => {
+    const handlers = new Map();
+    const log = spyOn(console, "error").mockImplementation(() => {});
+    globalThis.window = {};
+    invoke.mockResolvedValue(state);
+    listen.mockImplementation(async (name, handler) => {
+        handlers.set(name, handler);
+        return () => {};
+    });
+    try {
+        const store = createPlaybackStore();
+        for (let i = 0; i < 10; i++) await Promise.resolve();
+        invoke.mockRejectedValueOnce(Error("seek unavailable"));
+        await expect(store.seek(800)).rejects.toThrow("seek unavailable");
+        expect(get(store).position_ms).toBe(100);
+        expect(get(store).current_track.id).toBe(7);
+        expect(get(store).error).toBe("Error: seek unavailable");
+        // The worker is authoritative even if the original command failed.
+        const resumed = { ...state, position_ms: 300 };
+        handlers.get("playback-state-changed")({ payload: resumed });
+        expect(get(store)).toEqual({ ...resumed, error: null });
+        const clamped = {
+            ...state,
+            is_playing: false,
+            position_ms: state.duration_ms,
+        };
+        invoke.mockResolvedValueOnce(clamped);
+        await store.seek(9999, "keyboard");
+        expect(invoke).toHaveBeenLastCalledWith("seek", {
+            positionMs: 9999,
+            source: "keyboard",
+        });
+        expect(get(store)).toEqual({ ...clamped, error: null });
+    } finally {
+        delete globalThis.window;
+        invoke.mockReset();
+        listen.mockReset();
+        log.mockRestore();
+    }
+});
+
+test("late progress from an old track cannot corrupt a recovered track or a stopped player", async () => {
+    const handlers = new Map();
+    globalThis.window = {};
+    invoke.mockResolvedValue(state);
+    listen.mockImplementation(async (name, handler) => {
+        handlers.set(name, handler);
+        return () => {};
+    });
+    try {
+        const store = createPlaybackStore();
+        for (let i = 0; i < 10; i++) await Promise.resolve();
+        const recovered = {
+            ...state,
+            current_track: { id: 8, title: "Next" },
+            position_ms: 0,
+            duration_ms: 2000,
+        };
+        handlers.get("playback-state-changed")({ payload: recovered });
+        const progress = handlers.get("playback-progress");
+        progress({
+            payload: { track_id: 7, position_ms: 900, duration_ms: 1000 },
+        });
+        expect(get(store)).toEqual({ ...recovered, error: null });
+        progress({
+            payload: { track_id: 8, position_ms: 250, duration_ms: 2000 },
+        });
+        expect(get(store).position_ms).toBe(250);
+        const stopped = {
+            ...state,
+            current_track: null,
+            is_playing: false,
+            position_ms: 0,
+            duration_ms: 0,
+        };
+        handlers.get("playback-state-changed")({ payload: stopped });
+        progress({
+            payload: { track_id: 8, position_ms: 500, duration_ms: 2000 },
+        });
+        expect(get(store)).toEqual({ ...stopped, error: null });
+    } finally {
+        delete globalThis.window;
+        invoke.mockReset();
+        listen.mockReset();
+    }
+});
+
 test("lyric clock interpolates, clamps, resamples seeks and stops on unsubscribe", () => {
     expect(get(interpolatedPositionMs)).toBe(0);
     globalThis.window = {};

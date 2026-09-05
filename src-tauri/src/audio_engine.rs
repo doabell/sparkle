@@ -128,6 +128,91 @@ fn is_valid_play_order(order: &[usize], queue_len: usize) -> bool {
     true
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum AdvanceTarget {
+    RepeatCurrent(usize),
+    NextPosition(usize),
+    Finish(Option<usize>),
+    Noop,
+}
+
+// Positions refer to play_order, not the underlying queue: this distinction
+// keeps next/previous correct when shuffle changes the traversal order.
+fn advance_target(
+    order_pos: Option<usize>,
+    order_len: usize,
+    queue_index: Option<usize>,
+    repeat_mode: RepeatMode,
+    auto: bool,
+) -> AdvanceTarget {
+    if auto && repeat_mode == RepeatMode::One {
+        if let Some(index) = queue_index {
+            return AdvanceTarget::RepeatCurrent(index);
+        }
+    }
+    match order_pos.and_then(|pos| pos.checked_add(1)) {
+        Some(next) if next < order_len => AdvanceTarget::NextPosition(next),
+        _ if repeat_mode == RepeatMode::All && order_len > 0 => AdvanceTarget::NextPosition(0),
+        _ if auto => AdvanceTarget::Finish(queue_index),
+        _ => AdvanceTarget::Noop,
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum PreviousTarget {
+    Restart,
+    Position(usize),
+    Noop,
+}
+
+fn previous_target(position_ms: i64, order_pos: Option<usize>) -> PreviousTarget {
+    if position_ms > 3000 {
+        PreviousTarget::Restart
+    } else {
+        match order_pos {
+            Some(0) => PreviousTarget::Restart,
+            Some(pos) => PreviousTarget::Position(pos - 1),
+            None => PreviousTarget::Noop,
+        }
+    }
+}
+
+/// Insert or move an entry after the current song without duplicating it or
+/// changing which song is current. Returns the remapped queue/order cursors.
+fn queue_track_next(
+    queue: &mut Vec<i64>,
+    play_order: &mut Vec<usize>,
+    mut current_index: usize,
+    mut order_pos: usize,
+    track_id: i64,
+) -> (usize, usize) {
+    if queue.get(current_index) == Some(&track_id) {
+        return (current_index, order_pos);
+    }
+    if let Some(existing_index) = queue.iter().position(|&id| id == track_id) {
+        queue.remove(existing_index);
+        if let Some(pos) = play_order.iter().position(|&index| index == existing_index) {
+            play_order.remove(pos);
+        }
+        for index in play_order.iter_mut() {
+            if *index > existing_index {
+                *index -= 1;
+            }
+        }
+        if current_index > existing_index {
+            current_index -= 1;
+        }
+        order_pos = play_order
+            .iter()
+            .position(|&index| index == current_index)
+            .unwrap_or(0);
+    }
+    queue.push(track_id);
+    let insert_at = (order_pos + 1).min(play_order.len());
+    play_order.insert(insert_at, queue.len() - 1);
+    (current_index, order_pos)
+}
+
 /// Maps the linear UI volume slider to an amplifier gain. Stevens' power
 /// law: perceived loudness grows with amplitude^0.6, so gain = x^(5/3)
 /// makes loudness proportional to slider travel — half the slider genuinely
@@ -1761,19 +1846,19 @@ fn handle_command(
                 let s = lock_state(state);
                 (s.position_ms, s.order_pos)
             };
-            if pos > 3000 {
-                record_event(
-                    state,
-                    writer,
-                    PlaybackEventKind::Seeked,
-                    source,
-                    Some("previous_restart"),
-                    Some(0),
-                );
-                seek_to_start(player, state);
-            } else if let Some(p) = order_pos {
-                if p > 0 {
-                    let prev_pos = p - 1;
+            match previous_target(pos, order_pos) {
+                PreviousTarget::Restart => {
+                    record_event(
+                        state,
+                        writer,
+                        PlaybackEventKind::Seeked,
+                        source,
+                        Some("previous_restart"),
+                        Some(0),
+                    );
+                    seek_to_start(player, state);
+                }
+                PreviousTarget::Position(prev_pos) => {
                     finalize_active_listen(state, writer, ListenEndReason::ManualPrevious, source);
                     let prev_idx = {
                         let mut s = lock_state(state);
@@ -1802,17 +1887,8 @@ fn handle_command(
                             emit_state_changed(app_handle, state);
                         }
                     }
-                } else {
-                    record_event(
-                        state,
-                        writer,
-                        PlaybackEventKind::Seeked,
-                        source,
-                        Some("previous_restart"),
-                        Some(0),
-                    );
-                    seek_to_start(player, state);
                 }
+                PreviousTarget::Noop => {}
             }
             emit_queue_changed(app_handle, state);
             save_session_to_db(state, writer);
@@ -1888,44 +1964,13 @@ fn handle_command(
             match current {
                 (Some(cur_idx), Some(pos)) => {
                     let mut s = lock_state(state);
-                    let already_current = s.queue.get(cur_idx) == Some(&track_id);
-                    if !already_current {
-                        // If the track is already queued, move that entry next
-                        // instead of adding a duplicate.
-                        if let Some(existing_qidx) = s.queue.iter().position(|&t| t == track_id) {
-                            s.queue.remove(existing_qidx);
-                            if let Some(pp) = s.play_order.iter().position(|&i| i == existing_qidx)
-                            {
-                                s.play_order.remove(pp);
-                            }
-                            for i in s.play_order.iter_mut() {
-                                if *i > existing_qidx {
-                                    *i -= 1;
-                                }
-                            }
-                            let new_cur_idx = if cur_idx > existing_qidx {
-                                cur_idx - 1
-                            } else {
-                                cur_idx
-                            };
-                            s.queue_index = Some(new_cur_idx);
-                            let new_pos = s
-                                .play_order
-                                .iter()
-                                .position(|&i| i == new_cur_idx)
-                                .unwrap_or(0);
-                            s.order_pos = Some(new_pos);
-                            s.queue.push(track_id);
-                            let new_idx = s.queue.len() - 1;
-                            let insert_at = (new_pos + 1).min(s.play_order.len());
-                            s.play_order.insert(insert_at, new_idx);
-                        } else {
-                            s.queue.push(track_id);
-                            let new_idx = s.queue.len() - 1;
-                            let insert_at = (pos + 1).min(s.play_order.len());
-                            s.play_order.insert(insert_at, new_idx);
-                        }
-                    }
+                    let SharedState {
+                        queue, play_order, ..
+                    } = &mut *s;
+                    let (current_index, order_pos) =
+                        queue_track_next(queue, play_order, cur_idx, pos, track_id);
+                    s.queue_index = Some(current_index);
+                    s.order_pos = Some(order_pos);
                 }
                 _ => {
                     {
@@ -2097,37 +2142,35 @@ fn advance(
         )
     };
 
+    let target = advance_target(order_pos, order_len, queue_index, repeat_mode, auto);
     // Repeat-one replays the current track on automatic advance; a manual
     // skip still moves to the next track.
-    if auto && repeat_mode == RepeatMode::One {
-        if let Some(i) = queue_index {
-            if !load_track_at_index(
-                player,
+    if let AdvanceTarget::RepeatCurrent(i) = target {
+        if !load_track_at_index(
+            player,
+            state,
+            db,
+            writer,
+            app_handle,
+            i,
+            PlaybackSource::Automatic,
+            ListenStartReason::RepeatOne,
+            ListenEndReason::RepeatOne,
+        ) {
+            update_state_for_stop(
                 state,
-                db,
                 writer,
-                app_handle,
-                i,
+                ListenEndReason::PlaybackError,
                 PlaybackSource::Automatic,
-                ListenStartReason::RepeatOne,
-                ListenEndReason::RepeatOne,
-            ) {
-                update_state_for_stop(
-                    state,
-                    writer,
-                    ListenEndReason::PlaybackError,
-                    PlaybackSource::Automatic,
-                );
-                emit_state_changed(app_handle, state);
-            }
-            save_session_to_db(state, writer);
-            return;
+            );
+            emit_state_changed(app_handle, state);
         }
+        save_session_to_db(state, writer);
+        return;
     }
 
-    let next_pos = match order_pos {
-        Some(p) if p + 1 < order_len => Some(p + 1),
-        _ if repeat_mode == RepeatMode::All && order_len > 0 => Some(0),
+    let next_pos = match target {
+        AdvanceTarget::NextPosition(pos) => Some(pos),
         _ => None,
     };
 
@@ -2167,7 +2210,7 @@ fn advance(
             update_state_for_stop(state, writer, ListenEndReason::PlaybackError, source);
             emit_state_changed(app_handle, state);
         }
-    } else if auto {
+    } else if let AdvanceTarget::Finish(queue_index) = target {
         // End of the queue with repeat off: pause and keep the last track
         // loaded at position 0 so pressing play starts it again. The track
         // stays visible instead of the player emptying out.
