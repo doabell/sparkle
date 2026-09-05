@@ -4534,7 +4534,7 @@ dependencies = [
 
 [[package]]
 name = "sparkle"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "aes",
  "base64 0.23.1",

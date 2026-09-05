@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0 — 2026-09-05
+
+- Add alternate now-playing layouts with a unified Apple Music-inspired visual system across the app.
+- Improve synchronized lyrics timing, transitions, and playback state recovery.
+- Add artist credits, lyrics offset controls, custom page scrollbars, and refined window controls.
+- Expand TypeScript and Rust test coverage with enforced coverage baselines and backend integration tests.
+
 ## 0.3.0 — 2026-08-24
 
 - Add Sound Check loudness normalization with scan, rescan, progress, and library analysis controls.
