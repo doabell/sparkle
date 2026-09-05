@@ -30,3 +30,12 @@ export function uiPref<T>(key: string, initial: T): Writable<T> {
     }
     return store;
 }
+
+export type NowPlayingLayout = "album" | "artist" | "lyrics";
+
+// This is a singleton so changing the setting updates an already-mounted
+// player page immediately, without waiting for a reload or storage event.
+export const nowPlayingLayout = uiPref<NowPlayingLayout>(
+    "now-playing.layout",
+    "album",
+);

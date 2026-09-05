@@ -126,20 +126,20 @@
 
 <style>
     .lyrics-container {
-        max-height: 70vh;
+        max-height: var(--np-lyrics-max-height, 70vh);
         overflow-y: auto;
-        padding: var(--spacing-xl);
-        background: transparent;
-        border: none;
-        border-radius: var(--radius-lg);
-        text-align: center;
+        padding: var(--np-lyrics-container-padding, var(--spacing-xl));
+        background: var(--np-lyrics-background, transparent);
+        border: var(--np-lyrics-border, none);
+        border-radius: var(--np-lyrics-radius, var(--radius-lg));
+        text-align: var(--np-lyrics-align, center);
     }
 
     .lines {
         display: flex;
         flex-direction: column;
-        gap: var(--spacing-md);
-        padding: 30vh 0;
+        gap: var(--np-lyrics-lines-gap, var(--spacing-md));
+        padding: var(--np-lyrics-lines-padding, 30vh 0);
     }
 
     .lyrics-line {
@@ -148,14 +148,15 @@
         background: transparent;
         border: none;
         padding: var(--spacing-sm) 0;
-        color: var(--color-text-secondary);
-        font-size: var(--font-size-2xl);
-        line-height: 1.5;
-        text-align: center;
+        color: var(--np-lyrics-line-color, var(--color-text-secondary));
+        font-size: var(--np-lyrics-line-size, var(--font-size-2xl));
+        line-height: var(--np-lyrics-line-height, 1.5);
+        text-align: var(--np-lyrics-line-align, center);
         line-break: auto;
         overflow-wrap: anywhere;
         text-wrap: balance;
-        transform: scale(0.833333);
+        transform: scale(var(--np-lyrics-inactive-scale, 0.833333));
+        transform-origin: var(--np-lyrics-transform-origin, center);
         transition:
             color var(--transition-base),
             transform var(--transition-base),
@@ -164,15 +165,22 @@
         cursor: pointer;
     }
 
+    .lines.synced .lyrics-line {
+        font-weight: var(--np-lyrics-line-weight, var(--font-weight-normal));
+    }
+
     .lyrics-line:hover:not(:disabled) {
         color: var(--color-text);
     }
 
     .lyrics-line.active {
-        color: var(--color-text);
-        font-weight: var(--font-weight-bold);
-        transform: scale(1.05);
-        text-shadow: 0 2px 16px rgba(0, 0, 0, 0.6);
+        color: var(--np-lyrics-active-color, var(--color-text));
+        font-weight: var(--np-lyrics-active-weight, var(--font-weight-bold));
+        transform: scale(var(--np-lyrics-active-scale, 1.05));
+        text-shadow: var(
+            --np-lyrics-active-shadow,
+            0 2px 16px rgba(0, 0, 0, 0.6)
+        );
     }
 
     .lyrics-line:disabled {

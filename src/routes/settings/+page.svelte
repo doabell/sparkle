@@ -33,6 +33,10 @@
     import Select from "$lib/components/Select.svelte";
     import { addToast } from "$lib/stores/toast";
     import { songIndexLanguage } from "$lib/stores/songIndex";
+    import {
+        nowPlayingLayout,
+        type NowPlayingLayout,
+    } from "$lib/stores/uiPrefs";
     import { getFontStack } from "$lib/utils/fonts";
     import {
         DEFAULT_ACCENT_COLOR,
@@ -73,6 +77,28 @@
         { value: "auto", label: "Automatic" },
         { value: "light", label: "Light (white)" },
         { value: "dark", label: "Dark (black)" },
+    ];
+
+    const NOW_PLAYING_LAYOUTS: {
+        value: NowPlayingLayout;
+        label: string;
+        description: string;
+    }[] = [
+        {
+            value: "album",
+            label: "Album",
+            description: "Large square cover with balanced lyrics",
+        },
+        {
+            value: "artist",
+            label: "Artist",
+            description: "Circular portrait with the current album inset",
+        },
+        {
+            value: "lyrics",
+            label: "Lyrics",
+            description: "Type-led reading with compact artwork",
+        },
     ];
 
     const SHORTCUTS: { keys: string; action: string }[] = [
@@ -1543,6 +1569,48 @@
             </div>
 
             <div class="field">
+                <span class="field-label" id="now-playing-layout-label"
+                    >Now playing layout</span
+                >
+                <div
+                    class="now-playing-layouts"
+                    role="radiogroup"
+                    aria-labelledby="now-playing-layout-label"
+                >
+                    {#each NOW_PLAYING_LAYOUTS as layout (layout.value)}
+                        <button
+                            type="button"
+                            class="now-playing-layout"
+                            class:active={$nowPlayingLayout === layout.value}
+                            role="radio"
+                            aria-checked={$nowPlayingLayout === layout.value}
+                            onclick={() => nowPlayingLayout.set(layout.value)}
+                        >
+                            <span
+                                class="now-playing-preview"
+                                data-layout={layout.value}
+                                aria-hidden="true"
+                            >
+                                <span class="preview-artist"></span>
+                                <span class="preview-album"></span>
+                                <span class="preview-lyrics"></span>
+                            </span>
+                            <span class="layout-copy">
+                                <strong>{layout.label}</strong>
+                                <small>{layout.description}</small>
+                            </span>
+                            <span class="layout-check" aria-hidden="true"
+                                >✓</span
+                            >
+                        </button>
+                    {/each}
+                </div>
+                {@render hint(
+                    "Changes the page opened from the player thumbnail.",
+                )}
+            </div>
+
+            <div class="field">
                 {@render fieldLabel("UI font", "ui-font")}
                 <input
                     id="ui-font"
@@ -2772,6 +2840,208 @@
         outline-offset: 1px;
     }
 
+    .now-playing-layouts {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: var(--spacing-md);
+    }
+
+    .now-playing-layout {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--spacing-sm);
+        min-width: 0;
+        padding: var(--spacing-sm);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        background: var(--color-surface-elevated);
+        text-align: left;
+        transition:
+            transform var(--transition-fast),
+            border-color var(--transition-fast),
+            background-color var(--transition-fast),
+            box-shadow var(--transition-fast);
+    }
+
+    .now-playing-layout:hover {
+        transform: translateY(-2px);
+        border-color: color-mix(in srgb, var(--color-text) 22%, transparent);
+        background: var(--color-surface-raised);
+        box-shadow: var(--shadow-sm);
+    }
+
+    .now-playing-layout.active {
+        border-color: var(--color-accent-graphic);
+        background: color-mix(
+            in srgb,
+            var(--color-accent-subtle) 42%,
+            var(--color-surface-elevated)
+        );
+        box-shadow:
+            0 0 0 1px
+                color-mix(in srgb, var(--color-accent-graphic) 30%, transparent),
+            var(--shadow-sm);
+    }
+
+    .now-playing-preview {
+        position: relative;
+        display: block;
+        width: 100%;
+        aspect-ratio: 1.55;
+        overflow: hidden;
+        border-radius: var(--radius);
+        background:
+            radial-gradient(
+                circle at 22% 28%,
+                color-mix(in srgb, var(--color-accent-seed) 24%, transparent),
+                transparent 44%
+            ),
+            color-mix(in srgb, var(--color-background) 92%, #24243a);
+        box-shadow: inset 0 0 0 1px
+            color-mix(in srgb, var(--color-text) 8%, transparent);
+    }
+
+    .preview-artist,
+    .preview-album,
+    .preview-lyrics {
+        position: absolute;
+        display: block;
+    }
+
+    .preview-artist {
+        border-radius: 50%;
+        background: linear-gradient(145deg, #9f9aa8, #393745 72%);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+    }
+
+    .preview-album {
+        border-radius: 4px;
+        background:
+            linear-gradient(135deg, rgba(255, 255, 255, 0.16), transparent),
+            linear-gradient(145deg, #e35d71, #6446a7 75%);
+        box-shadow: 0 5px 12px rgba(0, 0, 0, 0.38);
+    }
+
+    .preview-lyrics {
+        background: repeating-linear-gradient(
+            to bottom,
+            color-mix(in srgb, var(--color-text) 72%, transparent) 0 2px,
+            transparent 2px 10px
+        );
+        opacity: 0.82;
+    }
+
+    .now-playing-preview[data-layout="album"] .preview-artist {
+        bottom: 7%;
+        left: 8%;
+        width: 11%;
+        aspect-ratio: 1;
+    }
+
+    .now-playing-preview[data-layout="album"] .preview-album {
+        top: 12%;
+        bottom: 24%;
+        left: 8%;
+        aspect-ratio: 1;
+    }
+
+    .now-playing-preview[data-layout="album"] .preview-lyrics {
+        top: 22%;
+        right: 9%;
+        bottom: 22%;
+        width: 38%;
+    }
+
+    .now-playing-preview[data-layout="artist"] .preview-artist {
+        top: 12%;
+        bottom: 12%;
+        left: 8%;
+        aspect-ratio: 1;
+    }
+
+    .now-playing-preview[data-layout="artist"] .preview-album {
+        left: 38%;
+        bottom: 10%;
+        width: 25%;
+        aspect-ratio: 1;
+    }
+
+    .now-playing-preview[data-layout="artist"] .preview-lyrics {
+        top: 22%;
+        right: 8%;
+        bottom: 22%;
+        width: 28%;
+    }
+
+    .now-playing-preview[data-layout="lyrics"] .preview-album {
+        top: 16%;
+        left: 8%;
+        width: 26%;
+        aspect-ratio: 1;
+    }
+
+    .now-playing-preview[data-layout="lyrics"] .preview-artist {
+        top: 68%;
+        left: 8%;
+        width: 12%;
+        aspect-ratio: 1;
+        box-shadow: var(--shadow-sm);
+    }
+
+    .now-playing-preview[data-layout="lyrics"] .preview-lyrics {
+        top: 16%;
+        right: 8%;
+        bottom: 16%;
+        width: 49%;
+        background: repeating-linear-gradient(
+            to bottom,
+            color-mix(in srgb, var(--color-text) 78%, transparent) 0 3px,
+            transparent 3px 13px
+        );
+    }
+
+    .layout-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 0 var(--spacing-xs) var(--spacing-xs);
+    }
+
+    .layout-copy strong {
+        color: var(--color-text);
+        font-size: var(--font-size-sm);
+    }
+
+    .layout-copy small {
+        color: var(--color-text-muted);
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-normal);
+        line-height: 1.35;
+    }
+
+    .layout-check {
+        position: absolute;
+        top: var(--spacing-md);
+        right: var(--spacing-md);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        width: 1.4rem;
+        height: 1.4rem;
+        border-radius: 50%;
+        background: var(--color-accent-fill);
+        color: var(--color-on-accent-fill);
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-bold);
+        box-shadow: var(--shadow-sm);
+    }
+
+    .now-playing-layout.active .layout-check {
+        display: flex;
+    }
+
     .field-label {
         font-weight: var(--font-weight-semibold);
         font-size: var(--font-size-sm);
@@ -3140,6 +3410,16 @@
 
         .debug-value {
             text-align: left;
+        }
+
+        .now-playing-layouts {
+            grid-template-columns: 1fr;
+        }
+
+        .now-playing-layout {
+            display: grid;
+            grid-template-columns: minmax(8rem, 0.8fr) minmax(0, 1fr);
+            align-items: center;
         }
     }
 

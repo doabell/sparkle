@@ -335,6 +335,10 @@ test("main's focused accent treatments use accessible semantic roles", () => {
             /\.eyebrow\s*\{[^}]*color:\s*var\(--color-accent-content\)/s,
         ],
         [
+            path.resolve("src", "routes", "now-playing", "+page.svelte"),
+            /--np-lyrics-active-color:\s*var\(--color-accent-content\)/s,
+        ],
+        [
             path.resolve("src", "routes", "settings", "+page.svelte"),
             /\.storage-test-url\s*\{[^}]*color:\s*var\(--color-accent-content\)/s,
         ],
