@@ -1142,6 +1142,7 @@ pub fn get_online_settings(state: State<'_, AppState>) -> Result<OnlineSettings,
         ui_font: settings.ui_font,
         lyrics_font: settings.lyrics_font,
         reduce_motion: settings.reduce_motion,
+        theme_mode: settings.theme_mode,
         brave_api_key: settings.brave_api_key,
         accent_color: settings.accent_color,
         accent_foreground_preference: settings.accent_foreground_preference,
@@ -1183,6 +1184,7 @@ pub fn set_online_settings(
     full.ui_font = settings.ui_font;
     full.lyrics_font = settings.lyrics_font;
     full.reduce_motion = settings.reduce_motion;
+    full.theme_mode = settings.theme_mode;
     full.brave_api_key = settings.brave_api_key;
     full.accent_color = settings::normalize_accent_color(&settings.accent_color);
     full.accent_foreground_preference = settings.accent_foreground_preference;

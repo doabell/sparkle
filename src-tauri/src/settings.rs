@@ -1,5 +1,5 @@
 use crate::analytics::PlaybackContext;
-use crate::models::{AccentForegroundPreference, RepeatMode};
+use crate::models::{AccentForegroundPreference, RepeatMode, ThemeMode};
 use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
@@ -15,6 +15,7 @@ const SOUND_CHECK_ENABLED_KEY: &str = "sound_check_enabled";
 const UI_FONT_KEY: &str = "ui_font";
 const LYRICS_FONT_KEY: &str = "lyrics_font";
 const REDUCE_MOTION_KEY: &str = "reduce_motion";
+const THEME_MODE_KEY: &str = "theme_mode";
 const BRAVE_API_KEY_KEY: &str = "brave_api_key";
 const ACCENT_COLOR_KEY: &str = "accent_color";
 const ACCENT_FOREGROUND_PREFERENCE_KEY: &str = "accent_foreground_preference";
@@ -205,6 +206,8 @@ pub struct Settings {
     pub lyrics_font: String,
     #[serde(default = "default_reduce_motion")]
     pub reduce_motion: bool,
+    #[serde(default)]
+    pub theme_mode: ThemeMode,
     #[serde(default = "default_brave_api_key")]
     pub brave_api_key: String,
     #[serde(default = "default_accent_color")]
@@ -258,6 +261,7 @@ impl Default for Settings {
             ui_font: default_ui_font(),
             lyrics_font: default_lyrics_font(),
             reduce_motion: default_reduce_motion(),
+            theme_mode: ThemeMode::System,
             brave_api_key: default_brave_api_key(),
             accent_color: default_accent_color(),
             accent_foreground_preference: AccentForegroundPreference::Auto,
@@ -351,6 +355,7 @@ pub fn load_settings(conn: &Connection) -> Result<Settings, String> {
         ui_font: load_json(conn, UI_FONT_KEY, default_ui_font())?,
         lyrics_font: load_json(conn, LYRICS_FONT_KEY, default_lyrics_font())?,
         reduce_motion: load_json(conn, REDUCE_MOTION_KEY, default_reduce_motion())?,
+        theme_mode: load_json(conn, THEME_MODE_KEY, ThemeMode::System)?,
         brave_api_key: load_json(conn, BRAVE_API_KEY_KEY, default_brave_api_key())?,
         accent_color,
         accent_foreground_preference: load_json(
@@ -432,6 +437,7 @@ pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<(), Strin
     save_json(conn, UI_FONT_KEY, &settings.ui_font)?;
     save_json(conn, LYRICS_FONT_KEY, &settings.lyrics_font)?;
     save_json(conn, REDUCE_MOTION_KEY, &settings.reduce_motion)?;
+    save_json(conn, THEME_MODE_KEY, &settings.theme_mode)?;
     save_json(conn, BRAVE_API_KEY_KEY, &settings.brave_api_key)?;
     save_json(
         conn,
@@ -530,6 +536,7 @@ mod tests {
         settings.accent_foreground_preference = AccentForegroundPreference::Light;
         settings.debug_logging_enabled = true;
         settings.sound_check_enabled = true;
+        settings.theme_mode = ThemeMode::Dark;
         settings.discord_artwork_s3_endpoint = "https://s3.example.test".to_string();
         settings.discord_artwork_s3_bucket = "artwork".to_string();
         settings.discord_artwork_s3_access_key = "access".to_string();
@@ -548,6 +555,7 @@ mod tests {
         assert_eq!(loaded.ui_font, settings.ui_font);
         assert_eq!(loaded.lyrics_font, settings.lyrics_font);
         assert_eq!(loaded.reduce_motion, settings.reduce_motion);
+        assert_eq!(loaded.theme_mode, settings.theme_mode);
         assert_eq!(loaded.brave_api_key, settings.brave_api_key);
         assert_eq!(loaded.accent_color, "#fa243c");
         assert_eq!(
@@ -582,6 +590,34 @@ mod tests {
         assert_eq!(loaded.artist_info_sources, settings.artist_info_sources);
         assert_eq!(loaded.artist_image_sources, settings.artist_image_sources);
         assert_eq!(loaded.album_art_sources, settings.album_art_sources);
+    }
+
+    #[test]
+    fn theme_mode_defaults_and_overrides_roundtrip() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+            [],
+        )
+        .unwrap();
+
+        assert_eq!(load_settings(&conn).unwrap().theme_mode, ThemeMode::System);
+        let legacy: Settings = serde_json::from_str("{}").unwrap();
+        assert_eq!(legacy.theme_mode, ThemeMode::System);
+
+        for mode in [ThemeMode::Light, ThemeMode::Dark, ThemeMode::System] {
+            let settings = Settings {
+                theme_mode: mode,
+                ..Settings::default()
+            };
+            save_settings(&conn, &settings).unwrap();
+            assert_eq!(load_settings(&conn).unwrap().theme_mode, mode);
+            let json = serde_json::to_string(&settings).unwrap();
+            let restored: Settings = serde_json::from_str(&json).unwrap();
+            assert_eq!(restored.theme_mode, mode);
+        }
+        save_json(&conn, THEME_MODE_KEY, &"unknown").unwrap();
+        assert_eq!(load_settings(&conn).unwrap().theme_mode, ThemeMode::System);
     }
 
     #[test]

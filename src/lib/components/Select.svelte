@@ -403,7 +403,8 @@
         border-radius: var(--radius-lg);
         box-shadow: var(--shadow-lg);
         outline: none;
-        animation: select-in 120ms ease-out;
+        animation: select-in var(--motion-duration-fast)
+            var(--motion-ease-enter);
     }
 
     @keyframes select-in {
@@ -437,7 +438,7 @@
 
     .select-option:hover,
     .select-option.active {
-        background-color: rgba(255, 255, 255, 0.08);
+        background-color: var(--interactive-hover);
     }
 
     .select-option.selected {

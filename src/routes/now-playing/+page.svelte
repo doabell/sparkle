@@ -10,6 +10,7 @@
     import {
         getLyrics,
         getAlbumArt,
+        getArtistImage,
         setLrcOffset,
         getOnlineSettings,
         setTrackLyricsSource,
@@ -29,7 +30,10 @@
     import { listen } from "@tauri-apps/api/event";
     import SyncedLyrics from "$lib/components/SyncedLyrics.svelte";
     import Select from "$lib/components/Select.svelte";
+    import ArtistCredits from "$lib/components/ArtistCredits.svelte";
     import ArtistLinks from "$lib/components/ArtistLinks.svelte";
+    import LyricsOffsetControls from "$lib/components/LyricsOffsetControls.svelte";
+    import { nowPlayingLayout } from "$lib/stores/uiPrefs";
 
     let lyrics = $state<Lyrics | null>(null);
     let loading = $state(false);
@@ -38,6 +42,11 @@
     let lyricsRequest = 0;
     let lastAlbumId = $state<number | null>(null);
     let artUrl = $state("");
+    let lastArtistId = $state<number | null>(null);
+    let artistArtUrl = $state("");
+    let backdropUrl = $derived(
+        $nowPlayingLayout === "artist" && artistArtUrl ? artistArtUrl : artUrl,
+    );
     let lyricsFont = $state(getFontStack("Monospace"));
     let providerDialogOpen = $state(false);
     let providerChoice = $state("default");
@@ -123,6 +132,24 @@
         }
     }
 
+    async function loadArtistArt(artistId: number | null) {
+        if (artistId === lastArtistId) return;
+        lastArtistId = artistId;
+        if (!artistId) {
+            artistArtUrl = "";
+            return;
+        }
+        const requestedArtistId = artistId;
+        try {
+            const art = await getArtistImage(requestedArtistId, "background");
+            if (requestedArtistId !== lastArtistId) return;
+            artistArtUrl = cachedImageToUrl(art, "");
+        } catch {
+            if (requestedArtistId !== lastArtistId) return;
+            artistArtUrl = "";
+        }
+    }
+
     onMount(() => {
         let unlisten: (() => void) | undefined;
         const handleLyricsChanged = (event: Event) => {
@@ -146,6 +173,11 @@
             if ($playback.current_track) {
                 loadLyrics($playback.current_track.id);
                 loadArt($playback.current_track.album_id);
+                loadArtistArt(
+                    $nowPlayingLayout === "artist"
+                        ? ($playback.current_track.artist_ids?.[0] ?? null)
+                        : null,
+                );
             }
             unlisten = await listen("online-settings-changed", () => {
                 const track = $playback.current_track;
@@ -169,6 +201,11 @@
         if (track) {
             loadLyrics(track.id);
             loadArt(track.album_id);
+            loadArtistArt(
+                $nowPlayingLayout === "artist"
+                    ? (track.artist_ids?.[0] ?? null)
+                    : null,
+            );
         } else {
             lyricsRequest += 1;
             lyrics = null;
@@ -176,6 +213,8 @@
             lastTrackId = null;
             lastAlbumId = null;
             artUrl = "";
+            lastArtistId = null;
+            artistArtUrl = "";
             offsetMs = 0;
         }
     });
@@ -326,44 +365,112 @@
     }
 </script>
 
-<div class="now-playing">
+<div class="now-playing" data-layout={$nowPlayingLayout}>
     <div class="np-clip" aria-hidden="true">
         <div
             class="np-backdrop"
-            style:background-image={artUrl ? `url(${artUrl})` : "none"}
+            style:background-image={backdropUrl
+                ? `url(${backdropUrl})`
+                : "none"}
         ></div>
     </div>
     <div class="art-panel">
         {#if $playback.current_track}
             {@const track = $playback.current_track}
-            <div class="art">
-                {#if artUrl}
-                    <img src={artUrl} alt={track.album_title ?? "Album art"} />
-                {:else}
-                    <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.5"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        aria-hidden="true"
-                    >
-                        <path
-                            d="M9 18V5l12-2v13M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm12-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"
-                        />
-                    </svg>
-                {/if}
+            {@const primaryArtistId = track.artist_ids?.[0] ?? null}
+            {@const primaryArtistName = track.artist_names?.[0] ?? "Artist"}
+            <div class="visual-stage">
+                <div class="artwork-composition">
+                    {#if primaryArtistId}
+                        <a
+                            class="artist-portrait"
+                            href={`/artists/${primaryArtistId}`}
+                            aria-label={`Open ${primaryArtistName}`}
+                        >
+                            {#if artistArtUrl}
+                                <img
+                                    src={artistArtUrl}
+                                    alt={primaryArtistName}
+                                    decoding="async"
+                                />
+                            {:else}
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.5"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <path
+                                        d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"
+                                    />
+                                    <circle cx="12" cy="7" r="4" />
+                                </svg>
+                            {/if}
+                        </a>
+                    {:else}
+                        <div class="artist-portrait" aria-hidden="true">
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="1.5"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path
+                                    d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"
+                                />
+                                <circle cx="12" cy="7" r="4" />
+                            </svg>
+                        </div>
+                    {/if}
+                    <div class="art album-art">
+                        {#if artUrl}
+                            <img
+                                src={artUrl}
+                                alt={track.album_title ?? "Album art"}
+                            />
+                        {:else}
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="1.5"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                aria-hidden="true"
+                            >
+                                <path
+                                    d="M9 18V5l12-2v13M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm12-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"
+                                />
+                            </svg>
+                        {/if}
+                    </div>
+                </div>
             </div>
             <div class="track-info">
                 <h1 class="page-title">{track.title ?? "Unknown"}</h1>
-                <p class="artist">
-                    <ArtistLinks
+                {#if $nowPlayingLayout === "artist" && (track.artist_names?.length ?? 0) < 2}
+                    <p class="artist">
+                        <ArtistLinks
+                            names={track.artist_names}
+                            ids={track.artist_ids}
+                            linkClass="artist-link"
+                        />
+                    </p>
+                {:else}
+                    <ArtistCredits
                         names={track.artist_names}
                         ids={track.artist_ids}
-                        linkClass="artist-link"
+                        size="regular"
+                        align={$nowPlayingLayout === "lyrics"
+                            ? "start"
+                            : "center"}
                     />
-                </p>
+                {/if}
                 {#if track.album_id && track.album_title}
                     <p class="album">
                         <a class="album-link" href={`/albums/${track.album_id}`}
@@ -373,20 +480,39 @@
                 {/if}
             </div>
         {:else}
-            <div class="art">
-                <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.5"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
-                >
-                    <path
-                        d="M9 18V5l12-2v13M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm12-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"
-                    />
-                </svg>
+            <div class="visual-stage">
+                <div class="artwork-composition">
+                    <div class="artist-portrait" aria-hidden="true">
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.5"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <path
+                                d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"
+                            />
+                            <circle cx="12" cy="7" r="4" />
+                        </svg>
+                    </div>
+                    <div class="art album-art">
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.5"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                        >
+                            <path
+                                d="M9 18V5l12-2v13M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm12-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"
+                            />
+                        </svg>
+                    </div>
+                </div>
             </div>
             <div class="track-info">
                 <h1 class="page-title">No track selected</h1>
@@ -397,83 +523,47 @@
         {/if}
     </div>
 
-    <div class="lyrics-panel" style:font-family={lyricsFont}>
+    <div class="lyrics-panel">
         <div class="lyrics-header">
             <div class="lyrics-title-row">
                 <h2 class="section-title">Lyrics</h2>
-                {#if providerLabel}
-                    <button
-                        class="provider-tag"
-                        onclick={openProviderDialog}
-                        title="Change lyrics source"
-                    >
-                        From {providerLabel}
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            aria-hidden="true"
+                {#if providerLabel || $playback.current_track}
+                    <div class="control-cluster">
+                        <button
+                            class="provider-tag"
+                            type="button"
+                            onclick={openProviderDialog}
+                            title="Change lyrics source"
                         >
-                            <path
-                                d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"
-                            />
-                            <path d="m15 5 4 4" />
-                        </svg>
-                    </button>
-                {:else if $playback.current_track}
-                    <button
-                        class="provider-tag"
-                        onclick={openProviderDialog}
-                        title="Change lyrics source"
-                    >
-                        Source
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            aria-hidden="true"
-                        >
-                            <path
-                                d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"
-                            />
-                            <path d="m15 5 4 4" />
-                        </svg>
-                    </button>
+                            {providerLabel ? `From ${providerLabel}` : "Source"}
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                aria-hidden="true"
+                            >
+                                <path
+                                    d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"
+                                />
+                                <path d="m15 5 4 4" />
+                            </svg>
+                        </button>
+                    </div>
                 {/if}
             </div>
             {#if lyrics?.synced_text}
-                <div class="offset-controls" aria-label="Lyrics timing offset">
-                    <button
-                        class="offset-btn"
-                        onclick={() => adjustOffset(-50)}
-                        aria-label="Shift lyrics earlier">−50ms</button
-                    >
-                    <span class="offset-value"
-                        >{offsetMs > 0
-                            ? `+${offsetMs}ms`
-                            : `${offsetMs}ms`}</span
-                    >
-                    <button
-                        class="offset-btn"
-                        onclick={() => adjustOffset(50)}
-                        aria-label="Shift lyrics later">+50ms</button
-                    >
-                    <button
-                        class="offset-btn reset"
-                        onclick={() => {
-                            offsetMs = 0;
-                            const track = $playback.current_track;
-                            if (track) saveOffset(track.id, 0);
-                        }}
-                        aria-label="Reset lyrics offset">Reset</button
-                    >
-                </div>
+                <LyricsOffsetControls
+                    value={offsetMs}
+                    onadjust={adjustOffset}
+                    onreset={() => {
+                        offsetMs = 0;
+                        const track = $playback.current_track;
+                        if (track) saveOffset(track.id, 0);
+                    }}
+                />
             {/if}
         </div>
         {#if loading}
@@ -482,6 +572,7 @@
             <p class="status error">{error}</p>
         {:else if lyrics}
             <SyncedLyrics
+                fontFamily={lyricsFont}
                 syncedText={lyrics.synced_text}
                 plainText={lyrics.plain_text}
                 currentTimeMs={$interpolatedPositionMs}
@@ -647,17 +738,20 @@
 
 <style>
     .now-playing {
+        --np-art-size: 27.5rem;
         position: relative;
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: var(--spacing-2xl);
-        align-items: start;
-        min-height: 60vh;
+        grid-template-rows: minmax(0, 1fr);
+        gap: clamp(1.5rem, 4vw, 4rem);
+        align-items: center;
+        flex: 1;
+        width: 100%;
+        max-width: 90rem;
+        min-height: 0;
+        margin: 0 auto;
         isolation: isolate;
     }
 
-    /* The album cover, zoomed hard and blurred to an ambient wash. The clip
-     wrapper keeps the spill out of the sidebar. */
     .np-clip {
         position: fixed;
         top: 0;
@@ -676,23 +770,49 @@
         background-position: center;
         filter: blur(140px) saturate(1.6) brightness(0.5);
         transform: scale(1.8);
+        opacity: 0.9;
+        transition:
+            filter var(--transition-slow),
+            opacity var(--transition-slow),
+            transform var(--transition-slow);
     }
 
     .np-backdrop::after {
         content: "";
         position: absolute;
         inset: 0;
-        background: linear-gradient(
-            to bottom,
-            rgba(18, 18, 18, 0.2) 0%,
-            var(--color-background) 90%
-        );
+        background:
+            radial-gradient(
+                circle at 50% 32%,
+                transparent 0%,
+                color-mix(in srgb, var(--color-background) 22%, transparent) 54%,
+                color-mix(in srgb, var(--color-background) 68%, transparent)
+                    100%
+            ),
+            linear-gradient(
+                to bottom,
+                color-mix(in srgb, var(--color-background) 8%, transparent) 0%,
+                var(--color-background) 94%
+            );
     }
 
     .art-panel {
+        position: relative;
         display: flex;
         flex-direction: column;
-        gap: var(--spacing-xl);
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        min-height: 0;
+        gap: clamp(1rem, 3vh, 2rem);
+        min-width: 0;
+        container-type: inline-size;
+        transition:
+            transform var(--transition-slow),
+            background-color var(--transition-slow),
+            border-color var(--transition-slow),
+            border-radius var(--transition-slow),
+            padding var(--transition-slow);
     }
 
     .art {
@@ -708,6 +828,12 @@
         justify-content: center;
         box-shadow: var(--shadow-md);
         align-self: center;
+        transition:
+            transform var(--transition-slow),
+            border-radius var(--transition-slow),
+            box-shadow var(--transition-slow),
+            width var(--transition-slow),
+            max-width var(--transition-slow);
     }
 
     .art img {
@@ -722,14 +848,34 @@
     }
 
     .track-info {
+        position: relative;
+        z-index: 2;
         display: flex;
         flex-direction: column;
         gap: var(--spacing-sm);
+        flex: 0 0 auto;
+        width: 100%;
+        min-width: 0;
+        max-height: 60%;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        padding: var(--spacing-xs);
         text-align: center;
+        transition:
+            color var(--transition-slow),
+            padding var(--transition-slow),
+            text-align var(--transition-slow);
+    }
+
+    .track-info > :global(*) {
+        flex-shrink: 0;
     }
 
     .track-info .page-title {
         letter-spacing: -0.02em;
+        line-height: 1.04;
+        text-wrap: balance;
+        overflow-wrap: anywhere;
     }
 
     .artist {
@@ -745,12 +891,10 @@
 
     :global(.artist-link:hover) {
         color: var(--color-text);
-        text-decoration: underline;
     }
 
     .album-link:hover {
         color: var(--color-text-secondary);
-        text-decoration: underline;
     }
 
     .album {
@@ -759,20 +903,33 @@
     }
 
     .lyrics-panel {
+        position: relative;
         display: flex;
         flex-direction: column;
         gap: var(--spacing-lg);
+        min-width: 0;
+        min-height: 0;
+        height: 100%;
+        transition:
+            background-color var(--transition-slow),
+            border-color var(--transition-slow),
+            border-radius var(--transition-slow),
+            padding var(--transition-slow),
+            box-shadow var(--transition-slow);
     }
 
     .lyrics-header {
         display: flex;
+        flex-wrap: wrap;
+        flex-shrink: 0;
         align-items: center;
         justify-content: space-between;
-        gap: var(--spacing-md);
+        gap: var(--spacing-sm) var(--spacing-md);
     }
 
     .lyrics-title-row {
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
         gap: var(--spacing-md);
     }
@@ -780,65 +937,13 @@
     .provider-tag {
         display: inline-flex;
         align-items: center;
-        gap: var(--spacing-xs);
-        padding: var(--spacing-xs) var(--spacing-sm);
-        border-radius: var(--radius-full);
-        border: 1px solid var(--color-border);
-        background-color: rgba(255, 255, 255, 0.08);
-        font-size: var(--font-size-xs);
-        color: var(--color-text-secondary);
-        transition:
-            color var(--transition-fast),
-            border-color var(--transition-fast),
-            background-color var(--transition-fast);
-    }
-
-    .provider-tag:hover {
-        background-color: rgba(255, 255, 255, 0.12);
-        border-color: rgba(255, 255, 255, 0.18);
-        color: var(--color-text);
+        gap: var(--spacing-sm);
     }
 
     .provider-tag svg {
-        width: 0.625rem;
-        height: 0.625rem;
-    }
-
-    .offset-controls {
-        display: flex;
-        align-items: center;
-        gap: var(--spacing-sm);
-        font-size: var(--font-size-sm);
-    }
-
-    .offset-btn {
-        padding: var(--spacing-xs) var(--spacing-sm);
-        border-radius: var(--radius);
-        background-color: rgba(255, 255, 255, 0.08);
-        border: 1px solid var(--color-border);
-        color: var(--color-text-secondary);
-        font-size: var(--font-size-xs);
-        transition:
-            background-color var(--transition-fast),
-            color var(--transition-fast),
-            border-color var(--transition-fast);
-    }
-
-    .offset-btn:hover {
-        background-color: rgba(255, 255, 255, 0.12);
-        border-color: rgba(255, 255, 255, 0.18);
-        color: var(--color-text);
-    }
-
-    .offset-btn.reset {
-        margin-left: var(--spacing-sm);
-    }
-
-    .offset-value {
-        min-width: 4rem;
-        text-align: center;
-        color: var(--color-text-muted);
-        font-variant-numeric: tabular-nums;
+        width: 0.875rem;
+        height: 0.875rem;
+        flex-shrink: 0;
     }
 
     .status {
@@ -850,6 +955,219 @@
         color: var(--color-text);
         padding: var(--spacing-md);
         border-radius: var(--radius-lg);
+    }
+
+    /* Playback layouts are content-led: album art stays square, artist imagery
+       stays circular, and the reading layout gives lyrics the primary axis. */
+    .now-playing[data-layout] {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-items: center;
+        max-width: 90rem;
+        --np-lyrics-align: center;
+        --np-lyrics-line-align: center;
+        --np-lyrics-line-size: 1.625rem;
+        --np-lyrics-line-height: 1.5;
+        --np-lyrics-line-color: var(--color-text-secondary);
+        --np-lyrics-active-color: var(--color-text);
+        --np-lyrics-inactive-scale: 0.833333;
+        --np-lyrics-active-scale: 1.05;
+        --np-lyrics-transform-origin: center;
+        --np-lyrics-container-padding: 0 var(--spacing-md);
+        --np-lyrics-lines-gap: var(--spacing-md);
+        --np-lyrics-active-shadow: 0 2px 16px rgba(0, 0, 0, 0.6);
+    }
+
+    .visual-stage {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        min-width: 0;
+        min-height: 0;
+        flex: 0 1 min(100cqw, var(--np-art-size));
+        container-type: size;
+    }
+
+    /* Fit one square composition into the actual space left above the credits.
+       The stage does not crop; only the portrait and cover mask their images. */
+    .artwork-composition {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: min(100cqw, 100cqh, var(--np-art-size));
+        aspect-ratio: 1;
+    }
+
+    .artist-portrait {
+        display: none;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        border-radius: 50%;
+        background: var(--color-surface-elevated);
+        color: var(--color-text-muted);
+    }
+
+    .artist-portrait img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .artist-portrait svg {
+        width: 42%;
+        height: 42%;
+    }
+
+    .now-playing[data-layout] .album-art {
+        transition:
+            transform var(--transition-slow),
+            box-shadow var(--transition-slow),
+            width var(--transition-slow),
+            max-width var(--transition-slow);
+    }
+
+    /* Album: the release is the identity. One large square, no visual fiction. */
+    .now-playing[data-layout="album"] .art-panel,
+    .now-playing[data-layout="artist"] .art-panel {
+        justify-content: flex-start;
+    }
+
+    .now-playing[data-layout="album"] .album-art {
+        max-width: 27.5rem;
+        box-shadow:
+            0 30px 72px rgba(0, 0, 0, 0.42),
+            0 0 0 1px color-mix(in srgb, var(--color-text) 8%, transparent),
+            0 0 96px
+                color-mix(in srgb, var(--color-accent-seed) 13%, transparent);
+    }
+
+    .now-playing[data-layout="album"] .track-info .page-title {
+        font-size: clamp(var(--font-size-3xl), 3vw, var(--font-size-4xl));
+    }
+
+    /* Artist: a portrait is allowed to be a portrait. The square release sits
+       above it as a separate object instead of being cropped into a circle. */
+    .now-playing[data-layout="artist"] {
+        --np-art-size: 29rem;
+    }
+
+    .now-playing[data-layout="artist"] .np-backdrop {
+        filter: blur(125px) saturate(1.25) brightness(0.43);
+        transform: scale(1.72);
+    }
+
+    .now-playing[data-layout="artist"] .artist-portrait {
+        position: absolute;
+        top: 2%;
+        left: 2%;
+        z-index: 1;
+        display: flex;
+        width: 84%;
+        aspect-ratio: 1;
+        border: 1px solid color-mix(in srgb, var(--color-text) 13%, transparent);
+        box-shadow:
+            0 30px 72px rgba(0, 0, 0, 0.42),
+            0 0 72px
+                color-mix(in srgb, var(--color-accent-seed) 12%, transparent);
+        transition:
+            transform var(--transition-slow),
+            box-shadow var(--transition-slow);
+    }
+
+    .now-playing[data-layout="artist"] a.artist-portrait:hover {
+        transform: translateY(-4px) scale(1.01);
+        box-shadow: 0 38px 82px rgba(0, 0, 0, 0.48);
+    }
+
+    .now-playing[data-layout="artist"] .album-art {
+        position: absolute;
+        right: 2%;
+        bottom: 2%;
+        z-index: 2;
+        width: 34%;
+        max-width: none;
+        border-radius: var(--radius-lg);
+        box-shadow:
+            0 18px 44px rgba(0, 0, 0, 0.56),
+            0 0 0 1px color-mix(in srgb, var(--color-text) 14%, transparent);
+    }
+
+    .now-playing[data-layout="artist"] .track-info .page-title {
+        font-size: clamp(var(--font-size-3xl), 3vw, var(--font-size-4xl));
+    }
+
+    /* Lyrics: artwork becomes compact context and the words own the page. */
+    .now-playing[data-layout="lyrics"] {
+        --np-art-size: 13rem;
+        grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr);
+        align-items: start;
+        max-width: 78rem;
+        gap: clamp(1.5rem, 4vw, 4rem);
+        --np-lyrics-align: left;
+        --np-lyrics-line-align: left;
+        --np-lyrics-line-size: clamp(1.7rem, 3.2vw, 2.85rem);
+        --np-lyrics-line-height: 1.24;
+        --np-lyrics-line-color: color-mix(
+            in srgb,
+            var(--color-text) 38%,
+            transparent
+        );
+        --np-lyrics-active-color: var(--color-accent-content);
+        --np-lyrics-inactive-scale: 0.94;
+        --np-lyrics-active-scale: 1;
+        --np-lyrics-transform-origin: left center;
+        --np-lyrics-container-padding: 0 var(--spacing-xs);
+        --np-lyrics-lines-gap: clamp(1.35rem, 3vh, 2.35rem);
+        --np-lyrics-active-shadow: none;
+    }
+
+    .now-playing[data-layout="lyrics"] .np-backdrop {
+        filter: blur(155px) saturate(0.35) brightness(0.28);
+        transform: scale(1.9);
+        opacity: 0.28;
+    }
+
+    .now-playing[data-layout="lyrics"] .np-backdrop::after {
+        background: linear-gradient(
+            90deg,
+            color-mix(in srgb, var(--color-background) 64%, transparent),
+            var(--color-background) 74%
+        );
+    }
+
+    .now-playing[data-layout="lyrics"] .art-panel {
+        align-items: flex-start;
+    }
+
+    .now-playing[data-layout="lyrics"] .visual-stage {
+        justify-content: flex-start;
+    }
+
+    .now-playing[data-layout="lyrics"] .album-art {
+        width: 100%;
+        max-width: none;
+        align-self: auto;
+        border-radius: var(--radius-lg);
+        box-shadow:
+            0 20px 50px rgba(0, 0, 0, 0.36),
+            0 0 0 1px color-mix(in srgb, var(--color-text) 8%, transparent);
+    }
+
+    .now-playing[data-layout="lyrics"] .track-info {
+        align-items: flex-start;
+        text-align: left;
+    }
+
+    .now-playing[data-layout="lyrics"] .track-info .page-title {
+        font-size: clamp(var(--font-size-3xl), 3vw, var(--font-size-4xl));
+    }
+
+    .now-playing[data-layout="lyrics"] .lyrics-panel {
+        padding-left: clamp(1.5rem, 3vw, 3rem);
+        border-left: 1px solid var(--color-border);
     }
 
     .dialog-overlay {
@@ -939,16 +1257,14 @@
     }
 
     .lyric-candidate:hover:not(:disabled) {
-        background: rgba(255, 255, 255, 0.12);
-        border-color: rgba(255, 255, 255, 0.18);
+        background: var(--interactive-hover);
     }
 
     .candidate-source-tag {
         font-size: var(--font-size-xs);
         font-weight: var(--font-weight-semibold);
         color: var(--color-text-muted);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
+        letter-spacing: normal;
     }
 
     .candidate-preview {
@@ -982,20 +1298,56 @@
     }
 
     @media (max-width: 767px) {
-        .now-playing {
-            grid-template-columns: 1fr;
-        }
-
         .np-clip {
             left: 0;
         }
+    }
 
-        .art-panel {
-            position: static;
+    @media (max-width: 1000px) {
+        .now-playing[data-layout] {
+            grid-template-columns: 1fr;
+            grid-template-rows: minmax(0, auto) minmax(0, 1fr);
+            max-width: 46rem;
+            gap: var(--spacing-lg);
         }
 
-        .art {
-            max-width: 20rem;
+        .now-playing[data-layout] .art-panel {
+            display: grid;
+            grid-template-columns: clamp(5rem, 15vw, 8rem) minmax(0, 1fr);
+            align-items: center;
+            gap: var(--spacing-md);
+            height: auto;
+            max-height: 28vh;
+        }
+
+        .now-playing[data-layout] .visual-stage {
+            height: clamp(5rem, 15vw, 8rem);
+            max-height: 28vh;
+        }
+
+        .now-playing[data-layout] .track-info {
+            align-items: flex-start;
+            text-align: left;
+            max-height: 28vh;
+        }
+
+        .track-info :global(.artist-credits) {
+            justify-content: flex-start;
+        }
+
+        .now-playing[data-layout] .track-info .page-title {
+            font-size: clamp(var(--font-size-xl), 3vw, var(--font-size-3xl));
+        }
+
+        .now-playing[data-layout="lyrics"] .lyrics-panel {
+            padding-left: 0;
+            border-left: 0;
+        }
+    }
+
+    @media (max-width: 767px) {
+        .now-playing[data-layout="lyrics"] {
+            --np-lyrics-line-size: clamp(1.5rem, 8vw, 2.25rem);
         }
     }
 </style>

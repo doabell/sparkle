@@ -677,8 +677,8 @@
     }
 
     .art:hover {
-        box-shadow: 0 0 0 2px var(--color-accent-graphic);
-        transform: scale(1.04);
+        box-shadow: var(--shadow-sm);
+        transform: scale(var(--motion-hover-scale));
     }
 
     .art img {
@@ -730,7 +730,6 @@
 
     .artist a:hover {
         color: var(--color-text);
-        text-decoration: underline;
     }
 
     .meta-sep {
@@ -751,7 +750,6 @@
 
     .lyric-line:hover {
         color: var(--color-text);
-        text-decoration: underline;
     }
 
     .center {
@@ -794,7 +792,7 @@
 
     .control-btn:hover {
         color: var(--color-accent-graphic);
-        transform: scale(1.08);
+        transform: scale(var(--motion-hover-scale));
     }
 
     .mode-btn {
@@ -806,7 +804,7 @@
 
     .mode-btn:hover {
         color: var(--color-text);
-        transform: scale(1.08);
+        transform: scale(var(--motion-hover-scale));
     }
 
     .mode-btn.active {
@@ -844,7 +842,7 @@
 
     .queue-toggle:hover {
         color: var(--color-text);
-        transform: scale(1.08);
+        transform: scale(var(--motion-hover-scale));
     }
 
     .queue-toggle.active {
@@ -860,8 +858,8 @@
         width: 3rem;
         height: 3rem;
         border-radius: var(--radius-full);
-        background-color: var(--color-text);
-        color: var(--color-background);
+        background-color: var(--color-accent-fill);
+        color: var(--color-on-accent-fill);
         box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
     }
 
@@ -871,17 +869,18 @@
     }
 
     .play-btn:hover {
-        transform: scale(1.06);
+        transform: scale(var(--motion-hover-scale));
         background-color: var(--color-accent-fill-hover);
         color: var(--color-on-accent-fill);
-        box-shadow:
-            inset 0 0 0 1px var(--color-accent-graphic),
-            0 6px 20px
-                color-mix(in srgb, var(--color-accent-seed) 35%, transparent);
+        box-shadow: 0 6px 20px
+            color-mix(in srgb, var(--color-accent-seed) 35%, transparent);
     }
 
+    .control-btn:active,
+    .mode-btn:active,
+    .queue-toggle:active,
     .play-btn:active {
-        transform: scale(0.98);
+        transform: scale(var(--motion-press-scale));
     }
 
     .progress {
@@ -942,7 +941,7 @@
     .progress .bar-track,
     .volume .bar-track {
         height: 4px;
-        transition: height 100ms ease;
+        transition: height var(--transition-fast);
     }
 
     .progress .bar-track:hover,
@@ -969,7 +968,7 @@
         border-radius: var(--radius-full);
         background-color: var(--color-text);
         transition:
-            transform 100ms ease,
+            transform var(--transition-fast),
             background-color var(--transition-fast);
     }
 

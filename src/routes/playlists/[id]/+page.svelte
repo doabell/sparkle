@@ -316,9 +316,9 @@
                 <div class="header-info">
                     <div class="playlist-type">
                         {playlist.live_mix
-                            ? "Live mix"
+                            ? "Live Mix"
                             : playlist.folder_path
-                              ? "Folder playlist"
+                              ? "Folder Playlist"
                               : "Playlist"}
                     </div>
                     <h1 class="playlist-title">{playlist.name}</h1>
@@ -571,8 +571,7 @@
     .playlist-type {
         font-size: var(--font-size-xs);
         font-weight: var(--font-weight-semibold);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
+        letter-spacing: normal;
         color: var(--color-text-muted);
     }
 
@@ -624,9 +623,12 @@
 
     .delete-playlist-btn:hover:not(:disabled) {
         color: var(--color-error);
-        border-color: var(--color-error);
-        background-color: rgba(226, 33, 52, 0.12);
-        transform: scale(1.04);
+        background-color: color-mix(
+            in srgb,
+            var(--color-error) 12%,
+            transparent
+        );
+        transform: scale(var(--motion-hover-scale));
     }
 
     .delete-playlist-btn:disabled {
@@ -695,8 +697,11 @@
 
     .remove-track:hover:not(:disabled) {
         color: var(--color-error);
-        border-color: var(--color-error);
-        background-color: rgba(226, 33, 52, 0.12);
+        background-color: color-mix(
+            in srgb,
+            var(--color-error) 12%,
+            transparent
+        );
     }
 
     .remove-track svg {

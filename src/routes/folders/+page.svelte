@@ -425,7 +425,7 @@
         height: 100%;
         border-radius: inherit;
         background: var(--color-accent-graphic);
-        transition: width 180ms ease;
+        transition: width var(--transition-base);
     }
 
     .scan-current-path {
@@ -500,8 +500,7 @@
     .stat-label {
         font-size: var(--font-size-xs);
         color: var(--color-text-muted);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
+        letter-spacing: normal;
     }
 
     .stat.errors .stat-value {
@@ -578,8 +577,11 @@
 
     .remove-btn:hover:not(:disabled) {
         color: var(--color-error);
-        border-color: var(--color-error);
-        background-color: rgba(226, 33, 52, 0.08);
+        background-color: color-mix(
+            in srgb,
+            var(--color-error) 10%,
+            transparent
+        );
     }
 
     .remove-btn:disabled {

@@ -337,7 +337,7 @@
                         </li>
                     </ul>
                     <div class="popover-divider" aria-hidden="true"></div>
-                    <div class="popover-heading">Add to playlist</div>
+                    <div class="popover-heading">Add to Playlist</div>
                     {#if playlistsLoading}
                         <div class="popover-loading">Loading playlists...</div>
                     {:else if playlists.length === 0}
@@ -358,7 +358,7 @@
                         </ul>
                     {/if}
                     <div class="popover-divider" aria-hidden="true"></div>
-                    <div class="popover-heading">Lyrics file</div>
+                    <div class="popover-heading">Lyrics File</div>
                     <ul class="popover-list">
                         <li>
                             <button
@@ -460,7 +460,7 @@
 
     .play-button:hover {
         color: var(--color-accent-graphic);
-        transform: scale(1.1);
+        transform: scale(var(--motion-hover-scale));
     }
 
     .play-button svg {
@@ -549,7 +549,6 @@
 
     .track-album-link:hover {
         color: var(--color-text);
-        text-decoration: underline;
     }
 
     .track-snippet {
@@ -565,7 +564,6 @@
 
     :global(.track-artist a:hover) {
         color: var(--color-text);
-        text-decoration: underline;
     }
 
     .track-album {
@@ -576,7 +574,6 @@
 
     .track-album:hover {
         color: var(--color-text);
-        text-decoration: underline;
     }
 
     .track-actions {
@@ -622,7 +619,7 @@
     .more-button:hover,
     .more-button:focus-visible {
         color: var(--color-text);
-        background-color: rgba(255, 255, 255, 0.08);
+        background-color: var(--interactive-hover);
     }
 
     .more-button svg {
@@ -661,8 +658,7 @@
         padding: var(--spacing-xs) var(--spacing-md);
         font-size: var(--font-size-xs);
         font-weight: var(--font-weight-semibold);
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
+        letter-spacing: normal;
         color: var(--color-text-muted);
     }
 
@@ -686,7 +682,7 @@
 
     .popover-item:hover,
     .popover-item:focus-visible {
-        background-color: rgba(255, 255, 255, 0.08);
+        background-color: var(--interactive-hover);
     }
 
     .popover-empty,

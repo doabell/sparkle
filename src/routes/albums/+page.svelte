@@ -8,6 +8,7 @@
     } from "$lib/components/ScrollIndex.svelte";
     import Select from "$lib/components/Select.svelte";
     import SortDirButton from "$lib/components/SortDirButton.svelte";
+    import ViewModeToggle from "$lib/components/ViewModeToggle.svelte";
     import Artwork from "$lib/components/Artwork.svelte";
     import { songIndexLanguage } from "$lib/stores/songIndex";
     import {
@@ -271,49 +272,11 @@
                     ariaLabel="Toggle group direction"
                 />
             </div>
-            <div class="view-toggle">
-                <button
-                    class="view-grid"
-                    class:active={$viewMode === "grid"}
-                    aria-label="Grid view"
-                    onclick={() => ($viewMode = "grid")}
-                >
-                    <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        aria-hidden="true"
-                    >
-                        <rect x="3" y="3" width="7" height="7" rx="1" />
-                        <rect x="14" y="3" width="7" height="7" rx="1" />
-                        <rect x="3" y="14" width="7" height="7" rx="1" />
-                        <rect x="14" y="14" width="7" height="7" rx="1" />
-                    </svg>
-                </button>
-                <button
-                    class="view-list"
-                    class:active={$viewMode === "row"}
-                    aria-label="Row view"
-                    onclick={() => ($viewMode = "row")}
-                >
-                    <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        aria-hidden="true"
-                    >
-                        <line x1="3" y1="6" x2="21" y2="6" />
-                        <line x1="3" y1="12" x2="21" y2="12" />
-                        <line x1="3" y1="18" x2="21" y2="18" />
-                    </svg>
-                </button>
-            </div>
+            <ViewModeToggle
+                value={$viewMode === "row" ? "row" : "grid"}
+                onchange={(value) => ($viewMode = value)}
+                label="Album view"
+            />
         </div>
     </div>
 

@@ -560,7 +560,6 @@
 
     .delete-btn:hover:not(:disabled) {
         background-color: var(--color-error);
-        border-color: var(--color-error);
         color: var(--color-text);
     }
 

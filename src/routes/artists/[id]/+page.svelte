@@ -979,7 +979,7 @@
                                 <circle cx="8.5" cy="8.5" r="1.5" />
                                 <path d="m21 15-5-5L5 21" />
                             </svg>
-                            Find an image online
+                            Find an Image Online
                         </span>
                         <div class="chooser-search">
                             <input
@@ -1178,7 +1178,6 @@
 
     .info-source.link:hover {
         color: var(--color-text);
-        text-decoration: underline;
     }
 
     .info-source.link svg {
@@ -1207,7 +1206,6 @@
 
     .info-source.link:hover {
         color: var(--color-text);
-        text-decoration: underline;
     }
 
     .info-source.link svg {
@@ -1233,10 +1231,9 @@
     }
 
     .edit-artist-btn:hover {
-        background-color: rgba(255, 255, 255, 0.12);
-        border-color: rgba(255, 255, 255, 0.18);
+        background-color: var(--interactive-hover);
         color: var(--color-text);
-        transform: scale(1.04);
+        transform: scale(var(--motion-hover-scale));
     }
 
     .edit-artist-btn svg {
@@ -1339,8 +1336,7 @@
         gap: var(--spacing-xs);
         font-size: var(--font-size-xs);
         font-weight: var(--font-weight-semibold);
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
+        letter-spacing: normal;
         color: var(--color-text-secondary);
     }
 
@@ -1383,8 +1379,8 @@
     }
 
     .candidate:hover {
-        border-color: var(--color-accent-graphic);
-        transform: scale(1.03);
+        background: var(--interactive-hover);
+        transform: scale(var(--motion-hover-scale));
     }
 
     .candidate:disabled {

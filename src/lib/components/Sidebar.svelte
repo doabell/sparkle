@@ -136,7 +136,7 @@
     <div class="logo">
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <path
-                d="M12 2l2.5 6.5L21 11l-6.5 2.5L12 20l-2.5-6.5L3 11l6.5-2.5L12 2z"
+                d="M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3z"
             />
         </svg>
         Sparkle
@@ -145,7 +145,11 @@
         {#each items as item}
             {@const active = isActive(item.href)}
             <li class:active>
-                <a href={item.href} onclick={close}>
+                <a
+                    href={item.href}
+                    onclick={close}
+                    aria-current={active ? "page" : undefined}
+                >
                     <span class="icon" class:active>{@html item.icon}</span>
                     <span class="label">{item.label}</span>
                 </a>
@@ -175,10 +179,10 @@
             var(--color-surface) 0%,
             rgba(var(--color-surface-rgb), 0.98) 100%
         );
-        padding: var(--spacing-md) var(--spacing-md) var(--spacing-lg);
+        padding: 0 var(--spacing-md) var(--spacing-lg);
         display: flex;
         flex-direction: column;
-        gap: var(--spacing-lg);
+        gap: var(--spacing-md);
         overflow-y: auto;
         border-right: 1px solid var(--color-border);
     }
@@ -186,22 +190,25 @@
     .logo {
         display: flex;
         align-items: center;
-        gap: var(--spacing-sm);
-        font-size: var(--font-size-xl);
+        justify-content: center;
+        gap: 0.625rem;
+        min-height: 4rem;
+        flex-shrink: 0;
+        font-size: var(--font-size-2xl);
         font-weight: var(--font-weight-bold);
-        padding: 0 var(--spacing-sm);
+        line-height: var(--line-height-tight);
+        /* Optical centering: the wordmark needs a little more room above/right. */
+        padding: 0.75rem 0.75rem 0 0;
         color: var(--color-text);
         letter-spacing: -0.02em;
+        user-select: none;
     }
 
     .logo svg {
-        width: 1.5rem;
-        height: 1.5rem;
+        width: 1.75rem;
+        height: 1.75rem;
+        flex-shrink: 0;
         color: var(--color-accent-graphic);
-        filter: drop-shadow(
-            0 0 12px
-                color-mix(in srgb, var(--color-accent-seed) 35%, transparent)
-        );
     }
 
     .nav-items {
@@ -300,19 +307,18 @@
             align-items: center;
             justify-content: center;
             position: fixed;
-            top: var(--spacing-md);
+            top: 0;
             left: var(--spacing-md);
-            z-index: 101;
+            z-index: 200;
             width: 2.5rem;
-            height: 2.5rem;
-            border-radius: var(--radius-full);
+            height: var(--window-chrome-height);
+            border-radius: var(--radius);
             color: var(--color-text);
-            background-color: var(--color-surface-elevated);
-            border: 1px solid var(--color-border);
+            background-color: transparent;
+            border: none;
             transition:
                 background-color var(--transition-fast),
                 color var(--transition-fast);
-            box-shadow: var(--shadow-sm);
         }
 
         .menu-toggle:hover {

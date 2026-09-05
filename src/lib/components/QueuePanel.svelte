@@ -156,7 +156,7 @@
                 </ul>
             {/if}
 
-            <div class="queue-section-label">Now playing</div>
+            <div class="queue-section-label">Now Playing</div>
             <div class="queue-row current" bind:this={currentRowRef}>
                 <span class="row-cover"
                     ><Artwork
@@ -183,7 +183,7 @@
             </div>
 
             {#if upNext.length > 0}
-                <div class="queue-section-label">Up next · {upNext.length}</div>
+                <div class="queue-section-label">Up Next · {upNext.length}</div>
                 <ul class="queue-list">
                     {#each upNext as item (item.pos)}
                         <li>
@@ -271,7 +271,7 @@
 
     .close-btn:hover {
         color: var(--color-text);
-        background-color: rgba(255, 255, 255, 0.08);
+        background-color: var(--interactive-hover);
     }
 
     .close-btn svg {
@@ -288,8 +288,7 @@
         padding: var(--spacing-sm) var(--spacing-md) var(--spacing-xs);
         font-size: var(--font-size-xs);
         font-weight: var(--font-weight-semibold);
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
+        letter-spacing: normal;
         color: var(--color-text-muted);
     }
 
@@ -316,7 +315,7 @@
     }
 
     button.queue-row:hover {
-        background-color: rgba(255, 255, 255, 0.06);
+        background-color: var(--interactive-hover);
     }
 
     .queue-row.played {
@@ -328,7 +327,11 @@
     }
 
     .queue-row.current {
-        background-color: rgba(255, 255, 255, 0.04);
+        background-color: color-mix(
+            in srgb,
+            var(--color-accent-subtle) 42%,
+            transparent
+        );
     }
 
     .row-eq {
