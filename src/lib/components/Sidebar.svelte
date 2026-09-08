@@ -252,8 +252,8 @@
         border-radius: var(--radius);
         color: var(--color-text-secondary);
         transition:
-            background-color var(--transition-fast),
-            color var(--transition-fast);
+            background-color var(--transition-feedback),
+            color var(--transition-feedback);
     }
 
     a:hover {
@@ -293,7 +293,7 @@
             z-index: 100;
             width: var(--sidebar-mobile-width);
             transform: translateX(-100%);
-            transition: transform var(--transition-base);
+            transition: transform var(--transition-transform);
             box-shadow: var(--shadow-md);
             background: var(--color-surface);
         }
@@ -317,8 +317,8 @@
             background-color: transparent;
             border: none;
             transition:
-                background-color var(--transition-fast),
-                color var(--transition-fast);
+                background-color var(--transition-feedback),
+                color var(--transition-feedback);
         }
 
         .menu-toggle:hover {

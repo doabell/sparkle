@@ -1221,7 +1221,7 @@
         display: inline-flex;
         align-items: center;
         gap: var(--spacing-xs);
-        transition: color var(--transition-fast);
+        transition: color var(--transition-feedback);
     }
 
     .info-source.link:hover {
@@ -1249,7 +1249,7 @@
         display: inline-flex;
         align-items: center;
         gap: var(--spacing-xs);
-        transition: color var(--transition-fast);
+        transition: color var(--transition-feedback);
     }
 
     .info-source.link:hover {
@@ -1272,10 +1272,10 @@
         background-color: rgba(255, 255, 255, 0.08);
         color: var(--color-text-secondary);
         transition:
-            color var(--transition-fast),
-            border-color var(--transition-fast),
-            background-color var(--transition-fast),
-            transform var(--transition-fast);
+            color var(--transition-feedback),
+            border-color var(--transition-feedback),
+            background-color var(--transition-feedback),
+            transform var(--transition-transform);
     }
 
     .edit-artist-btn:hover {
@@ -1317,7 +1317,7 @@
         min-width: 0;
         border-radius: var(--radius);
         text-align: center;
-        transition: background-color var(--transition-fast);
+        transition: background-color var(--transition-feedback);
     }
     .candidate:hover:not(:disabled) {
         background: var(--interactive-hover);

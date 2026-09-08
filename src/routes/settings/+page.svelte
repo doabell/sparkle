@@ -2152,8 +2152,8 @@
         color: var(--color-text-secondary);
         text-align: left;
         transition:
-            background-color var(--transition-fast),
-            color var(--transition-fast);
+            background-color var(--transition-feedback),
+            color var(--transition-feedback);
     }
 
     .settings-index button:hover {
@@ -2468,8 +2468,8 @@
         color: var(--color-text-muted);
         border-radius: var(--radius);
         transition:
-            color var(--transition-fast),
-            background-color var(--transition-fast);
+            color var(--transition-feedback),
+            background-color var(--transition-feedback);
     }
 
     .source-action:hover:not(:disabled) {
@@ -2527,8 +2527,8 @@
         font-weight: var(--font-weight-bold);
         text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
         transition:
-            transform var(--transition-fast),
-            border-color var(--transition-fast);
+            transform var(--transition-transform),
+            border-color var(--transition-feedback);
     }
 
     .accent-swatch:hover {
@@ -2699,7 +2699,7 @@
         background: transparent;
         text-align: left;
         cursor: pointer;
-        transition: background-color var(--transition-fast);
+        transition: background-color var(--transition-feedback);
     }
 
     .layout-radio {
@@ -3051,8 +3051,8 @@
         border-radius: var(--radius-sm);
         color: var(--color-text-muted);
         transition:
-            color var(--transition-fast),
-            background-color var(--transition-fast);
+            color var(--transition-feedback),
+            background-color var(--transition-feedback);
     }
 
     .debug-open:hover {
@@ -3141,8 +3141,8 @@
         border: 1px solid var(--color-border);
         border-radius: var(--radius-full);
         transition:
-            background-color var(--transition-fast),
-            border-color var(--transition-fast);
+            background-color var(--transition-feedback),
+            border-color var(--transition-feedback);
     }
 
     .toggle-slider::after {
@@ -3156,8 +3156,8 @@
         border-radius: 50%;
         transform: translateY(-50%);
         transition:
-            transform var(--transition-fast),
-            background-color var(--transition-fast);
+            transform var(--transition-transform),
+            background-color var(--transition-feedback);
     }
 
     .toggle input:checked + .toggle-slider {

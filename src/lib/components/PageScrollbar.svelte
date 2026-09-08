@@ -218,17 +218,14 @@
         border-radius: var(--radius-full);
         background: var(--color-text-secondary);
         opacity: 0.75;
-        transform: scaleX(0.5);
-        transition:
-            opacity var(--transition-fast),
-            transform var(--transition-fast);
+        transform: scaleX(0.75);
+        transition: opacity var(--transition-feedback);
     }
 
     .page-scrollbar:hover .thumb::before,
     .page-scrollbar:focus-visible .thumb::before,
     .page-scrollbar.dragging .thumb::before {
         opacity: 1;
-        transform: scaleX(0.75);
     }
 
     .page-scrollbar:focus-visible .thumb::before {

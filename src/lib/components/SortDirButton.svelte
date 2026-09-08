@@ -48,9 +48,9 @@
         color: var(--color-text-secondary);
         cursor: pointer;
         transition:
-            background-color var(--transition-fast),
-            border-color var(--transition-fast),
-            color var(--transition-fast);
+            background-color var(--transition-feedback),
+            border-color var(--transition-feedback),
+            color var(--transition-feedback);
     }
 
     .sort-dir:hover {
@@ -66,7 +66,7 @@
     .sort-dir-icon {
         width: 0.9375rem;
         height: 0.9375rem;
-        transition: transform var(--transition-fast);
+        transition: transform var(--transition-transform);
         transform: rotate(180deg);
     }
 

@@ -104,6 +104,11 @@
     --motion-ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
     --motion-hover-scale: 1.025;
     --motion-press-scale: 0.97;
+    --motion-enter-scale: 0.98;
+    --motion-reveal-scale: 0.9;
+    --transition-transform: var(--motion-duration-base)
+        var(--motion-ease-standard);
+    --transition-feedback: 0ms;
     --transition-fast: var(--motion-duration-fast) var(--motion-ease-standard);
     --transition-base: var(--motion-duration-base) var(--motion-ease-standard);
     --transition-slow: var(--motion-duration-slow) var(--motion-ease-enter);
@@ -283,8 +288,8 @@ select {
     font-size: var(--font-size-sm);
     cursor: pointer;
     transition:
-        background-color var(--transition-fast),
-        border-color var(--transition-fast);
+        background-color var(--transition-feedback),
+        border-color var(--transition-feedback);
 }
 
 select:hover {
@@ -390,10 +395,10 @@ svg {
     font-weight: var(--font-weight-semibold);
     font-size: var(--font-size-sm);
     transition:
-        background-color var(--transition-fast),
-        transform var(--transition-fast),
-        color var(--transition-fast),
-        box-shadow var(--transition-fast);
+        background-color var(--transition-feedback),
+        transform var(--transition-transform),
+        color var(--transition-feedback),
+        box-shadow var(--transition-feedback);
 }
 
 .btn-pill svg {
@@ -602,10 +607,10 @@ svg {
     border: 1px solid var(--color-border);
     color: var(--color-text-secondary);
     transition:
-        background-color var(--transition-fast),
-        color var(--transition-fast),
-        transform var(--transition-fast),
-        border-color var(--transition-fast);
+        background-color var(--transition-feedback),
+        color var(--transition-feedback),
+        transform var(--transition-transform),
+        border-color var(--transition-feedback);
 }
 
 .icon-btn:hover:not(:disabled) {
@@ -752,13 +757,13 @@ svg {
     flex-shrink: 0;
     box-shadow: var(--shadow-lg);
     transition:
-        transform var(--transition-slow),
-        box-shadow var(--transition-slow);
+        transform var(--transition-transform),
+        box-shadow var(--transition-feedback);
     cursor: pointer;
 }
 
 .hero-art:hover {
-    transform: scale(1.02) translateY(-4px);
+    transform: scale(var(--motion-hover-scale));
     box-shadow:
         var(--shadow-lg),
         0 24px 48px rgba(0, 0, 0, 0.35);
@@ -822,15 +827,10 @@ svg {
 .card-grid-item {
     position: relative;
     border-radius: var(--radius-lg);
-    transition:
-        transform var(--transition-base),
-        box-shadow var(--transition-base);
-    will-change: transform;
 }
 
 .card-grid-item:hover {
-    transform: translateY(-6px);
-    box-shadow: var(--shadow-md);
+    background-color: var(--color-surface);
 }
 
 .card-grid-item a {
@@ -838,7 +838,7 @@ svg {
     padding: var(--spacing-md);
     border-radius: var(--radius-lg);
     color: inherit;
-    transition: background-color var(--transition-fast);
+    transition: background-color var(--transition-feedback);
 }
 
 .card-grid-item:hover a {
@@ -947,11 +947,11 @@ svg {
     color: var(--color-on-accent-fill);
     border: none;
     opacity: 0;
-    transform: translateY(8px) scale(0.9);
+    transform: scale(var(--motion-reveal-scale));
     transition:
         opacity var(--transition-fast),
-        transform var(--transition-fast),
-        background-color var(--transition-fast);
+        transform var(--transition-transform),
+        background-color var(--transition-feedback);
     box-shadow: var(--shadow-md);
     z-index: 2;
     cursor: pointer;
@@ -988,7 +988,7 @@ svg {
 .list-row:hover .list-row-play,
 .list-row:focus-within .list-row-play {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: scale(1);
 }
 
 .card-play-button:hover,
@@ -1002,14 +1002,14 @@ svg {
 .card-grid-item:focus-within .card-play-button:hover,
 .list-row:hover .list-row-play:hover,
 .list-row:focus-within .list-row-play:hover {
-    transform: translateY(0) scale(var(--motion-hover-scale));
+    transform: scale(var(--motion-hover-scale));
 }
 
 .card-grid-item:hover .card-play-button:active,
 .card-grid-item:focus-within .card-play-button:active,
 .list-row:hover .list-row-play:active,
 .list-row:focus-within .list-row-play:active {
-    transform: translateY(0) scale(var(--motion-press-scale));
+    transform: scale(var(--motion-press-scale));
 }
 
 /* Segmented choices: neutral fill for view/state, accent only when meaningful. */
@@ -1034,8 +1034,8 @@ svg {
     color: var(--color-text-secondary);
     background: transparent;
     transition:
-        background-color var(--transition-fast),
-        color var(--transition-fast);
+        background-color var(--transition-feedback),
+        color var(--transition-feedback);
 }
 
 .segmented-control button:hover {
@@ -1085,9 +1085,9 @@ svg {
     font-size: var(--font-size-xs);
     font-weight: var(--font-weight-medium);
     transition:
-        background-color var(--transition-fast),
-        color var(--transition-fast),
-        transform var(--transition-fast);
+        background-color var(--transition-feedback),
+        color var(--transition-feedback),
+        transform var(--transition-transform);
 }
 
 .control-cluster button:hover {
@@ -1129,7 +1129,7 @@ svg {
     gap: var(--spacing-md);
     padding: var(--spacing-sm) var(--spacing-md);
     border-radius: var(--radius);
-    transition: background-color var(--transition-fast);
+    transition: background-color var(--transition-feedback);
 }
 
 .list-row:hover,
@@ -1221,8 +1221,8 @@ svg {
     border: 1px solid var(--color-border);
     cursor: pointer;
     transition:
-        background-color var(--transition-fast),
-        border-color var(--transition-fast);
+        background-color var(--transition-feedback),
+        border-color var(--transition-feedback);
 }
 
 .switch::after {
@@ -1236,8 +1236,8 @@ svg {
     border-radius: 50%;
     background-color: var(--color-text-muted);
     transition:
-        transform var(--transition-fast),
-        background-color var(--transition-fast);
+        transform var(--transition-transform),
+        background-color var(--transition-feedback);
 }
 
 .switch.on {
@@ -1312,7 +1312,7 @@ svg {
     gap: var(--spacing-md);
     padding: var(--spacing-sm) var(--spacing-md);
     border-radius: var(--radius);
-    transition: background-color var(--transition-fast);
+    transition: background-color var(--transition-feedback);
     outline: none;
 }
 
@@ -1392,7 +1392,7 @@ svg {
     height: 100%;
     background-color: var(--color-text);
     border-radius: var(--radius-full);
-    transition: background-color var(--transition-fast);
+    transition: background-color var(--transition-feedback);
 }
 
 .bar-track:hover .bar-fill,
@@ -1425,11 +1425,11 @@ svg {
 @keyframes card-enter {
     from {
         opacity: 0;
-        transform: translateY(16px);
+        transform: scale(var(--motion-enter-scale));
     }
     to {
         opacity: 1;
-        transform: translateY(0);
+        transform: scale(1);
     }
 }
 
@@ -1438,34 +1438,38 @@ svg {
         backwards;
 }
 
-/* Reduced motion: kill enter animations and transitions globally. Applies
-   both to the OS-level preference and the in-app Reduce motion setting. */
+/* Remove decorative motion, including instantaneous hover-size changes.
+   Keep transforms used to position controls, crop artwork, or hide the sidebar. */
 @media (prefers-reduced-motion: reduce) {
+    :root {
+        --motion-hover-scale: 1;
+        --motion-press-scale: 1;
+        --motion-enter-scale: 1;
+        --motion-reveal-scale: 1;
+    }
+
     *,
     *::before,
     *::after {
-        transition-duration: 0.01ms !important;
-        transition-delay: 0ms !important;
-        animation-duration: 0.01ms !important;
-        animation-delay: 0ms !important;
-        animation-iteration-count: 1 !important;
+        transition: none !important;
+        animation: none !important;
         scroll-behavior: auto !important;
     }
 }
 
-:root[data-motion="reduced"] .page-enter,
-:root[data-motion="reduced"] .card-enter {
-    animation: none;
+/* Until the saved preference is loaded, keep first paint still as well. */
+:root:not([data-motion="full"]) {
+    --motion-hover-scale: 1;
+    --motion-press-scale: 1;
+    --motion-enter-scale: 1;
+    --motion-reveal-scale: 1;
 }
 
-:root[data-motion="reduced"] *,
-:root[data-motion="reduced"] *::before,
-:root[data-motion="reduced"] *::after {
-    transition-duration: 0.01ms !important;
-    transition-delay: 0ms !important;
-    animation-duration: 0.01ms !important;
-    animation-delay: 0ms !important;
-    animation-iteration-count: 1 !important;
+:root:not([data-motion="full"]) *,
+:root:not([data-motion="full"]) *::before,
+:root:not([data-motion="full"]) *::after {
+    transition: none !important;
+    animation: none !important;
     scroll-behavior: auto !important;
 }
 

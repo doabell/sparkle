@@ -1,18 +1,5 @@
 <script lang="ts">
     import { toasts } from "$lib/stores/toast";
-    import { cubicOut } from "svelte/easing";
-    import { fly } from "svelte/transition";
-
-    function toastFly(node: Element) {
-        const reduced =
-            window.matchMedia("(prefers-reduced-motion: reduce)").matches ||
-            document.documentElement.dataset.motion !== "full";
-        return fly(node, {
-            y: -12,
-            duration: reduced ? 0 : 220,
-            easing: cubicOut,
-        });
-    }
 </script>
 
 <div
@@ -22,7 +9,7 @@
     aria-label="Notifications"
 >
     {#each $toasts as toast (toast.id)}
-        <div class="toast {toast.type}" transition:toastFly>
+        <div class="toast {toast.type}">
             <span class="message">{toast.message}</span>
             <button
                 aria-label="Dismiss"
@@ -46,6 +33,8 @@
     }
 
     .toast {
+        animation: card-enter var(--motion-duration-base)
+            var(--motion-ease-enter);
         pointer-events: auto;
         display: flex;
         align-items: center;

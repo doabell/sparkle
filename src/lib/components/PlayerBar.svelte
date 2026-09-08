@@ -672,8 +672,8 @@
         justify-content: center;
         cursor: pointer;
         transition:
-            box-shadow var(--transition-fast),
-            transform var(--transition-fast);
+            box-shadow var(--transition-feedback),
+            transform var(--transition-transform);
     }
 
     .art:hover {
@@ -706,7 +706,7 @@
         font-size: var(--font-size-base);
         color: var(--color-text);
         cursor: pointer;
-        transition: color var(--transition-fast);
+        transition: color var(--transition-feedback);
         background: none;
         border: none;
         padding: 0;
@@ -725,7 +725,7 @@
 
     .artist a {
         color: inherit;
-        transition: color var(--transition-fast);
+        transition: color var(--transition-feedback);
     }
 
     .artist a:hover {
@@ -745,7 +745,7 @@
         max-width: 100%;
         text-align: left;
         cursor: pointer;
-        transition: color var(--transition-fast);
+        transition: color var(--transition-feedback);
     }
 
     .lyric-line:hover {
@@ -773,9 +773,9 @@
         align-items: center;
         justify-content: center;
         transition:
-            transform var(--transition-fast),
-            color var(--transition-fast),
-            background-color var(--transition-fast);
+            transform var(--transition-transform),
+            color var(--transition-feedback),
+            background-color var(--transition-feedback);
     }
 
     .control-btn {
@@ -836,8 +836,8 @@
         height: 1.25rem;
         color: var(--color-text-muted);
         transition:
-            transform var(--transition-fast),
-            color var(--transition-fast);
+            transform var(--transition-transform),
+            color var(--transition-feedback);
     }
 
     .queue-toggle:hover {
@@ -926,7 +926,7 @@
         flex-shrink: 0;
         cursor: pointer;
         border-radius: var(--radius-full);
-        transition: color var(--transition-fast);
+        transition: color var(--transition-feedback);
     }
 
     .volume-icon svg {
@@ -941,14 +941,6 @@
     .progress .bar-track,
     .volume .bar-track {
         height: 4px;
-        transition: height var(--transition-fast);
-    }
-
-    .progress .bar-track:hover,
-    .volume .bar-track:hover,
-    .progress .bar-track:focus-visible,
-    .volume .bar-track:focus-visible {
-        height: 6px;
     }
 
     .progress .bar-fill,
@@ -962,20 +954,23 @@
         position: absolute;
         right: 0;
         top: 50%;
-        transform: translate(50%, -50%) scale(0);
+        opacity: 0;
+        transform: translate(50%, -50%) scale(var(--motion-reveal-scale));
         width: 10px;
         height: 10px;
         border-radius: var(--radius-full);
         background-color: var(--color-text);
         transition:
-            transform var(--transition-fast),
-            background-color var(--transition-fast);
+            opacity var(--transition-fast),
+            transform var(--transition-transform),
+            background-color var(--transition-feedback);
     }
 
     .progress .bar-track:hover .bar-fill::after,
     .volume .bar-track:hover .bar-fill::after,
     .progress .bar-track:focus-visible .bar-fill::after,
     .volume .bar-track:focus-visible .bar-fill::after {
+        opacity: 1;
         transform: translate(50%, -50%) scale(1);
     }
 

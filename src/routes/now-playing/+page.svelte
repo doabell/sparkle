@@ -1086,7 +1086,7 @@
         transition:
             filter var(--transition-slow),
             opacity var(--transition-slow),
-            transform var(--transition-slow);
+            transform var(--transition-transform);
     }
 
     .np-backdrop::after {
@@ -1120,9 +1120,9 @@
         min-width: 0;
         container-type: inline-size;
         transition:
-            transform var(--transition-slow),
-            background-color var(--transition-slow),
-            border-color var(--transition-slow),
+            transform var(--transition-transform),
+            background-color var(--transition-feedback),
+            border-color var(--transition-feedback),
             border-radius var(--transition-slow),
             padding var(--transition-slow);
     }
@@ -1141,9 +1141,9 @@
         box-shadow: var(--shadow-md);
         align-self: center;
         transition:
-            transform var(--transition-slow),
+            transform var(--transition-transform),
             border-radius var(--transition-slow),
-            box-shadow var(--transition-slow),
+            box-shadow var(--transition-feedback),
             width var(--transition-slow),
             max-width var(--transition-slow);
     }
@@ -1174,7 +1174,7 @@
         padding: var(--spacing-xs);
         text-align: center;
         transition:
-            color var(--transition-slow),
+            color var(--transition-feedback),
             padding var(--transition-slow),
             text-align var(--transition-slow);
     }
@@ -1198,7 +1198,7 @@
     :global(.artist-link),
     .album-link {
         color: inherit;
-        transition: color var(--transition-fast);
+        transition: color var(--transition-feedback);
     }
 
     :global(.artist-link:hover) {
@@ -1223,11 +1223,11 @@
         min-height: 0;
         height: 100%;
         transition:
-            background-color var(--transition-slow),
-            border-color var(--transition-slow),
+            background-color var(--transition-feedback),
+            border-color var(--transition-feedback),
             border-radius var(--transition-slow),
             padding var(--transition-slow),
-            box-shadow var(--transition-slow);
+            box-shadow var(--transition-feedback);
     }
 
     .lyrics-header {
@@ -1335,8 +1335,8 @@
 
     .now-playing[data-layout] .album-art {
         transition:
-            transform var(--transition-slow),
-            box-shadow var(--transition-slow),
+            transform var(--transition-transform),
+            box-shadow var(--transition-feedback),
             width var(--transition-slow),
             max-width var(--transition-slow);
     }
@@ -1385,12 +1385,12 @@
             0 0 72px
                 color-mix(in srgb, var(--color-accent-seed) 12%, transparent);
         transition:
-            transform var(--transition-slow),
-            box-shadow var(--transition-slow);
+            transform var(--transition-transform),
+            box-shadow var(--transition-feedback);
     }
 
     .now-playing[data-layout="artist"] a.artist-portrait:hover {
-        transform: translateY(-4px) scale(1.01);
+        transform: scale(var(--motion-hover-scale));
         box-shadow: 0 38px 82px rgba(0, 0, 0, 0.48);
     }
 
@@ -1529,7 +1529,7 @@
         text-align: left;
         padding: var(--spacing-sm) var(--spacing-md);
         border-radius: var(--radius);
-        transition: background-color var(--transition-fast);
+        transition: background-color var(--transition-feedback);
     }
 
     .lyric-candidate:hover:not(:disabled) {

@@ -93,7 +93,7 @@
         color: var(--color-text-secondary);
         font-size: var(--font-size-base);
         line-height: 1.25;
-        transition: color var(--transition-fast);
+        transition: color var(--transition-feedback);
     }
 
     .compact .artist-credit {
@@ -116,9 +116,9 @@
         object-fit: cover;
         box-shadow: var(--shadow-sm);
         transition:
-            transform var(--transition-fast),
-            border-color var(--transition-fast),
-            box-shadow var(--transition-fast);
+            transform var(--transition-transform),
+            border-color var(--transition-feedback),
+            box-shadow var(--transition-feedback);
     }
 
     .compact :global(.artist-credit-avatar) {
