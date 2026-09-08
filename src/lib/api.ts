@@ -154,6 +154,7 @@ export interface ImageSearchResults {
     candidates: ImageCandidate[];
     failed_sources: string[];
     timed_out_sources: string[];
+    provider_errors?: Record<string, string>;
 }
 
 export type AccentForegroundPreference = "auto" | "light" | "dark";
@@ -165,8 +166,6 @@ export interface OnlineSettings {
     artist_info_sources: string[];
     artist_image_sources: string[];
     album_art_sources: string[];
-    artist_split_regex: string;
-    artist_split_exceptions: string[];
     ui_font: string;
     lyrics_font: string;
     reduce_motion: boolean;
@@ -470,6 +469,13 @@ export async function seek(
     return invoke("seek", { positionMs, source });
 }
 
+export async function seekLyrics(
+    trackId: number,
+    positionMs: number,
+): Promise<PlaybackState> {
+    return invoke("seek_lyrics", { trackId, positionMs });
+}
+
 export async function nextTrack(
     source: PlaybackActionSource = "ui",
 ): Promise<PlaybackState> {
@@ -537,6 +543,7 @@ export async function getPlaybackState(): Promise<PlaybackState> {
 }
 
 export async function getLrcOffset(trackId: number): Promise<number> {
+    await lyricEdits.get(trackId)?.catch(() => {});
     return invoke("get_lrc_offset", { trackId });
 }
 
@@ -544,7 +551,27 @@ export async function setLrcOffset(
     trackId: number,
     offsetMs: number,
 ): Promise<void> {
-    return invoke("set_lrc_offset", { trackId, offsetMs });
+    return editLyrics(trackId, () =>
+        invoke("set_lrc_offset", { trackId, offsetMs }),
+    );
+}
+
+// Keep timing saves and replacements in order, including across page unmounts.
+// A late offset save must never restore the previous LRC's offset after Apply.
+const lyricEdits = new Map<number, Promise<unknown>>();
+
+async function editLyrics<T>(
+    trackId: number,
+    action: () => Promise<T>,
+): Promise<T> {
+    const previous = lyricEdits.get(trackId) ?? Promise.resolve();
+    const request = previous.catch(() => {}).then(action);
+    lyricEdits.set(trackId, request);
+    try {
+        return await request;
+    } finally {
+        if (lyricEdits.get(trackId) === request) lyricEdits.delete(trackId);
+    }
 }
 
 const lyricRequests = new Map<number, Promise<Lyrics>>();
@@ -767,10 +794,12 @@ export async function setTrackLyricsSource(
     trackId: number,
     source?: string,
 ): Promise<void> {
-    await invoke("set_track_lyrics_source", {
-        trackId,
-        source: source ?? null,
-    });
+    await editLyrics(trackId, () =>
+        invoke("set_track_lyrics_source", {
+            trackId,
+            source: source ?? null,
+        }),
+    );
     notifyLyricsChanged(trackId);
 }
 
@@ -778,12 +807,16 @@ export async function setTrackCustomLyrics(
     trackId: number,
     path: string,
 ): Promise<void> {
-    await invoke("set_track_custom_lyrics", { trackId, path });
+    await editLyrics(trackId, () =>
+        invoke("set_track_custom_lyrics", { trackId, path }),
+    );
     notifyLyricsChanged(trackId);
 }
 
 export async function clearTrackCustomLyrics(trackId: number): Promise<void> {
-    await invoke("clear_track_custom_lyrics", { trackId });
+    await editLyrics(trackId, () =>
+        invoke("clear_track_custom_lyrics", { trackId }),
+    );
     notifyLyricsChanged(trackId);
 }
 
@@ -812,12 +845,14 @@ export async function setTrackLyricsChoice(
     trackId: number,
     choice: { source: string; syncedText?: string; plainText?: string },
 ): Promise<void> {
-    await invoke("set_track_lyrics_choice", {
-        trackId,
-        source: choice.source,
-        syncedText: choice.syncedText ?? null,
-        plainText: choice.plainText ?? null,
-    });
+    await editLyrics(trackId, () =>
+        invoke("set_track_lyrics_choice", {
+            trackId,
+            source: choice.source,
+            syncedText: choice.syncedText ?? null,
+            plainText: choice.plainText ?? null,
+        }),
+    );
     notifyLyricsChanged(trackId);
 }
 
@@ -828,6 +863,44 @@ export async function pickLyricsFile(): Promise<string | null> {
         filters: [{ name: "Lyrics", extensions: ["lrc", "txt"] }],
     });
     return typeof result === "string" ? result : null;
+}
+
+export async function saveTrackLyricsText(
+    trackId: number,
+    text: string,
+    applyOffset = false,
+): Promise<Lyrics> {
+    const lyrics = await editLyrics(trackId, () =>
+        invoke<Lyrics>("save_track_lyrics_text", {
+            trackId,
+            text,
+            applyOffset,
+        }),
+    );
+    notifyLyricsChanged(trackId);
+    return lyrics;
+}
+
+export async function pickLyricsToSave(title: string): Promise<string | null> {
+    const filename =
+        title
+            .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_")
+            .replace(/[. ]+$/, "")
+            .trim() || "lyrics";
+    return save({
+        defaultPath: `${filename}.lrc`,
+        filters: [{ name: "LRC lyrics", extensions: ["lrc"] }],
+    });
+}
+
+export async function exportTrackLyrics(
+    trackId: number,
+    text: string,
+    path: string,
+): Promise<void> {
+    return editLyrics(trackId, () =>
+        invoke("export_track_lyrics", { trackId, text, path }),
+    );
 }
 
 export async function setAlbumArtFile(

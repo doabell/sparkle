@@ -461,15 +461,15 @@
 
     .back-fab {
         position: fixed;
-        top: var(--spacing-sm);
-        left: calc(var(--sidebar-width) + var(--spacing-md));
+        top: 0;
+        left: var(--sidebar-width);
         z-index: 200;
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 2.5rem;
+        width: var(--window-chrome-height);
         height: var(--window-chrome-height);
-        border-radius: var(--radius);
+        border-radius: 0;
         background: transparent;
         border: none;
         color: var(--color-text-secondary);
@@ -479,8 +479,24 @@
     }
 
     .back-fab:hover {
-        background-color: var(--interactive-hover);
         color: var(--color-text);
+    }
+
+    .back-fab::before {
+        content: "";
+        position: absolute;
+        inset: 0.375rem;
+        border-radius: var(--radius);
+        pointer-events: none;
+        transition: background-color var(--transition-fast);
+    }
+
+    .back-fab:hover::before {
+        background-color: var(--interactive-hover);
+    }
+
+    .back-fab:active::before {
+        background-color: var(--interactive-active);
     }
 
     .back-fab:hover svg {
@@ -496,10 +512,9 @@
     }
 
     .back-fab svg {
-        width: 1.25rem;
-        height: 1.25rem;
-        /* Optical balance: a lone chevron reads better nudged left of center. */
-        margin-right: 2px;
+        position: relative;
+        width: 1rem;
+        height: 1rem;
         transition: transform var(--transition-fast);
     }
 
@@ -512,7 +527,7 @@
         }
 
         .back-fab {
-            left: calc(var(--spacing-md) + 2.5rem);
+            left: var(--window-chrome-height);
         }
 
         .content {

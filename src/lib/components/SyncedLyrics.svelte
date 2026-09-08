@@ -3,11 +3,11 @@
         activeLineIndex,
         anticipatedLineIndex,
         LYRIC_TRANSITION_DURATION_MS,
-        normalizeLyricSpacing,
         parseLrc,
     } from "$lib/utils/lrc";
     import { onMount } from "svelte";
     import type { Action } from "svelte/action";
+    import LyricText from "$lib/components/LyricText.svelte";
 
     interface Props {
         fontFamily?: string;
@@ -137,7 +137,7 @@
 >
     {#if hasTimestamps}
         <div class="lines synced">
-            {#each parsedLines as line, index (line.timeMs)}
+            {#each parsedLines as line, index (index)}
                 <button
                     type="button"
                     class="lyrics-line"
@@ -150,14 +150,14 @@
                     onclick={() => handleLineClick(line.timeMs)}
                     disabled={!onSeek}
                 >
-                    {normalizeLyricSpacing(line.text)}
+                    <LyricText text={line.text} />
                 </button>
             {/each}
         </div>
     {:else if plainText}
         <div class="lines plain">
             {#each plainText.split(/\r?\n/) as line, index (index)}
-                <p class="lyrics-line plain">{normalizeLyricSpacing(line)}</p>
+                <p class="lyrics-line plain"><LyricText text={line} /></p>
             {/each}
         </div>
     {:else}
@@ -205,6 +205,7 @@
         line-height: var(--np-lyrics-line-height, 1.5);
         text-align: var(--np-lyrics-line-align, center);
         line-break: auto;
+        word-break: keep-all;
         overflow-wrap: anywhere;
         text-wrap: balance;
         transform: scale(var(--np-lyrics-inactive-scale, 0.833333));

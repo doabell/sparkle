@@ -4,8 +4,12 @@ use crate::providers::lyrics::TrackMetadata;
 pub fn fetch(metadata: &TrackMetadata) -> Result<Option<Lyrics>, String> {
     match metadata.embedded_lyrics.as_deref() {
         Some(text) if !text.trim().is_empty() => {
+            let plain = super::strip_lrc_timestamps(text);
+            if plain.is_empty() {
+                return Ok(None);
+            }
             let synced_text = Some(text.to_string());
-            let plain_text = Some(super::strip_lrc_timestamps(text));
+            let plain_text = Some(plain);
             Ok(Some(Lyrics {
                 source: "embedded".to_string(),
                 synced_text,

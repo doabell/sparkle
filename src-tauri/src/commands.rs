@@ -53,8 +53,9 @@ fn live_mix_kind(smart_query: Option<&str>) -> Option<&str> {
 }
 
 fn live_mix_query(kind: &str) -> Option<String> {
-    let base =
-        format!("SELECT {TRACK_COLUMNS} FROM tracks t LEFT JOIN albums al ON al.id = t.album_id ");
+    let base = format!(
+        "SELECT {TRACK_COLUMNS} FROM available_tracks t LEFT JOIN albums al ON al.id = t.album_id "
+    );
     match kind {
         "recently_added" => Some(format!(
             "{base}ORDER BY t.created_at DESC, t.id DESC LIMIT 50"
@@ -319,6 +320,11 @@ pub fn scan_library(
         },
     )?;
     state.loudness.refresh_library();
+    if let Some(track) = state.audio.get_playback_state()?.current_track {
+        state.audio.refresh_track_lyrics(track.id)?;
+    }
+    use tauri::Emitter;
+    let _ = app.emit("library-scanned", ());
     Ok(result)
 }
 
@@ -352,7 +358,9 @@ pub fn set_track_lyrics_source(
     let cleaned = source
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
-    set_track_lyrics_source_record(&conn, trackId, cleaned.as_deref())
+    set_track_lyrics_source_record(&conn, trackId, cleaned.as_deref())?;
+    drop(conn);
+    state.audio.refresh_track_lyrics(trackId)
 }
 
 fn set_track_lyrics_source_record(
@@ -373,7 +381,7 @@ fn set_track_lyrics_source_record(
         }
     }
     conn.execute(
-        "UPDATE tracks SET lyrics_source = ? WHERE id = ?",
+        "UPDATE tracks SET lyrics_source = ?, lrc_offset_ms = 0, lyrics_revision = lyrics_revision + 1 WHERE id = ?",
         rusqlite::params![source, track_id],
     )
     .map_err(|e| e.to_string())?;
@@ -395,17 +403,12 @@ pub fn set_track_custom_lyrics(
         return Err("lyrics file is empty".to_string());
     }
     let source_path = std::path::Path::new(&path);
-    let is_lrc = std::path::Path::new(&path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.eq_ignore_ascii_case("lrc"))
-        .unwrap_or(false);
-    let (synced, plain) = if is_lrc {
-        let plain = crate::providers::lyrics::strip_lrc_timestamps(&content);
-        (Some(content), Some(plain))
-    } else {
-        (None, Some(content))
-    };
+    let is_lrc = !crate::providers::lyrics::parse_lrc(&content).is_empty();
+    let plain = crate::providers::lyrics::strip_lrc_timestamps(&content);
+    if plain.is_empty() {
+        return Err("lyrics contain no text".into());
+    }
+    let synced = is_lrc.then_some(content);
     crate::cache::copy_custom_lyrics_file(
         &state.cache_dir,
         trackId,
@@ -414,30 +417,21 @@ pub fn set_track_custom_lyrics(
     )?;
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     // Far-future expiry: custom lyrics are permanent until replaced.
-    crate::cache::set_lyrics(
-        &conn,
-        trackId,
-        "custom",
-        synced.as_deref(),
-        plain.as_deref(),
-    )?;
-    conn.execute(
-        "UPDATE tracks SET lyrics_source = 'custom' WHERE id = ?",
-        [trackId],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
+    crate::cache::set_custom_lyrics(&conn, trackId, synced.as_deref(), Some(&plain))?;
+    drop(conn);
+    state.audio.refresh_track_lyrics(trackId)
 }
 
 /// Removes the track's custom lyrics, falling back to providers.
 fn clear_custom_lyrics_record(conn: &rusqlite::Connection, track_id: i64) -> Result<(), String> {
-    crate::cache::delete_lyrics_from_source(conn, track_id, "custom")?;
-    conn.execute(
-        "UPDATE tracks SET lyrics_source = NULL WHERE id = ? AND lyrics_source = 'custom'",
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    crate::cache::delete_lyrics_from_source(&tx, track_id, "custom")?;
+    tx.execute(
+        "UPDATE tracks SET lyrics_source = CASE WHEN lyrics_source = 'custom' THEN NULL ELSE lyrics_source END, lrc_offset_ms = 0, lyrics_revision = lyrics_revision + 1 WHERE id = ?",
         [track_id],
     )
     .map_err(|e| e.to_string())?;
-    Ok(())
+    tx.commit().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -445,8 +439,9 @@ fn clear_custom_lyrics_record(conn: &rusqlite::Connection, track_id: i64) -> Res
 pub fn clear_track_custom_lyrics(state: State<'_, AppState>, trackId: i64) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     clear_custom_lyrics_record(&conn, trackId)?;
+    drop(conn);
     crate::cache::delete_custom_lyrics_file(&state.cache_dir, trackId);
-    Ok(())
+    state.audio.refresh_track_lyrics(trackId)
 }
 
 /// Stores a user-picked image file as the album's custom artwork. Custom art
@@ -510,7 +505,7 @@ pub fn get_genres(state: State<'_, AppState>) -> Result<Vec<Genre>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT genre, COUNT(*) as track_count \
-             FROM tracks \
+             FROM available_tracks \
              WHERE genre IS NOT NULL AND genre != '' \
              GROUP BY genre \
              ORDER BY genre",
@@ -534,7 +529,7 @@ pub fn get_artists(state: State<'_, AppState>) -> Result<Vec<Artist>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT a.id, a.name, a.sort_name, a.track_count, a.album_count, a.bio, a.info_provider, a.image_provider, a.info_term, a.image_term \
-             FROM artists a \
+             FROM artists a WHERE a.track_count > 0 OR a.album_count > 0 \
              ORDER BY a.name"
         )
         .map_err(|e| e.to_string())?;
@@ -566,10 +561,10 @@ pub fn get_albums(state: State<'_, AppState>, artistId: Option<i64>) -> Result<V
         .prepare(
             "SELECT al.id, al.title, al.year, COUNT(DISTINCT t.id) AS track_count \
              FROM albums al \
-             LEFT JOIN tracks t ON t.album_id = al.id \
+             LEFT JOIN available_tracks t ON t.album_id = al.id \
              WHERE (? IS NULL OR al.id IN ( \
                  SELECT DISTINCT ab.album_id FROM artist_albums ab WHERE ab.artist_id = ?)) \
-             GROUP BY al.id \
+             GROUP BY al.id HAVING COUNT(DISTINCT t.id) > 0 \
              ORDER BY al.year, al.title",
         )
         .map_err(|e| e.to_string())?;
@@ -603,7 +598,7 @@ pub fn get_album(state: State<'_, AppState>, id: i64) -> Result<Album, String> {
         .prepare(
             "SELECT al.id, al.title, al.year, COUNT(DISTINCT t.id) AS track_count \
              FROM albums al \
-             LEFT JOIN tracks t ON t.album_id = al.id \
+             LEFT JOIN available_tracks t ON t.album_id = al.id \
              WHERE al.id = ? \
              GROUP BY al.id",
         )
@@ -638,7 +633,7 @@ pub fn get_tracks(state: State<'_, AppState>, albumId: Option<i64>) -> Result<Ve
         .prepare(
             "SELECT t.id, t.file_path, t.title, t.track_number, t.disc_number, t.duration_ms, \
              t.year, t.genre, t.album_id, t.embedded_lyrics, t.lrc_offset_ms, al.title AS album_title, t.lyrics_source \
-             FROM tracks t \
+             FROM available_tracks t \
              LEFT JOIN albums al ON al.id = t.album_id \
              WHERE (? IS NULL OR t.album_id = ?) \
              ORDER BY t.disc_number, t.track_number, t.title",
@@ -687,7 +682,7 @@ pub fn get_tracks_by_artist(
         .prepare(
             "SELECT t.id, t.file_path, t.title, t.track_number, t.disc_number, t.duration_ms, \
              t.year, t.genre, t.album_id, t.embedded_lyrics, t.lrc_offset_ms, al.title AS album_title, t.lyrics_source \
-             FROM tracks t \
+             FROM available_tracks t \
              JOIN track_artists ta ON ta.track_id = t.id AND ta.role = 'main' \
              LEFT JOIN albums al ON al.id = t.album_id \
              WHERE ta.artist_id = ? \
@@ -763,7 +758,7 @@ fn album_artist_pairs(
             "SELECT a.id, a.name FROM artists a \
              JOIN album_artists aa ON aa.artist_id = a.id \
              WHERE aa.album_id = ? \
-             ORDER BY a.name",
+             ORDER BY aa.position, a.name",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
@@ -779,7 +774,7 @@ fn track_artists(conn: &rusqlite::Connection, track_id: i64) -> Result<Vec<(i64,
             "SELECT a.id, a.name FROM artists a \
              JOIN track_artists ta ON ta.artist_id = a.id \
              WHERE ta.track_id = ? AND ta.role = 'main' \
-             ORDER BY a.name",
+             ORDER BY ta.position, a.name",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
@@ -800,7 +795,7 @@ pub fn get_tracks_by_genre(
         .prepare(
             "SELECT t.id, t.file_path, t.title, t.track_number, t.disc_number, t.duration_ms, \
              t.year, t.genre, t.album_id, t.embedded_lyrics, t.lrc_offset_ms, al.title AS album_title, t.lyrics_source \
-             FROM tracks t \
+             FROM available_tracks t \
              LEFT JOIN albums al ON al.id = t.album_id \
              WHERE t.genre = ? \
              ORDER BY t.album_id, t.disc_number, t.track_number, t.title",
@@ -833,7 +828,7 @@ pub fn get_genre_collage_album_ids(
     let mut stmt = conn
         .prepare(
             "SELECT DISTINCT album_id \
-             FROM tracks \
+             FROM available_tracks \
              WHERE genre = ? AND album_id IS NOT NULL \
              ORDER BY album_id \
              LIMIT 4",
@@ -1019,7 +1014,7 @@ pub fn get_playlist_collage_album_ids(
         let mut stmt = conn
             .prepare(
                 "SELECT album_id \
-                 FROM tracks \
+                 FROM available_tracks \
                  WHERE file_path LIKE ?1 ESCAPE '\\' AND album_id IS NOT NULL \
                  GROUP BY album_id \
                  ORDER BY MIN(file_path), album_id \
@@ -1036,7 +1031,7 @@ pub fn get_playlist_collage_album_ids(
             .prepare(
                 "SELECT t.album_id \
                  FROM playlist_tracks pt \
-                 JOIN tracks t ON t.id = pt.track_id \
+                 JOIN available_tracks t ON t.id = pt.track_id \
                  WHERE pt.playlist_id = ? AND t.album_id IS NOT NULL \
                  GROUP BY t.album_id \
                  ORDER BY MIN(pt.position), t.album_id \
@@ -1220,14 +1215,14 @@ fn playlist_track_count(
 ) -> Result<i64, String> {
     if live_mix_kind(smart_query).is_some() {
         conn.query_row(
-            "SELECT COUNT(*) FROM playlist_tracks WHERE playlist_id = ?",
+            "SELECT COUNT(*) FROM playlist_tracks pt JOIN available_tracks t ON t.id = pt.track_id WHERE pt.playlist_id = ?",
             [playlist_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())
     } else if let Some(folder) = smart_query {
         let mut stmt = conn
-            .prepare("SELECT COUNT(*) FROM tracks WHERE file_path LIKE ?1 ESCAPE '\\'")
+            .prepare("SELECT COUNT(*) FROM available_tracks WHERE file_path LIKE ?1 ESCAPE '\\'")
             .map_err(|e| e.to_string())?;
         let pattern = format!("{}%", escape_like(folder));
         let count: i64 = stmt
@@ -1236,7 +1231,7 @@ fn playlist_track_count(
         Ok(count)
     } else {
         let mut stmt = conn
-            .prepare("SELECT COUNT(*) FROM playlist_tracks WHERE playlist_id = ?")
+            .prepare("SELECT COUNT(*) FROM playlist_tracks pt JOIN available_tracks t ON t.id = pt.track_id WHERE pt.playlist_id = ?")
             .map_err(|e| e.to_string())?;
         let count: i64 = stmt
             .query_row([playlist_id], |row| row.get(0))
@@ -1280,8 +1275,9 @@ pub fn get_discovery_tracks(state: State<'_, AppState>) -> Result<DiscoveryTrack
 fn discovery_tracks_with_connection(
     conn: &rusqlite::Connection,
 ) -> Result<DiscoveryTracks, String> {
-    let base =
-        format!("SELECT {TRACK_COLUMNS} FROM tracks t LEFT JOIN albums al ON al.id = t.album_id ");
+    let base = format!(
+        "SELECT {TRACK_COLUMNS} FROM available_tracks t LEFT JOIN albums al ON al.id = t.album_id "
+    );
     let recently_added = load_tracks_with_query(
         &conn,
         &format!("{base}ORDER BY t.updated_at DESC, t.id DESC LIMIT 12"),
@@ -1321,7 +1317,7 @@ fn library_health_with_connection(conn: &rusqlite::Connection) -> Result<Library
     let mut format_stmt = conn
         .prepare(
             "SELECT UPPER(COALESCE(NULLIF(audio_format, ''), 'unknown')), COUNT(*) AS tracks \
-             FROM tracks GROUP BY LOWER(COALESCE(audio_format, 'unknown')) \
+             FROM available_tracks GROUP BY LOWER(COALESCE(audio_format, 'unknown')) \
              ORDER BY tracks DESC, audio_format LIMIT 12",
         )
         .map_err(|e| e.to_string())?;
@@ -1336,55 +1332,59 @@ fn library_health_with_connection(conn: &rusqlite::Connection) -> Result<Library
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
 
-    let lossless_tracks = count(&format!("SELECT COUNT(*) FROM tracks WHERE {lossless}"))?;
-    let lossy_tracks = count(&format!("SELECT COUNT(*) FROM tracks WHERE {lossy}"))?;
-    let track_count = count("SELECT COUNT(*) FROM tracks")?;
+    let lossless_tracks = count(&format!(
+        "SELECT COUNT(*) FROM available_tracks WHERE {lossless}"
+    ))?;
+    let lossy_tracks = count(&format!(
+        "SELECT COUNT(*) FROM available_tracks WHERE {lossy}"
+    ))?;
+    let track_count = count("SELECT COUNT(*) FROM available_tracks")?;
     Ok(LibraryHealth {
         track_count,
-        album_count: count("SELECT COUNT(*) FROM albums")?,
-        artist_count: count("SELECT COUNT(*) FROM artists")?,
+        album_count: count("SELECT COUNT(DISTINCT album_id) FROM available_tracks")?,
+        artist_count: count("SELECT COUNT(*) FROM artists a WHERE EXISTS (SELECT 1 FROM track_artists ta JOIN available_tracks t ON t.id = ta.track_id WHERE ta.artist_id = a.id) OR EXISTS (SELECT 1 FROM album_artists aa JOIN available_tracks t ON t.album_id = aa.album_id WHERE aa.artist_id = a.id)")?,
         missing_titles: count(
-            "SELECT COUNT(*) FROM tracks WHERE title IS NULL OR TRIM(title) = ''",
+            "SELECT COUNT(*) FROM available_tracks WHERE title IS NULL OR TRIM(title) = ''",
         )?,
         missing_artists: count(
-            "SELECT COUNT(*) FROM tracks t WHERE NOT EXISTS (SELECT 1 FROM track_artists ta WHERE ta.track_id = t.id AND ta.role = 'main')",
+            "SELECT COUNT(*) FROM available_tracks t WHERE NOT EXISTS (SELECT 1 FROM track_artists ta WHERE ta.track_id = t.id AND ta.role = 'main')",
         )?,
-        missing_albums: count("SELECT COUNT(*) FROM tracks WHERE album_id IS NULL")?,
+        missing_albums: count("SELECT COUNT(*) FROM available_tracks WHERE album_id IS NULL")?,
         missing_genres: count(
-            "SELECT COUNT(*) FROM tracks WHERE genre IS NULL OR TRIM(genre) = ''",
+            "SELECT COUNT(*) FROM available_tracks WHERE genre IS NULL OR TRIM(genre) = ''",
         )?,
         missing_lyrics: count(
-            "SELECT COUNT(*) FROM tracks t WHERE (t.embedded_lyrics IS NULL OR TRIM(t.embedded_lyrics) = '') AND NOT EXISTS (SELECT 1 FROM lyrics l WHERE l.track_id = t.id)",
+            "SELECT COUNT(*) FROM available_tracks t WHERE (t.embedded_lyrics IS NULL OR TRIM(t.embedded_lyrics) = '') AND NOT EXISTS (SELECT 1 FROM lyrics l WHERE l.track_id = t.id)",
         )?,
-        missing_years: count("SELECT COUNT(*) FROM tracks WHERE year IS NULL")?,
-        missing_track_numbers: count("SELECT COUNT(*) FROM tracks WHERE track_number IS NULL")?,
+        missing_years: count("SELECT COUNT(*) FROM available_tracks WHERE year IS NULL")?,
+        missing_track_numbers: count("SELECT COUNT(*) FROM available_tracks WHERE track_number IS NULL")?,
         duplicate_titles: count(
-            "SELECT COUNT(*) FROM tracks t WHERE t.title IS NOT NULL AND TRIM(t.title) != '' AND EXISTS (SELECT 1 FROM tracks duplicate WHERE duplicate.id != t.id AND LOWER(TRIM(duplicate.title)) = LOWER(TRIM(t.title)))",
+            "SELECT COUNT(*) FROM available_tracks t WHERE t.title IS NOT NULL AND TRIM(t.title) != '' AND EXISTS (SELECT 1 FROM available_tracks duplicate WHERE duplicate.id != t.id AND LOWER(TRIM(duplicate.title)) = LOWER(TRIM(t.title)))",
         )?,
         never_played: count(
-            "SELECT COUNT(*) FROM tracks t WHERE NOT EXISTS (SELECT 1 FROM listens p WHERE p.track_id = t.id AND p.finalized = 1 AND p.meaningful = 1)",
+            "SELECT COUNT(*) FROM available_tracks t WHERE NOT EXISTS (SELECT 1 FROM listens p WHERE p.track_id = t.id AND p.finalized = 1 AND p.meaningful = 1)",
         )?,
         lossless_tracks,
         lossy_tracks,
         unclassified_tracks: (track_count - lossless_tracks - lossy_tracks).max(0),
         high_resolution_tracks: count(&format!(
-            "SELECT COUNT(*) FROM tracks WHERE {lossless} AND (sample_rate_hz >= 96000 OR bit_depth >= 24)"
+            "SELECT COUNT(*) FROM available_tracks WHERE {lossless} AND (sample_rate_hz >= 96000 OR bit_depth >= 24)"
         ))?,
         low_bitrate_tracks: count(&format!(
-            "SELECT COUNT(*) FROM tracks WHERE {lossy} AND audio_bitrate_kbps > 0 AND audio_bitrate_kbps < 192"
+            "SELECT COUNT(*) FROM available_tracks WHERE {lossy} AND audio_bitrate_kbps > 0 AND audio_bitrate_kbps < 192"
         ))?,
         missing_audio_properties: count(
-            "SELECT COUNT(*) FROM tracks WHERE audio_format IS NULL OR sample_rate_hz IS NULL OR channels IS NULL OR file_size_bytes IS NULL",
+            "SELECT COUNT(*) FROM available_tracks WHERE audio_format IS NULL OR sample_rate_hz IS NULL OR channels IS NULL OR file_size_bytes IS NULL",
         )?,
         missing_durations: count(
-            "SELECT COUNT(*) FROM tracks WHERE duration_ms IS NULL OR duration_ms <= 0",
+            "SELECT COUNT(*) FROM available_tracks WHERE duration_ms IS NULL OR duration_ms <= 0",
         )?,
         very_short_tracks: count(
-            "SELECT COUNT(*) FROM tracks WHERE duration_ms > 0 AND duration_ms < 30000",
+            "SELECT COUNT(*) FROM available_tracks WHERE duration_ms > 0 AND duration_ms < 30000",
         )?,
-        very_long_tracks: count("SELECT COUNT(*) FROM tracks WHERE duration_ms > 1200000")?,
-        mono_tracks: count("SELECT COUNT(*) FROM tracks WHERE channels = 1")?,
-        total_size_bytes: count("SELECT COALESCE(SUM(file_size_bytes), 0) FROM tracks")?,
+        very_long_tracks: count("SELECT COUNT(*) FROM available_tracks WHERE duration_ms > 1200000")?,
+        mono_tracks: count("SELECT COUNT(*) FROM available_tracks WHERE channels = 1")?,
+        total_size_bytes: count("SELECT COALESCE(SUM(file_size_bytes), 0) FROM available_tracks")?,
         formats,
     })
 }
@@ -1409,7 +1409,7 @@ fn health_tracks_with_connection(
         "lyrics" => "(t.embedded_lyrics IS NULL OR TRIM(t.embedded_lyrics) = '') AND NOT EXISTS (SELECT 1 FROM lyrics l WHERE l.track_id = t.id)",
         "years" => "t.year IS NULL",
         "track_numbers" => "t.track_number IS NULL",
-        "duplicate_titles" => "t.title IS NOT NULL AND TRIM(t.title) != '' AND EXISTS (SELECT 1 FROM tracks duplicate WHERE duplicate.id != t.id AND LOWER(TRIM(duplicate.title)) = LOWER(TRIM(t.title)))",
+        "duplicate_titles" => "t.title IS NOT NULL AND TRIM(t.title) != '' AND EXISTS (SELECT 1 FROM available_tracks duplicate WHERE duplicate.id != t.id AND LOWER(TRIM(duplicate.title)) = LOWER(TRIM(t.title)))",
         "never_played" => "NOT EXISTS (SELECT 1 FROM listens p WHERE p.track_id = t.id AND p.finalized = 1 AND p.meaningful = 1)",
         "lossless" => "LOWER(COALESCE(t.audio_format, '')) IN ('flac', 'alac', 'wav')",
         "lossy" => "LOWER(COALESCE(t.audio_format, '')) IN ('mp3', 'aac', 'ogg', 'opus')",
@@ -1424,7 +1424,7 @@ fn health_tracks_with_connection(
     };
     load_tracks_with_query(
         &conn,
-        &format!("SELECT {TRACK_COLUMNS} FROM tracks t LEFT JOIN albums al ON al.id = t.album_id WHERE {where_clause} ORDER BY t.updated_at DESC, t.title LIMIT 100"),
+        &format!("SELECT {TRACK_COLUMNS} FROM available_tracks t LEFT JOIN albums al ON al.id = t.album_id WHERE {where_clause} ORDER BY t.updated_at DESC, t.title LIMIT 100"),
     )
 }
 
@@ -1455,7 +1455,10 @@ fn search_with_connection(
     let mut artist_stmt = conn
         .prepare(
             "SELECT a.id, a.name, a.sort_name, a.track_count, a.album_count, a.bio, a.info_provider, a.image_provider, a.info_term, a.image_term \
-             FROM artists a WHERE a.name LIKE ?1 ESCAPE '\\' ORDER BY a.name LIMIT 20",
+             FROM artists a WHERE a.name LIKE ?1 ESCAPE '\\' AND (\
+                 EXISTS (SELECT 1 FROM track_artists ta JOIN available_tracks t ON t.id = ta.track_id WHERE ta.artist_id = a.id) \
+                 OR EXISTS (SELECT 1 FROM album_artists aa JOIN available_tracks t ON t.album_id = aa.album_id WHERE aa.artist_id = a.id)) \
+             ORDER BY a.name LIMIT 20",
         )
         .map_err(|e| e.to_string())?;
     let artists = artist_stmt
@@ -1480,9 +1483,9 @@ fn search_with_connection(
     let mut album_stmt = conn
         .prepare(
             "SELECT al.id, al.title, al.year, COUNT(DISTINCT t.id) AS track_count \
-             FROM albums al LEFT JOIN tracks t ON t.album_id = al.id \
+             FROM albums al LEFT JOIN available_tracks t ON t.album_id = al.id \
              WHERE al.title LIKE ?1 ESCAPE '\\' \
-             GROUP BY al.id ORDER BY al.title LIMIT 20",
+             GROUP BY al.id HAVING COUNT(t.id) > 0 ORDER BY al.title LIMIT 20",
         )
         .map_err(|e| e.to_string())?;
     let mut albums = album_stmt
@@ -1507,7 +1510,7 @@ fn search_with_connection(
 
     let track_sql = format!(
         "SELECT {TRACK_COLUMNS} \
-         FROM tracks t \
+         FROM available_tracks t \
          LEFT JOIN albums al ON al.id = t.album_id \
          WHERE t.title LIKE ?1 ESCAPE '\\' \
             OR t.genre LIKE ?1 ESCAPE '\\' \
@@ -1532,7 +1535,7 @@ fn search_with_connection(
     // query but whose metadata does not, each with the matching line.
     let lyric_sql = format!(
         "SELECT {TRACK_COLUMNS}, l.plain_text, l.synced_text \
-         FROM tracks t \
+         FROM available_tracks t \
          JOIN lyrics l ON l.track_id = t.id \
            AND l.rowid = (SELECT l2.rowid FROM lyrics l2 \
                           WHERE l2.track_id = t.id \
@@ -1628,11 +1631,11 @@ pub fn get_related_artists(
                              JOIN album_artists aa1 ON aa1.album_id = aa2.album_id \
                              WHERE aa1.artist_id = ?1 AND aa2.artist_id = a2.id) \
                         + 2 * (SELECT COUNT(DISTINCT t.album_id) FROM track_artists ta_me \
-                             JOIN tracks t ON t.id = ta_me.track_id AND t.album_id IS NOT NULL \
+                             JOIN available_tracks t ON t.id = ta_me.track_id AND t.album_id IS NOT NULL \
                              JOIN album_artists aa ON aa.album_id = t.album_id AND aa.artist_id = a2.id \
                              WHERE ta_me.artist_id = ?1) \
                         + 2 * (SELECT COUNT(DISTINCT t2.album_id) FROM track_artists ta2 \
-                             JOIN tracks t2 ON t2.id = ta2.track_id AND t2.album_id IS NOT NULL \
+                             JOIN available_tracks t2 ON t2.id = ta2.track_id AND t2.album_id IS NOT NULL \
                              JOIN album_artists aa_me ON aa_me.album_id = t2.album_id AND aa_me.artist_id = ?1 \
                              WHERE ta2.artist_id = a2.id) \
                     ) AS shared \
@@ -1987,7 +1990,7 @@ fn tracks_in_folder(conn: &rusqlite::Connection, folder: &str) -> Result<Vec<Tra
         .prepare(
             "SELECT t.id, t.file_path, t.title, t.track_number, t.disc_number, t.duration_ms, \
              t.year, t.genre, t.album_id, t.embedded_lyrics, t.lrc_offset_ms, al.title AS album_title, t.lyrics_source \
-             FROM tracks t \
+             FROM available_tracks t \
              LEFT JOIN albums al ON al.id = t.album_id \
              WHERE t.file_path LIKE ?1 ESCAPE '\\' \
              ORDER BY t.file_path",
@@ -2014,7 +2017,7 @@ fn tracks_in_playlist(conn: &rusqlite::Connection, playlist_id: i64) -> Result<V
             "SELECT t.id, t.file_path, t.title, t.track_number, t.disc_number, t.duration_ms, \
              t.year, t.genre, t.album_id, t.embedded_lyrics, t.lrc_offset_ms, al.title AS album_title, t.lyrics_source \
              FROM playlist_tracks pt \
-             JOIN tracks t ON t.id = pt.track_id \
+             JOIN available_tracks t ON t.id = pt.track_id \
              LEFT JOIN albums al ON al.id = t.album_id \
              WHERE pt.playlist_id = ? \
              ORDER BY pt.position, t.id",

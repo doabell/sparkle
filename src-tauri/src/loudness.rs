@@ -192,7 +192,7 @@ pub fn gain_for_track(conn: &Connection, track_id: i64) -> Result<GainAvailabili
     let row: Option<(String, Option<f64>)> = conn
         .query_row(
             "SELECT l.status, l.gain_db
-             FROM tracks t
+             FROM available_tracks t
              JOIN track_loudness l ON l.track_id = t.id
              WHERE t.id = ?1
                AND l.analyzer_version = ?2
@@ -371,7 +371,7 @@ fn next_candidate(conn: &Connection, priority: &[i64]) -> Result<Option<Candidat
                     AND COALESCE(l.analyzed_file_size_bytes, -1)
                         = COALESCE(t.file_size_bytes, -1)
                     THEN COALESCE(l.attempt_count, 0) ELSE 0 END
-         FROM tracks t
+         FROM available_tracks t
          LEFT JOIN track_loudness l ON l.track_id = t.id
          WHERE l.track_id IS NULL
             OR l.analyzer_version != ?1
@@ -397,7 +397,7 @@ fn candidate_for_track(conn: &Connection, track_id: i64) -> Result<Option<Candid
                     AND COALESCE(l.analyzed_file_size_bytes, -1)
                         = COALESCE(t.file_size_bytes, -1)
                     THEN COALESCE(l.attempt_count, 0) ELSE 0 END
-         FROM tracks t
+         FROM available_tracks t
          LEFT JOIN track_loudness l ON l.track_id = t.id
          WHERE t.id = ?1
            AND (l.track_id IS NULL
@@ -691,7 +691,7 @@ fn status_for_inner(inner: &Inner) -> Result<LoudnessStatus, String> {
                             = COALESCE(t.file_size_bytes, -1)
                         AND l.status = 'failed'
                         THEN 1 ELSE 0 END), 0)
-             FROM tracks t
+             FROM available_tracks t
              LEFT JOIN track_loudness l ON l.track_id = t.id",
             [ANALYZER_VERSION],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),

@@ -2,7 +2,7 @@ use rusqlite::{Connection, Result};
 use std::fs;
 use tauri::{AppHandle, Manager};
 
-const CURRENT_SCHEMA_VERSION: i32 = 10;
+const CURRENT_SCHEMA_VERSION: i32 = 11;
 
 /// The full schema, created fresh on first launch. The database was reset
 /// for v1 (July 2026): lyrics, artist info, and image bytes live as files
@@ -51,6 +51,11 @@ CREATE TABLE IF NOT EXISTS tracks (
     embedded_lyrics TEXT,
     lrc_offset_ms INTEGER NOT NULL DEFAULT 0,
     file_mtime INTEGER NOT NULL DEFAULT 0,
+    file_mtime_ns INTEGER,
+    audio_fingerprint TEXT,
+    scan_version INTEGER NOT NULL DEFAULT 0,
+    missing_since INTEGER,
+    lyrics_revision INTEGER NOT NULL DEFAULT 0,
     lyrics_source TEXT,
     audio_format TEXT,
     audio_bitrate_kbps INTEGER,
@@ -99,6 +104,7 @@ CREATE INDEX IF NOT EXISTS idx_track_loudness_status_retry
 CREATE TABLE IF NOT EXISTS album_artists (
     album_id INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
     artist_id INTEGER NOT NULL REFERENCES artists(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (album_id, artist_id)
 );
 
@@ -106,8 +112,22 @@ CREATE TABLE IF NOT EXISTS track_artists (
     track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
     artist_id INTEGER NOT NULL REFERENCES artists(id) ON DELETE CASCADE,
     role TEXT NOT NULL DEFAULT 'main',
+    position INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (track_id, artist_id, role)
 );
+
+CREATE TABLE IF NOT EXISTS track_album_artists (
+    track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    artist_id INTEGER NOT NULL REFERENCES artists(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (track_id, artist_id)
+);
+
+-- Missing files retain their user-owned metadata and can reconnect on a later
+-- scan. Normal library browsing only lists files currently available.
+CREATE VIEW IF NOT EXISTS available_tracks AS
+    SELECT * FROM tracks WHERE missing_since IS NULL;
+CREATE INDEX IF NOT EXISTS idx_tracks_audio_fingerprint ON tracks(audio_fingerprint);
 
 CREATE TABLE IF NOT EXISTS artist_albums (
     artist_id INTEGER NOT NULL REFERENCES artists(id) ON DELETE CASCADE,
@@ -273,6 +293,27 @@ CREATE INDEX IF NOT EXISTS idx_artist_albums_album ON artist_albums(album_id);
 
 const SCHEMA_VERSION_TABLE: &str =
     "CREATE TABLE IF NOT EXISTS _schema_version (version INTEGER PRIMARY KEY);";
+
+const V10_TO_V11: &str = r#"
+ALTER TABLE tracks ADD COLUMN file_mtime_ns INTEGER;
+ALTER TABLE tracks ADD COLUMN audio_fingerprint TEXT;
+ALTER TABLE tracks ADD COLUMN scan_version INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE tracks ADD COLUMN missing_since INTEGER;
+ALTER TABLE tracks ADD COLUMN lyrics_revision INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE track_artists ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE album_artists ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE track_album_artists (
+    track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    artist_id INTEGER NOT NULL REFERENCES artists(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (track_id, artist_id)
+);
+INSERT INTO track_album_artists (track_id, artist_id, position)
+    SELECT t.id, aa.artist_id, aa.position FROM tracks t
+    JOIN album_artists aa ON aa.album_id = t.album_id;
+CREATE VIEW available_tracks AS SELECT * FROM tracks WHERE missing_since IS NULL;
+CREATE INDEX idx_tracks_audio_fingerprint ON tracks(audio_fingerprint);
+"#;
 
 /// v7 stored one URL per artwork key without recording its provider. Catbox's
 /// returned filename cannot be derived from the artwork hash, so preserve
@@ -542,6 +583,7 @@ fn initialize_connection(conn: Connection) -> Result<(Connection, bool)> {
                 7 => migrate_v7_to_v8(&conn)?,
                 8 => migrate_v8_to_v9(&conn)?,
                 9 => migrate_v9_to_v10(&conn)?,
+                10 => migrate_v10_to_v11(&conn)?,
                 _ => return Err(rusqlite::Error::InvalidQuery),
             }
             migrated += 1;
@@ -577,6 +619,15 @@ fn migrate_v9_to_v10(conn: &Connection) -> Result<()> {
     record_schema_version(&tx, 10)?;
     tx.commit()?;
     log::info!(target: "sparkle::database", "event=migration_completed from=9 to=10");
+    Ok(())
+}
+
+fn migrate_v10_to_v11(conn: &Connection) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute_batch(V10_TO_V11)?;
+    record_schema_version(&tx, 11)?;
+    tx.commit()?;
+    log::info!(target: "sparkle::database", "event=migration_completed from=10 to=11");
     Ok(())
 }
 

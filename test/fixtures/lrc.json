@@ -1,0 +1,116 @@
+[
+    {
+        "name": "intro, metadata and intentional blank cues",
+        "text": "[ar:Example]\n[0:15.2]First sentence\n[00:20.00]\n[00:25]Second sentence\n",
+        "lines": [
+            {
+                "timeMs": 15200,
+                "text": "First sentence"
+            },
+            {
+                "timeMs": 25000,
+                "text": "Second sentence"
+            }
+        ],
+        "plain": "First sentence\nSecond sentence",
+        "delayMs": 700,
+        "shifted": "[ar:Example]\n[00:15.900]First sentence\n[00:20.700]\n[00:25.700]Second sentence\n"
+    },
+    {
+        "name": "repeated cues, alternate precision and file advance",
+        "text": "[offset:+200]\r\n[00:03.4567]Later\r\n[0:01][00:02.5]Chorus",
+        "lines": [
+            {
+                "timeMs": 800,
+                "text": "Chorus"
+            },
+            {
+                "timeMs": 2300,
+                "text": "Chorus"
+            },
+            {
+                "timeMs": 3257,
+                "text": "Later"
+            }
+        ],
+        "plain": "Chorus\nChorus\nLater",
+        "delayMs": 100,
+        "shifted": "[offset:0]\n[00:03.357]Later\n[00:00.900][00:02.400]Chorus"
+    },
+    {
+        "name": "word cues and negative file offset",
+        "text": "﻿[offset:-300]\n[00:01]<00:01.0>Hello <00:01.5>world",
+        "lines": [
+            {
+                "timeMs": 1300,
+                "text": "Hello world"
+            }
+        ],
+        "plain": "Hello world",
+        "delayMs": -100,
+        "shifted": "[offset:0]\n[00:01.200]<00:01.200>Hello <00:01.700>world"
+    },
+    {
+        "name": "negative times clamp and duplicate timestamps remain stable",
+        "text": "[offset:500]\n[00:00.10]A\n[00:00.20]B\n[00:01]C",
+        "lines": [
+            {
+                "timeMs": 0,
+                "text": "A"
+            },
+            {
+                "timeMs": 0,
+                "text": "B"
+            },
+            {
+                "timeMs": 500,
+                "text": "C"
+            }
+        ],
+        "plain": "A\nB\nC",
+        "delayMs": 0,
+        "shifted": "[offset:0]\n[00:00.000]A\n[00:00.000]B\n[00:00.500]C"
+    },
+    {
+        "name": "plain lyrics with CR newlines",
+        "text": "[ti:Example]\rPlain words\r\rAnother line",
+        "lines": [],
+        "plain": "Plain words\nAnother line",
+        "delayMs": 0,
+        "shifted": "[ti:Example]\nPlain words\n\nAnother line"
+    },
+    {
+        "name": "last offset header wins and long minutes are supported",
+        "text": "[offset:100]\n[offset:300]\n[100:01.25]Long song",
+        "lines": [
+            {
+                "timeMs": 6000950,
+                "text": "Long song"
+            }
+        ],
+        "plain": "Long song",
+        "delayMs": 300,
+        "shifted": "[offset:0]\n[offset:0]\n[100:01.250]Long song"
+    },
+    {
+        "name": "clamped file advance precedes a positive track delay",
+        "text": "[offset:500]\n[00:00.100]A\n[00:00.200]B\n[00:01.000]C",
+        "lines": [
+            {
+                "timeMs": 0,
+                "text": "A"
+            },
+            {
+                "timeMs": 0,
+                "text": "B"
+            },
+            {
+                "timeMs": 500,
+                "text": "C"
+            }
+        ],
+        "plain": "A\nB\nC",
+        "delayMs": 700,
+        "shifted": "[offset:0]\n[00:00.700]A\n[00:00.700]B\n[00:01.200]C"
+    }
+]

@@ -334,3 +334,49 @@ fn v9_to_v10_adds_versioned_loudness_analysis() {
         .unwrap();
     assert_eq!(version, 10);
 }
+
+#[test]
+fn v10_to_v11_preserves_user_data_and_backfills_existing_album_credits() {
+    let conn = Connection::open_in_memory().unwrap();
+    conn.execute_batch("CREATE TABLE _schema_version(version INTEGER PRIMARY KEY);
+        INSERT INTO _schema_version VALUES(10);
+        CREATE TABLE artists(id INTEGER PRIMARY KEY);
+        CREATE TABLE albums(id INTEGER PRIMARY KEY);
+        CREATE TABLE tracks(id INTEGER PRIMARY KEY,file_path TEXT,album_id INTEGER,lrc_offset_ms INTEGER);
+        CREATE TABLE track_artists(track_id INTEGER,artist_id INTEGER,role TEXT);
+        CREATE TABLE album_artists(album_id INTEGER,artist_id INTEGER);
+        CREATE TABLE lyrics(track_id INTEGER,source TEXT,synced_text TEXT);
+        INSERT INTO artists VALUES(1); INSERT INTO albums VALUES(1);
+        INSERT INTO tracks VALUES(1,'song.flac',1,700);
+        INSERT INTO track_artists VALUES(1,1,'main');
+        INSERT INTO album_artists VALUES(1,1);
+        INSERT INTO lyrics VALUES(1,'custom','[00:15]Keep');").unwrap();
+    let (conn, fresh) = initialize_connection(conn).unwrap();
+    assert!(!fresh);
+    assert_eq!(
+        conn.query_row(
+            "SELECT lrc_offset_ms FROM available_tracks WHERE id=1",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        700
+    );
+    assert_eq!(
+        conn.query_row("SELECT synced_text FROM lyrics", [], |r| r
+            .get::<_, String>(0))
+            .unwrap(),
+        "[00:15]Keep"
+    );
+    assert_eq!(
+        conn.query_row(
+            "SELECT artist_id FROM track_album_artists WHERE track_id=1",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        1
+    );
+    assert!(table_columns(&conn, "tracks").contains(&"audio_fingerprint".into()));
+    assert!(table_columns(&conn, "track_artists").contains(&"position".into()));
+}

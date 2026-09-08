@@ -5,8 +5,7 @@ use rusqlite::{Connection, OptionalExtension};
 use std::path::Path;
 
 pub mod brave;
-pub mod duckduckgo;
-pub mod shazam;
+pub mod deezer;
 pub mod wikipedia;
 
 pub fn get_cached_artist_info(
@@ -111,13 +110,12 @@ pub fn fetch_artist_image_online(
     for source in &settings.artist_image_sources {
         let fetched = match source.as_str() {
             "custom" => Ok(None),
+            "deezer" => deezer::fetch_image_by_title(title),
             "brave" => brave::fetch_image_by_title(
                 title,
                 &settings.brave_api_key,
                 brave_lang_hint(None, settings),
             ),
-            "duckduckgo" => duckduckgo::fetch_image_by_title(title),
-            "shazam" => shazam::fetch_image_by_title(title),
             s if wikipedia_lang(s).is_some() => {
                 wikipedia::fetch_image_by_title(title, &[wikipedia_lang(s).unwrap().to_string()])
             }
@@ -154,9 +152,8 @@ pub fn fetch_artist_image_from_provider(
     settings: &Settings,
 ) -> Result<Option<ImageData>, String> {
     match provider {
+        "deezer" => deezer::fetch_image_by_title(title),
         "brave" => brave::fetch_image_by_title(title, &settings.brave_api_key, lang_hint),
-        "duckduckgo" => duckduckgo::fetch_image_by_title(title),
-        "shazam" => shazam::fetch_image_by_title(title),
         s if wikipedia_lang(s).is_some() => {
             wikipedia::fetch_image_by_title(title, &[wikipedia_lang(s).unwrap().to_string()])
         }

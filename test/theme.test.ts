@@ -344,10 +344,6 @@ test("main's focused accent treatments use accessible semantic roles", () => {
         ],
         [
             path.resolve("src", "routes", "settings", "+page.svelte"),
-            /\.rescan-note\s*\{[^}]*color:\s*var\(--color-accent-content\)/s,
-        ],
-        [
-            path.resolve("src", "routes", "settings", "+page.svelte"),
             /\.license-row a:hover\s*\{[^}]*color:\s*var\(--color-accent-content\)/s,
         ],
         [

@@ -125,9 +125,43 @@ pub fn set_lyrics(
     Ok(())
 }
 
+#[cfg(test)]
 pub fn delete_lyrics(conn: &Connection, track_id: i64) -> Result<(), String> {
     conn.execute("DELETE FROM lyrics WHERE track_id = ?", [track_id])
         .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn set_custom_lyrics(
+    conn: &Connection,
+    track_id: i64,
+    synced_text: Option<&str>,
+    plain_text: Option<&str>,
+) -> Result<(), String> {
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    set_custom_lyrics_record(&tx, track_id, synced_text, plain_text, true)?;
+    tx.commit().map_err(|e| e.to_string())
+}
+
+/// The caller owns the transaction when timing and text must be read and
+/// replaced atomically (for example when baking a saved timing correction).
+pub fn set_custom_lyrics_record(
+    conn: &Connection,
+    track_id: i64,
+    synced_text: Option<&str>,
+    plain_text: Option<&str>,
+    reset_offset: bool,
+) -> Result<(), String> {
+    set_lyrics(conn, track_id, "custom", synced_text, plain_text)?;
+    let changed = conn
+        .execute(
+            "UPDATE tracks SET lyrics_source = 'custom', lrc_offset_ms = CASE WHEN ?1 THEN 0 ELSE lrc_offset_ms END, lyrics_revision = lyrics_revision + 1 WHERE id = ?2",
+            rusqlite::params![reset_offset, track_id],
+        )
+        .map_err(|e| e.to_string())?;
+    if changed != 1 {
+        return Err("track not found".to_string());
+    }
     Ok(())
 }
 
@@ -629,9 +663,15 @@ pub fn delete_images(
 
 pub fn clear_lyrics(conn: &Connection) -> Result<(), String> {
     // Custom lyrics are user content, not online cache data.
-    conn.execute("DELETE FROM lyrics WHERE source != 'custom'", [])
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM lyrics WHERE source != 'custom'", [])
         .map_err(|e| e.to_string())?;
-    Ok(())
+    tx.execute(
+        "UPDATE tracks SET lyrics_revision = lyrics_revision + 1",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())
 }
 
 pub fn clear_artist_info(conn: &Connection, root: &Path) -> Result<(), String> {

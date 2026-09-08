@@ -4,8 +4,6 @@ use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 const MONITORED_FOLDERS_KEY: &str = "monitored_folders";
-const ARTIST_SPLIT_REGEX_KEY: &str = "artist_split_regex";
-const ARTIST_SPLIT_EXCEPTIONS_KEY: &str = "artist_split_exceptions";
 const LYRICS_SOURCES_KEY: &str = "lyrics_sources";
 const ARTIST_INFO_SOURCES_KEY: &str = "artist_info_sources";
 const ARTIST_IMAGE_SOURCES_KEY: &str = "artist_image_sources";
@@ -83,18 +81,8 @@ pub fn save_session(conn: &Connection, session: &SessionSnapshot) -> rusqlite::R
     Ok(())
 }
 
-const DEFAULT_SPLIT_REGEX: &str = r";";
-
 fn default_monitored_folders() -> Vec<String> {
     Vec::new()
-}
-
-fn default_artist_split_regex() -> String {
-    DEFAULT_SPLIT_REGEX.to_string()
-}
-
-fn default_artist_split_exceptions() -> Vec<String> {
-    vec!["AC/DC".to_string(), "Tyler, The Creator".to_string()]
 }
 
 fn default_scan_on_startup() -> bool {
@@ -174,9 +162,8 @@ fn default_artist_info_sources() -> Vec<String> {
 fn default_artist_image_sources() -> Vec<String> {
     vec![
         "custom".to_string(),
+        "deezer".to_string(),
         "wikipedia:en".to_string(),
-        "shazam".to_string(),
-        "duckduckgo".to_string(),
     ]
 }
 
@@ -192,10 +179,6 @@ fn default_album_art_sources() -> Vec<String> {
 pub struct Settings {
     #[serde(default = "default_monitored_folders")]
     pub monitored_folders: Vec<String>,
-    #[serde(default = "default_artist_split_regex")]
-    pub artist_split_regex: String,
-    #[serde(default = "default_artist_split_exceptions")]
-    pub artist_split_exceptions: Vec<String>,
     #[serde(default = "default_scan_on_startup")]
     pub scan_on_startup: bool,
     #[serde(default = "default_sound_check_enabled")]
@@ -254,8 +237,6 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             monitored_folders: default_monitored_folders(),
-            artist_split_regex: default_artist_split_regex(),
-            artist_split_exceptions: default_artist_split_exceptions(),
             scan_on_startup: default_scan_on_startup(),
             sound_check_enabled: default_sound_check_enabled(),
             ui_font: default_ui_font(),
@@ -340,12 +321,6 @@ pub fn load_settings(conn: &Connection) -> Result<Settings, String> {
     }
     Ok(Settings {
         monitored_folders: load_json(conn, MONITORED_FOLDERS_KEY, default_monitored_folders())?,
-        artist_split_regex: load_json(conn, ARTIST_SPLIT_REGEX_KEY, default_artist_split_regex())?,
-        artist_split_exceptions: load_json(
-            conn,
-            ARTIST_SPLIT_EXCEPTIONS_KEY,
-            default_artist_split_exceptions(),
-        )?,
         scan_on_startup: load_json(conn, SCAN_ON_STARTUP_KEY, default_scan_on_startup())?,
         sound_check_enabled: load_json(
             conn,
@@ -426,12 +401,6 @@ pub fn load_settings(conn: &Connection) -> Result<Settings, String> {
 #[allow(dead_code)]
 pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<(), String> {
     save_json(conn, MONITORED_FOLDERS_KEY, &settings.monitored_folders)?;
-    save_json(conn, ARTIST_SPLIT_REGEX_KEY, &settings.artist_split_regex)?;
-    save_json(
-        conn,
-        ARTIST_SPLIT_EXCEPTIONS_KEY,
-        &settings.artist_split_exceptions,
-    )?;
     save_json(conn, SCAN_ON_STARTUP_KEY, &settings.scan_on_startup)?;
     save_json(conn, SOUND_CHECK_ENABLED_KEY, &settings.sound_check_enabled)?;
     save_json(conn, UI_FONT_KEY, &settings.ui_font)?;

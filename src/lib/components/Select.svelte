@@ -11,9 +11,16 @@
         value: string;
         onchange: (value: string) => void;
         ariaLabel?: string;
+        disabled?: boolean;
     }
 
-    let { options, value, onchange, ariaLabel }: Props = $props();
+    let {
+        options,
+        value,
+        onchange,
+        ariaLabel,
+        disabled = false,
+    }: Props = $props();
 
     const componentId = $props.id();
     const triggerId = `${componentId}-trigger`;
@@ -100,7 +107,7 @@
     }
 
     function openList(preferredIndex = selectedIndex) {
-        if (options.length === 0) return;
+        if (disabled || options.length === 0) return;
         activeIndex =
             preferredIndex >= 0 && preferredIndex < options.length
                 ? preferredIndex
@@ -120,7 +127,7 @@
 
     function choose(index: number) {
         const option = options[index];
-        if (!option) return;
+        if (!option || disabled) return;
         onchange(option.value);
         closeList(true);
     }
@@ -134,7 +141,7 @@
     }
 
     function moveActive(delta: number) {
-        if (options.length === 0) return;
+        if (disabled || options.length === 0) return;
         const current =
             activeIndex >= 0
                 ? activeIndex
@@ -152,7 +159,7 @@
     }
 
     function handleTriggerKeydown(event: KeyboardEvent) {
-        if (options.length === 0) return;
+        if (disabled || options.length === 0) return;
 
         switch (event.key) {
             case "ArrowDown":
@@ -265,7 +272,7 @@
         aria-expanded={open}
         aria-controls={open ? listboxId : undefined}
         aria-label={ariaLabel ? `${ariaLabel}: ${currentLabel}` : undefined}
-        disabled={options.length === 0}
+        disabled={disabled || options.length === 0}
         onclick={toggle}
         onkeydown={handleTriggerKeydown}
     >

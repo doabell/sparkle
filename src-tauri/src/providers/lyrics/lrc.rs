@@ -18,8 +18,12 @@ pub fn fetch(metadata: &TrackMetadata) -> Result<Option<Lyrics>, String> {
         return Ok(None);
     }
 
+    let plain = super::strip_lrc_timestamps(&text);
+    if plain.is_empty() {
+        return Ok(None);
+    }
     let synced_text = Some(text.clone());
-    let plain_text = Some(super::strip_lrc_timestamps(&text));
+    let plain_text = Some(plain);
 
     Ok(Some(Lyrics {
         source: "lrc".to_string(),

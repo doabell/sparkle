@@ -216,8 +216,6 @@ pub struct OnlineSettings {
     pub artist_info_sources: Vec<String>,
     pub artist_image_sources: Vec<String>,
     pub album_art_sources: Vec<String>,
-    pub artist_split_regex: String,
-    pub artist_split_exceptions: Vec<String>,
     pub ui_font: String,
     pub lyrics_font: String,
     pub reduce_motion: bool,
@@ -333,6 +331,7 @@ pub struct ImageSearchResults {
     pub candidates: Vec<ImageCandidate>,
     pub failed_sources: Vec<String>,
     pub timed_out_sources: Vec<String>,
+    pub provider_errors: std::collections::HashMap<String, String>,
 }
 
 #[derive(Serialize, Clone, Debug)]

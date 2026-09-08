@@ -516,7 +516,9 @@
 
     .dialog {
         width: 100%;
-        max-width: 400px;
+        max-width: 44rem;
+        max-height: calc(100dvh - 2 * var(--spacing-md));
+        overflow-y: auto;
         background-color: var(--color-surface);
         border: 1px solid var(--color-border);
         border-radius: var(--radius-xl);

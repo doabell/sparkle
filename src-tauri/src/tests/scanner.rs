@@ -3,6 +3,181 @@ use crate::test_support::TestDir;
 use lofty::config::WriteOptions;
 use lofty::tag::TagExt;
 
+#[test]
+fn id3v24_nul_separated_frames_supply_all_artists_in_order() {
+    use lofty::id3::v2::Id3v2Tag;
+    let mut id3 = Id3v2Tag::default();
+    id3.set_artist("AC/DC\0Tyler, The Creator\0宇多田ヒカル".into());
+    let mut tag: Tag = id3.into();
+    tag.insert_text(ItemKey::AlbumArtist, "Group One\0Group Two".into());
+    // Old custom fields must not supersede the newly corrected standard frame.
+    tag.insert_text(ItemKey::TrackArtists, "Old; combined; field".into());
+    assert_eq!(
+        collect_artists(&tag, ItemKey::TrackArtist, ItemKey::TrackArtists),
+        vec!["AC/DC", "Tyler, The Creator", "宇多田ヒカル"]
+    );
+    assert_eq!(
+        collect_artists(&tag, ItemKey::AlbumArtist, ItemKey::AlbumArtists),
+        vec!["Group One", "Group Two"]
+    );
+}
+
+#[test]
+fn repeated_artist_tags_and_legacy_custom_values_preserve_punctuation() {
+    use lofty::tag::{ItemValue, TagItem, TagType};
+    let mut tag = Tag::new(TagType::VorbisComments);
+    for name in ["Alice; Bob", "Group / Ensemble", "Alice; Bob"] {
+        tag.push(TagItem::new(
+            ItemKey::TrackArtist,
+            ItemValue::Text(name.into()),
+        ));
+    }
+    assert_eq!(
+        collect_artists(&tag, ItemKey::TrackArtist, ItemKey::TrackArtists),
+        vec!["Alice; Bob", "Group / Ensemble"]
+    );
+    tag.remove_key(ItemKey::TrackArtist);
+    tag.insert_text(ItemKey::TrackArtists, "Fallback\0Other".into());
+    assert_eq!(
+        collect_artists(&tag, ItemKey::TrackArtist, ItemKey::TrackArtists),
+        vec!["Fallback", "Other"]
+    );
+}
+
+#[test]
+fn renaming_and_retagging_keep_track_identity_and_user_data_across_missing_scans() {
+    let root = TestDir::new();
+    let original = root.audio("original.flac");
+    let mut conn = monitored_library(root.path());
+    scan_library(&mut conn, &Settings::default(), false, &root.join("cache")).unwrap();
+    let (id, fingerprint): (i64, String) = conn
+        .query_row("SELECT id,audio_fingerprint FROM tracks", [], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })
+        .unwrap();
+    cache::set_custom_lyrics(&conn, id, Some("[00:15]Saved lyrics"), Some("Saved lyrics")).unwrap();
+    conn.execute_batch(&format!("UPDATE tracks SET lrc_offset_ms=375;
+        INSERT INTO playlists(id,name) VALUES(1,'Keep');
+        INSERT INTO playlist_tracks VALUES(1,{id},0);
+        INSERT INTO play_queue(track_id,position) VALUES({id},0);
+        INSERT INTO listens(id,session_id,track_id,started_at_ms,last_activity_at_ms,start_source,start_reason)
+        VALUES('listen','session',{id},1000,1000,'ui','play');")).unwrap();
+    let offline = root.join("temporarily.offline");
+    std::fs::rename(&original, &offline).unwrap();
+    let missing =
+        scan_library(&mut conn, &Settings::default(), false, &root.join("cache")).unwrap();
+    assert_eq!(missing.removed, 1);
+    assert_eq!(
+        conn.query_row("SELECT COUNT(*) FROM available_tracks", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+    assert!(cache::get_lyrics_from_source(&conn, id, "custom")
+        .unwrap()
+        .is_some());
+    let renamed = root.join("renamed.flac");
+    std::fs::rename(offline, &renamed).unwrap();
+    let mut file = Probe::open(&renamed).unwrap().read().unwrap();
+    let tag = file.primary_tag_mut().unwrap();
+    tag.set_title("A different label".into());
+    tag.set_artist("New credit".into());
+    tag.save_to_path(&renamed, WriteOptions::default()).unwrap();
+    let result = scan_library(&mut conn, &Settings::default(), false, &root.join("cache")).unwrap();
+    assert_eq!((result.added, result.updated, result.removed), (0, 1, 0));
+    let row: (i64, String, String, String, i64) = conn
+        .query_row(
+            "SELECT id,file_path,title,audio_fingerprint,lrc_offset_ms FROM available_tracks",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        row,
+        (
+            id,
+            renamed.to_string_lossy().into(),
+            "A different label".into(),
+            fingerprint,
+            375
+        )
+    );
+    for table in ["lyrics", "playlist_tracks", "play_queue", "listens"] {
+        assert_eq!(
+            conn.query_row(&format!("SELECT track_id FROM {table}"), [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            id
+        );
+    }
+}
+
+#[test]
+fn identical_copies_are_separate_and_ambiguous_moves_preserve_the_missing_record() {
+    let root = TestDir::new();
+    let original = root.audio("original.flac");
+    let mut conn = monitored_library(root.path());
+    scan_library(&mut conn, &Settings::default(), false, &root.join("cache")).unwrap();
+    let id: i64 = conn
+        .query_row("SELECT id FROM tracks", [], |r| r.get(0))
+        .unwrap();
+    cache::set_custom_lyrics(&conn, id, Some("[00:01]Mine"), None).unwrap();
+    std::fs::copy(&original, root.join("copy.flac")).unwrap();
+    assert_eq!(
+        scan_library(&mut conn, &Settings::default(), false, &root.join("cache"))
+            .unwrap()
+            .added,
+        1
+    );
+    assert_eq!(
+        conn.query_row("SELECT COUNT(*) FROM tracks", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        2
+    );
+    std::fs::rename(&original, root.join("renamed.flac")).unwrap();
+    std::fs::copy(root.join("renamed.flac"), root.join("another.flac")).unwrap();
+    let result = scan_library(&mut conn, &Settings::default(), false, &root.join("cache")).unwrap();
+    assert_eq!((result.added, result.removed), (2, 1));
+    assert!(cache::get_lyrics_from_source(&conn, id, "custom")
+        .unwrap()
+        .is_some());
+    assert_eq!(
+        conn.query_row("SELECT COUNT(*) FROM available_tracks", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        3
+    );
+}
+
+#[test]
+fn album_identity_stays_title_year_and_credits_do_not_depend_on_scan_order() {
+    let root = TestDir::new();
+    let mut conn = monitored_library(root.path());
+    for (name, number, artists) in [("z.flac", 1, "Zebra\0Alpha"), ("a.flac", 2, "Beta")] {
+        let path = root.audio(name);
+        let mut file = Probe::open(&path).unwrap().read().unwrap();
+        let tag = file.primary_tag_mut().unwrap();
+        tag.set_track(number);
+        tag.set_artist(artists.into());
+        tag.insert_text(ItemKey::AlbumArtist, artists.into());
+        tag.save_to_path(&path, WriteOptions::default()).unwrap();
+    }
+    for force in [false, true] {
+        scan_library(&mut conn, &Settings::default(), force, &root.join("cache")).unwrap();
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM albums", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        let credits=conn.prepare("SELECT a.name FROM album_artists aa JOIN artists a ON a.id=aa.artist_id ORDER BY aa.position").unwrap()
+            .query_map([],|r|r.get::<_,String>(0)).unwrap().collect::<Result<Vec<_>,_>>().unwrap();
+        assert_eq!(credits, vec!["Zebra", "Alpha", "Beta"]);
+        let credits=conn.prepare("SELECT a.name FROM track_artists ta JOIN artists a ON a.id=ta.artist_id JOIN tracks t ON t.id=ta.track_id WHERE t.track_number=1 ORDER BY ta.position").unwrap()
+            .query_map([],|r|r.get::<_,String>(0)).unwrap().collect::<Result<Vec<_>,_>>().unwrap();
+        assert_eq!(credits, vec!["Zebra", "Alpha"]);
+    }
+}
+
 fn monitored_library(root: &Path) -> Connection {
     let conn = crate::db::test_connection();
     conn.pragma_update(None, "foreign_keys", true).unwrap();
@@ -15,17 +190,22 @@ fn monitored_library(root: &Path) -> Connection {
 }
 
 #[test]
-fn real_scan_indexes_tags_rescans_unchanged_files_and_forces_changed_artist_rules() {
+fn real_scan_indexes_all_artist_values_and_forces_metadata_refresh() {
     let root = TestDir::new();
     let music = root.join("music");
     std::fs::create_dir(&music).unwrap();
     let path = music.join("tone.flac");
     std::fs::copy(root.audio("source.flac"), &path).unwrap();
     let mut conn = monitored_library(&music);
-    let settings = Settings {
-        artist_split_regex: ";".into(),
-        ..Default::default()
-    };
+    let mut file = Probe::open(&path).unwrap().read().unwrap();
+    let tag = file.primary_tag_mut().unwrap();
+    tag.set_artist("Alice".into());
+    tag.push(lofty::tag::TagItem::new(
+        ItemKey::TrackArtist,
+        lofty::tag::ItemValue::Text("Bob".into()),
+    ));
+    tag.save_to_path(&path, WriteOptions::default()).unwrap();
+    let settings = Settings::default();
     let mut progress = Vec::new();
     let result =
         scan_library_with_progress(&mut conn, &settings, false, &root.join("cache"), |event| {
@@ -100,11 +280,11 @@ fn real_scan_indexes_tags_rescans_unchanged_files_and_forces_changed_artist_rule
         [],
     )
     .unwrap();
-    let merged = Settings {
-        artist_split_exceptions: vec!["Alice; Bob".into()],
-        ..settings
-    };
-    let forced = scan_library(&mut conn, &merged, true, &root.join("cache")).unwrap();
+    let mut file = Probe::open(&path).unwrap().read().unwrap();
+    let tag = file.primary_tag_mut().unwrap();
+    tag.set_artist("Alice; Bob".into());
+    tag.save_to_path(&path, WriteOptions::default()).unwrap();
+    let forced = scan_library(&mut conn, &settings, true, &root.join("cache")).unwrap();
     assert_eq!((forced.added, forced.updated), (0, 1));
     assert_eq!(
         conn.query_row("SELECT COUNT(*) FROM track_artists", [], |r| r
@@ -138,7 +318,7 @@ fn real_scan_indexes_tags_rescans_unchanged_files_and_forces_changed_artist_rule
 }
 
 #[test]
-fn scanning_isolates_bad_files_skips_disabled_folders_and_prunes_deleted_content() {
+fn scanning_isolates_bad_files_and_archives_missing_content() {
     let root = TestDir::new();
     let music = root.join("music");
     std::fs::create_dir(&music).unwrap();
@@ -170,20 +350,19 @@ fn scanning_isolates_bad_files_skips_disabled_folders_and_prunes_deleted_content
     std::fs::remove_file(&path).unwrap();
     let second = scan_library(&mut conn, &Settings::default(), false, &root.join("cache")).unwrap();
     assert_eq!((second.removed, second.errors), (1, 1));
-    for table in [
-        "tracks",
-        "albums",
-        "artists",
-        "lyrics",
-        "playlist_tracks",
-        "artist_albums",
-    ] {
+    assert_eq!(
+        conn.query_row("SELECT COUNT(*) FROM available_tracks", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+    for table in ["tracks", "albums", "lyrics", "playlist_tracks"] {
         assert_eq!(
             conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r
                 .get::<_, i64>(0))
                 .unwrap(),
-            0,
-            "{table}"
+            1,
+            "retained {table}"
         );
     }
     assert_eq!(
@@ -230,11 +409,6 @@ fn tag_changes_replace_metadata_and_missing_technical_fields_force_a_rescan() {
 fn scan_rejects_invalid_configuration_before_mutating_the_database() {
     let root = TestDir::new();
     let mut conn = monitored_library(root.path());
-    let bad = Settings {
-        artist_split_regex: "[".into(),
-        ..Default::default()
-    };
-    assert!(scan_library(&mut conn, &bad, false, &root.join("cache")).is_err());
     conn.execute(
         "UPDATE folders SET path=?",
         [root.join("missing").to_string_lossy().as_ref()],
@@ -281,7 +455,7 @@ fn stale_pruning_does_not_delete_from_a_prefix_sibling() {
     let mut conn = Connection::open_in_memory().expect("open scanner test database");
     conn.execute_batch(
         "
-        CREATE TABLE tracks (id INTEGER PRIMARY KEY, file_path TEXT NOT NULL);
+        CREATE TABLE tracks (id INTEGER PRIMARY KEY, file_path TEXT NOT NULL, missing_since INTEGER, lyrics_revision INTEGER NOT NULL DEFAULT 0);
         CREATE TABLE track_artists (track_id INTEGER NOT NULL);
         CREATE TABLE playlist_tracks (track_id INTEGER NOT NULL);
         CREATE TABLE play_queue (track_id INTEGER NOT NULL);

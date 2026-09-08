@@ -1,17 +1,17 @@
 use crate::cache;
 use crate::models::{Folder, ScanProgress, ScanResult};
-use crate::normalizer::{normalize_artist_name, split_artists};
+use crate::normalizer::split_artists;
 use crate::settings::Settings;
 use lofty::file::{AudioFile, TaggedFileExt};
 use lofty::probe::Probe;
 use lofty::tag::{Accessor, ItemKey, Tag};
-use regex::Regex;
 use rusqlite::{Connection, OptionalExtension, Transaction};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const SUPPORTED_EXTENSIONS: [&str; 7] = ["mp3", "flac", "ogg", "m4a", "aac", "alac", "opus"];
+const SCAN_VERSION: i64 = 1;
 
 struct FileResult {
     added: bool,
@@ -19,10 +19,9 @@ struct FileResult {
 }
 
 /// Scans all enabled folders. With `force`, every file is re-parsed even if
-/// its mtime is unchanged — needed when artist-splitting rules change, since
-/// the derived artists must be rebuilt from the same files. Tracks whose
-/// files disappeared, albums with no tracks, and artists with no tracks or
-/// albums are pruned so the library reflects the folders' current state.
+/// its mtime is unchanged, rebuilding the derived metadata. Missing files are
+/// hidden from browsing, while their IDs, lyrics, playlists and history remain
+/// available to reconnect when the audio is found again.
 pub fn scan_library(
     conn: &mut Connection,
     settings: &Settings,
@@ -34,7 +33,7 @@ pub fn scan_library(
 
 pub fn scan_library_with_progress<F>(
     conn: &mut Connection,
-    settings: &Settings,
+    _settings: &Settings,
     force: bool,
     cache_root: &Path,
     mut on_progress: F,
@@ -42,7 +41,6 @@ pub fn scan_library_with_progress<F>(
 where
     F: FnMut(ScanProgress),
 {
-    let regex = Regex::new(&settings.artist_split_regex).map_err(|e| e.to_string())?;
     let folders = list_enabled_folders(conn)?;
     let mut result = ScanResult {
         scanned: 0,
@@ -60,6 +58,8 @@ where
             files.push(path);
         }
     }
+    files.sort_by_cached_key(|path| comparable_path(path));
+    files.dedup_by(|a, b| comparable_path(a) == comparable_path(b));
     let total = files.len();
     on_progress(ScanProgress {
         phase: "scanning".to_string(),
@@ -72,20 +72,22 @@ where
         errors: 0,
     });
 
+    let seen_paths: HashSet<String> = files.iter().map(|p| comparable_path(p)).collect();
+    let (file_ids, fingerprints) = match_file_identities(conn, &files, &seen_paths)?;
+
     // One transaction for the entire scan instead of one per file — this is
     // the single biggest scan-speed win (500 files = 1 fsync instead of 500).
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
-    let mut seen_paths: HashSet<String> = HashSet::new();
-
     for path in files {
-        seen_paths.insert(path.clone());
+        tx.execute_batch("SAVEPOINT scan_file")
+            .map_err(|e| e.to_string())?;
         match process_file(
             &tx,
             &path,
-            &regex,
-            &settings.artist_split_exceptions,
             force,
+            file_ids.get(&comparable_path(&path)).copied(),
+            fingerprints.get(&path),
             &mut artist_cache,
             &mut album_cache,
         ) {
@@ -98,10 +100,17 @@ where
                     result.updated += 1;
                 }
             }
-            Err(_e) => {
+            Err(e) => {
+                tx.execute_batch("ROLLBACK TO scan_file")
+                    .map_err(|e| e.to_string())?;
+                artist_cache.clear();
+                album_cache.clear();
+                log::debug!(target: "sparkle::scanner", "event=file_failed path={path} error={e}");
                 result.errors += 1;
             }
         }
+        tx.execute_batch("RELEASE scan_file")
+            .map_err(|e| e.to_string())?;
         on_progress(ScanProgress {
             phase: "scanning".to_string(),
             current_path: Some(path),
@@ -123,6 +132,7 @@ where
     }
 
     result.removed = prune_stale_tracks(&tx, &folders, &seen_paths, cache_root)?;
+    rebuild_album_credits(&tx)?;
     on_progress(ScanProgress {
         phase: "cleaning".to_string(),
         current_path: None,
@@ -150,18 +160,20 @@ fn escape_like(value: &str) -> String {
         .replace('_', "\\_")
 }
 
-/// Deletes tracks under monitored folders whose files no longer exist.
+/// Archives missing files without destroying user-owned data. A file may be
+/// temporarily unavailable, renamed before its first fingerprint was indexed,
+/// or one of several identical copies whose identities cannot be disambiguated.
 fn prune_stale_tracks(
     tx: &Transaction,
     folders: &[Folder],
     seen_paths: &HashSet<String>,
-    cache_root: &Path,
+    _cache_root: &Path,
 ) -> Result<usize, String> {
     let mut stale: HashSet<i64> = HashSet::new();
     for folder in folders {
         let pattern = format!("{}%", escape_like(&folder.path));
         let mut stmt = tx
-            .prepare("SELECT id, file_path FROM tracks WHERE file_path LIKE ?1 ESCAPE '\\'")
+            .prepare("SELECT id, file_path FROM tracks WHERE missing_since IS NULL AND file_path LIKE ?1 ESCAPE '\\'")
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([pattern], |row| {
@@ -173,7 +185,9 @@ fn prune_stale_tracks(
             // The SQL prefix is only a coarse filter. Requiring a path
             // separator boundary prevents a folder such as `C:\Music` from
             // claiming tracks under `C:\Music Backup`.
-            if path_is_within_folder(&path, &folder.path) && !seen_paths.contains(&path) {
+            if path_is_within_folder(&path, &folder.path)
+                && !seen_paths.contains(&comparable_path(&path))
+            {
                 stale.insert(id);
             }
         }
@@ -182,15 +196,7 @@ fn prune_stale_tracks(
     let mut stale: Vec<i64> = stale.into_iter().collect();
     stale.sort_unstable();
     for id in stale {
-        tx.execute("DELETE FROM track_artists WHERE track_id = ?", [id])
-            .map_err(|e| e.to_string())?;
-        tx.execute("DELETE FROM playlist_tracks WHERE track_id = ?", [id])
-            .map_err(|e| e.to_string())?;
-        tx.execute("DELETE FROM play_queue WHERE track_id = ?", [id])
-            .map_err(|e| e.to_string())?;
-        cache::delete_lyrics(tx, id)?;
-        cache::delete_custom_lyrics_file(cache_root, id);
-        tx.execute("DELETE FROM tracks WHERE id = ?", [id])
+        tx.execute("UPDATE tracks SET missing_since = unixepoch(), lyrics_revision = lyrics_revision + 1 WHERE id = ?", [id])
             .map_err(|e| e.to_string())?;
     }
     Ok(removed)
@@ -337,12 +343,96 @@ fn is_audio_file(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+type IdentityMatches = (HashMap<String, i64>, HashMap<String, Option<String>>);
+
+fn file_fingerprint(path: &str) -> Option<String> {
+    match crate::audio_identity::fingerprint(Path::new(path)) {
+        Ok(fingerprint) => Some(fingerprint),
+        Err(error) => {
+            // An unsupported/corrupt audio stream can still have readable tags.
+            // Leave its identity unknown instead of guessing a match.
+            log::debug!(target: "sparkle::scanner", "event=identity_unavailable path={path} error={error}");
+            None
+        }
+    }
+}
+
+fn match_file_identities(
+    conn: &Connection,
+    files: &[String],
+    seen_paths: &HashSet<String>,
+) -> Result<IdentityMatches, String> {
+    let mut stmt = conn
+        .prepare("SELECT id, file_path, audio_fingerprint FROM tracks")
+        .map_err(|e| e.to_string())?;
+    let known = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    let mut ids: HashMap<String, i64> = known
+        .iter()
+        .map(|(id, path, _)| (comparable_path(path), *id))
+        .collect();
+    let mut missing: HashMap<String, Vec<i64>> = HashMap::new();
+    for (id, path, fingerprint) in known {
+        if !seen_paths.contains(&comparable_path(&path))
+            && matches!(Path::new(&path).try_exists(), Ok(false))
+        {
+            if let Some(fingerprint) = fingerprint {
+                missing.entry(fingerprint).or_default().push(id);
+            }
+        }
+    }
+    let mut fingerprints = HashMap::new();
+    let mut incoming: HashMap<String, Vec<String>> = HashMap::new();
+    for path in files {
+        if ids.contains_key(&comparable_path(path)) {
+            continue;
+        }
+        let fingerprint = file_fingerprint(path);
+        if let Some(ref fingerprint) = fingerprint {
+            incoming
+                .entry(fingerprint.clone())
+                .or_default()
+                .push(comparable_path(path));
+        }
+        fingerprints.insert(path.clone(), fingerprint);
+    }
+    for (fingerprint, paths) in incoming {
+        if let Some(candidates) = missing.get(&fingerprint) {
+            // Never steal an existing copy's identity, or choose between
+            // identical missing/incoming copies based on directory scan order.
+            if paths.len() == 1 && candidates.len() == 1 {
+                ids.insert(paths[0].clone(), candidates[0]);
+            }
+        }
+    }
+    Ok((ids, fingerprints))
+}
+
+struct ExistingFile {
+    id: i64,
+    path: String,
+    mtime_ns: Option<i64>,
+    size: Option<i64>,
+    complete: bool,
+    scan_version: i64,
+    missing: bool,
+}
+
 fn process_file(
     tx: &Transaction,
     path: &str,
-    regex: &Regex,
-    exceptions: &[String],
     force: bool,
+    matched_id: Option<i64>,
+    fingerprint: Option<&Option<String>>,
     artist_cache: &mut HashMap<String, i64>,
     album_cache: &mut HashMap<(String, Option<i64>), i64>,
 ) -> Result<FileResult, String> {
@@ -353,30 +443,55 @@ fn process_file(
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
-    let file_size_bytes = file_metadata.map(|m| m.len() as i64);
+    let file_size_bytes = file_metadata.as_ref().map(|m| m.len() as i64);
+    let file_mtime_ns = file_metadata
+        .as_ref()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .and_then(|d| i64::try_from(d.as_nanos()).ok());
 
     // Skip files that have not changed since they were last scanned. This is
     // what makes rescans fast — the tag is only parsed when the file changed.
-    // A forced scan (e.g. after artist-splitting rules changed) re-parses
-    // everything regardless.
-    let existing: Option<(i64, i64, bool)> = tx
+    // A forced scan re-parses everything regardless.
+    let existing: Option<ExistingFile> = tx
         .query_row(
-            "SELECT id, file_mtime, \
+            "SELECT id, file_path, file_mtime_ns, file_size_bytes, \
                     audio_format IS NOT NULL AND sample_rate_hz IS NOT NULL \
-                    AND channels IS NOT NULL AND file_size_bytes IS NOT NULL \
-             FROM tracks WHERE file_path = ?",
-            [path],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                    AND channels IS NOT NULL AND file_size_bytes IS NOT NULL, \
+                    scan_version, missing_since IS NOT NULL \
+             FROM tracks WHERE id = ?1 OR file_path = ?2",
+            rusqlite::params![matched_id, path],
+            |row| {
+                Ok(ExistingFile {
+                    id: row.get(0)?,
+                    path: row.get(1)?,
+                    mtime_ns: row.get(2)?,
+                    size: row.get(3)?,
+                    complete: row.get(4)?,
+                    scan_version: row.get(5)?,
+                    missing: row.get(6)?,
+                })
+            },
         )
         .optional()
         .map_err(|e| e.to_string())?;
 
     if !force {
-        if let Some((_, stored_mtime, technical_complete)) = existing {
-            if stored_mtime == file_mtime && file_mtime != 0 && technical_complete {
+        if let Some(ref existing) = existing {
+            if existing.mtime_ns == file_mtime_ns
+                && file_mtime_ns.is_some()
+                && existing.size == file_size_bytes
+                && existing.complete
+                && existing.scan_version == SCAN_VERSION
+            {
+                let updated = existing.path != path || existing.missing;
+                if updated {
+                    tx.execute("UPDATE tracks SET file_path = ?, missing_since = NULL, lyrics_revision = lyrics_revision + 1 WHERE id = ?",
+                        rusqlite::params![path, existing.id]).map_err(|e| e.to_string())?;
+                }
                 return Ok(FileResult {
                     added: false,
-                    updated: false,
+                    updated,
                 });
             }
         }
@@ -411,22 +526,13 @@ fn process_file(
         .or_else(|| tag.get_string(ItemKey::UnsyncLyrics))
         .map(|s| s.to_string());
 
-    let track_artist_names = collect_artists(
-        tag,
-        ItemKey::TrackArtists,
-        ItemKey::TrackArtist,
-        regex,
-        exceptions,
-    );
-    let album_artist_names = collect_artists(
-        tag,
-        ItemKey::AlbumArtists,
-        ItemKey::AlbumArtist,
-        regex,
-        exceptions,
-    );
+    let track_artist_names = collect_artists(tag, ItemKey::TrackArtist, ItemKey::TrackArtists);
+    let album_artist_names = collect_artists(tag, ItemKey::AlbumArtist, ItemKey::AlbumArtists);
 
-    let existing_id = existing.map(|(id, _, _)| id);
+    let fingerprint = fingerprint
+        .cloned()
+        .unwrap_or_else(|| file_fingerprint(path));
+    let existing_id = existing.map(|file| file.id);
     let added = existing_id.is_none();
     let updated = existing_id.is_some();
     let album_id = if let Some(ref album_title) = album_title {
@@ -495,60 +601,60 @@ fn process_file(
     };
 
     tx.execute(
+        "UPDATE tracks SET file_path = ?1, file_mtime_ns = ?2, audio_fingerprint = ?3, \
+         scan_version = ?4, missing_since = NULL, lyrics_revision = lyrics_revision + 1 WHERE id = ?5",
+        rusqlite::params![path, file_mtime_ns, fingerprint, SCAN_VERSION, track_id],
+    ).map_err(|e| e.to_string())?;
+    // Local sources are cheap to read again. Keep custom and remote results.
+    cache::delete_lyrics_from_source(tx, track_id, "embedded")?;
+    cache::delete_lyrics_from_source(tx, track_id, "lrc")?;
+
+    tx.execute(
         "DELETE FROM track_artists WHERE track_id = ? AND role = 'main'",
         [track_id],
     )
     .map_err(|e| e.to_string())?;
-    for name in &track_artist_names {
+    for (position, name) in track_artist_names.iter().enumerate() {
         let artist_id = get_or_insert_artist(tx, name, artist_cache)?;
         tx.execute(
-            "INSERT OR IGNORE INTO track_artists (track_id, artist_id, role) VALUES (?1, ?2, 'main')",
-            [track_id, artist_id],
+            "INSERT OR IGNORE INTO track_artists (track_id, artist_id, role, position) VALUES (?1, ?2, 'main', ?3)",
+            rusqlite::params![track_id, artist_id, position as i64],
         )
         .map_err(|e| e.to_string())?;
     }
 
-    if let Some(album_id) = album_id {
-        tx.execute("DELETE FROM album_artists WHERE album_id = ?", [album_id])
-            .map_err(|e| e.to_string())?;
-        let artists_to_link = if album_artist_names.is_empty() {
-            track_artist_names.clone()
-        } else {
-            album_artist_names.clone()
-        };
-        for name in &artists_to_link {
-            let artist_id = get_or_insert_artist(tx, name, artist_cache)?;
-            tx.execute(
-                "INSERT OR IGNORE INTO album_artists (album_id, artist_id) VALUES (?1, ?2)",
-                [album_id, artist_id],
+    tx.execute(
+        "DELETE FROM track_album_artists WHERE track_id = ?",
+        [track_id],
+    )
+    .map_err(|e| e.to_string())?;
+    for (position, name) in album_artist_names.iter().enumerate() {
+        let artist_id = get_or_insert_artist(tx, name, artist_cache)?;
+        tx.execute(
+                "INSERT OR IGNORE INTO track_album_artists (track_id, artist_id, position) VALUES (?1, ?2, ?3)",
+                rusqlite::params![track_id, artist_id, position as i64],
             )
             .map_err(|e| e.to_string())?;
-        }
     }
 
     Ok(FileResult { added, updated })
 }
 
-fn collect_artists(
-    tag: &Tag,
-    multi_key: ItemKey,
-    single_key: ItemKey,
-    regex: &Regex,
-    exceptions: &[String],
-) -> Vec<String> {
-    let raw: Vec<String> = tag.get_strings(multi_key).map(|s| s.to_string()).collect();
-    let names = if raw.is_empty() {
-        tag.get_string(single_key)
-            .map(|s| vec![s.to_string()])
-            .unwrap_or_default()
+fn collect_artists(tag: &Tag, primary_key: ItemKey, fallback_key: ItemKey) -> Vec<String> {
+    // Lofty exposes every NUL-separated TPE1/TPE2 value as a separate string,
+    // as it does repeated Vorbis/MP4 artist values. Never split punctuation in
+    // a name. Prefer the standard frames over an older ARTISTS custom field.
+    let primary: Vec<&str> = tag.get_strings(primary_key).collect();
+    let names = if primary.is_empty() {
+        tag.get_strings(fallback_key).collect()
     } else {
-        raw
+        primary
     };
+    let mut seen = HashSet::new();
     names
         .iter()
-        .flat_map(|n| split_artists(n, regex, exceptions))
-        .map(|n| normalize_artist_name(&n))
-        .filter(|n| !n.is_empty())
+        .flat_map(|name| split_artists(name))
+        .filter(|name| seen.insert(name.clone()))
         .collect()
 }
 
@@ -617,6 +723,36 @@ fn parse_year(tag: &Tag) -> Option<i64> {
     })
 }
 
+fn rebuild_album_credits(conn: &Connection) -> Result<(), String> {
+    // Album identity remains title + year. Collect explicit album credits in
+    // disc/track/tag order instead of letting the last scanned file overwrite
+    // every other track's credits. Only fall back to track artists when the
+    // album has no explicit album-artist tags at all.
+    conn.execute_batch(
+        "DELETE FROM album_artists;
+         WITH credits AS (
+             SELECT t.album_id, c.artist_id, c.position, t.disc_number, t.track_number, t.title, t.id
+             FROM tracks t JOIN track_album_artists c ON c.track_id = t.id
+             WHERE t.album_id IS NOT NULL
+             UNION ALL
+             SELECT t.album_id, c.artist_id, c.position, t.disc_number, t.track_number, t.title, t.id
+             FROM tracks t JOIN track_artists c ON c.track_id = t.id AND c.role = 'main'
+             WHERE t.album_id IS NOT NULL AND NOT EXISTS (
+                 SELECT 1 FROM tracks other JOIN track_album_artists explicit ON explicit.track_id = other.id
+                 WHERE other.album_id = t.album_id)
+         ), ordered AS (
+             SELECT album_id, artist_id, ROW_NUMBER() OVER (
+                 PARTITION BY album_id ORDER BY COALESCE(disc_number, 1), COALESCE(track_number, 2147483647),
+                 title, id, position, artist_id) AS credit_order FROM credits
+         ), first_credit AS (
+             SELECT album_id, artist_id, MIN(credit_order) AS credit_order FROM ordered GROUP BY album_id, artist_id
+         )
+         INSERT INTO album_artists (album_id, artist_id, position)
+             SELECT album_id, artist_id, ROW_NUMBER() OVER (PARTITION BY album_id ORDER BY credit_order) - 1
+             FROM first_credit;",
+    ).map_err(|e| e.to_string())
+}
+
 fn now_seconds() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -632,7 +768,8 @@ pub fn recompute_artist_stats(conn: &mut Connection) -> Result<(), String> {
 
     tx.execute(
         "INSERT OR IGNORE INTO artist_albums (artist_id, album_id, role) \
-         SELECT artist_id, album_id, 'album_artist' FROM album_artists",
+         SELECT artist_id, album_id, 'album_artist' FROM album_artists aa \
+         WHERE EXISTS (SELECT 1 FROM available_tracks t WHERE t.album_id = aa.album_id)",
         [],
     )
     .map_err(|e| e.to_string())?;
@@ -641,7 +778,7 @@ pub fn recompute_artist_stats(conn: &mut Connection) -> Result<(), String> {
         "INSERT OR IGNORE INTO artist_albums (artist_id, album_id, role) \
          SELECT ta.artist_id, t.album_id, 'track_artist' \
          FROM track_artists ta \
-         JOIN tracks t ON t.id = ta.track_id \
+         JOIN available_tracks t ON t.id = ta.track_id \
          WHERE t.album_id IS NOT NULL",
         [],
     )
@@ -649,7 +786,8 @@ pub fn recompute_artist_stats(conn: &mut Connection) -> Result<(), String> {
 
     tx.execute(
         "WITH track_counts AS ( \
-            SELECT artist_id, COUNT(DISTINCT track_id) AS c FROM track_artists WHERE role = 'main' GROUP BY artist_id \
+            SELECT ta.artist_id, COUNT(DISTINCT ta.track_id) AS c FROM track_artists ta \
+            JOIN available_tracks t ON t.id = ta.track_id WHERE ta.role = 'main' GROUP BY ta.artist_id \
          ) \
          UPDATE artists SET track_count = COALESCE((SELECT c FROM track_counts WHERE track_counts.artist_id = artists.id), 0)",
         [],

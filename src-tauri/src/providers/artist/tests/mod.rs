@@ -74,8 +74,8 @@ fn provider_configuration_without_online_sources_does_not_fetch() {
     );
     assert!(
         fetch_artist_image_from_provider("brave", "Alice", "en", &settings)
-            .unwrap()
-            .is_none()
+            .unwrap_err()
+            .contains("API key is missing")
     );
 }
 

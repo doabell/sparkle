@@ -2,6 +2,23 @@ use super::*;
 use crate::test_support::{http_client, HttpFixture};
 
 #[test]
+fn blocked_searches_are_errors_instead_of_empty_matches() {
+    for status in [403, 405, 429, 503] {
+        let peer = HttpFixture::response(status, "text/plain", b"unavailable");
+        let response = http_client().get(&peer.url).send().unwrap();
+        assert!(checked_search_response(response)
+            .unwrap_err()
+            .contains(&status.to_string()));
+    }
+    let peer = HttpFixture::response(200, "application/json", b"{\"results\":[]}");
+    let response = http_client().get(&peer.url).send().unwrap();
+    assert_eq!(
+        checked_search_response(response).unwrap().text().unwrap(),
+        "{\"results\":[]}"
+    );
+}
+
+#[test]
 fn image_downloads_accept_bounded_bodies_and_reject_declared_or_streamed_overflow() {
     let peer = HttpFixture::response(200, "image/png", b"image bytes");
     let response = http_client().get(&peer.url).send().unwrap();

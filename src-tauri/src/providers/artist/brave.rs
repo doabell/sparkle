@@ -41,8 +41,8 @@ fn brave_search_lang(lang: &str) -> &str {
 }
 
 /// Searches Brave Image Search for "{title} artist" and returns candidate
-/// image URLs. Requires a Brave Search API key; returns an empty vec when
-/// the key is missing or the search fails. Network I/O — call WITHOUT
+/// image URLs. Requires a Brave Search API key; reports missing credentials
+/// and provider failures separately from no matches. Network I/O — call WITHOUT
 /// holding the DB lock.
 pub fn search_image_urls(
     title: &str,
@@ -50,8 +50,11 @@ pub fn search_image_urls(
     count: usize,
     lang: &str,
 ) -> Result<Vec<String>, String> {
-    if title.trim().is_empty() || api_key.trim().is_empty() {
+    if title.trim().is_empty() || count == 0 {
         return Ok(Vec::new());
+    }
+    if api_key.trim().is_empty() {
+        return Err("Brave API key is missing".into());
     }
 
     let client = Client::builder()
@@ -73,11 +76,9 @@ pub fn search_image_urls(
         .send()
         .map_err(|e| e.to_string())?;
 
-    if !response.status().is_success() {
-        return Ok(Vec::new());
-    }
-
-    let data: BraveImageResponse = response.json().map_err(|e| e.to_string())?;
+    let data: BraveImageResponse = crate::providers::checked_search_response(response)?
+        .json()
+        .map_err(|e| e.to_string())?;
     Ok(data
         .results
         .iter()
@@ -117,8 +118,8 @@ fn download_image(url: &str) -> Result<Option<ImageData>, String> {
 }
 
 /// Searches Brave Image Search for "{title} artist" and downloads the first
-/// usable result. Requires a Brave Search API key; returns Ok(None) when the
-/// key is missing or nothing usable is found. Network I/O — call WITHOUT
+/// usable result. Requires a Brave Search API key; returns Ok(None) when
+/// nothing usable is found. Network I/O — call WITHOUT
 /// holding the DB lock.
 pub fn fetch_image_by_title(
     title: &str,

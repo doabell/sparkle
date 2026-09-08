@@ -4,7 +4,7 @@ use serde::Deserialize;
 use std::time::Duration;
 
 // Wikimedia rejects requests without a descriptive User-Agent with 403.
-const USER_AGENT: &str = "SparkleMusicPlayer/0.1.0 (local desktop music player)";
+const USER_AGENT: &str = "SparkleMusicPlayer/0.4.0 (https://github.com/doabell/sparkle)";
 
 #[derive(Deserialize, Debug)]
 struct WikipediaSummary {
@@ -149,28 +149,92 @@ struct MediaSrc {
     src: String,
 }
 
-/// Lists up to `count` image URLs from the article's media list without
-/// downloading anything — for the chooser, where the webview renders the
-/// candidates itself. Skips SVGs (icons, logos, maps) in favor of photos.
+#[derive(Deserialize, Default)]
+struct PageImageSearch {
+    #[serde(default)]
+    query: PageImageQuery,
+    error: Option<PageImageError>,
+}
+
+#[derive(Deserialize, Default)]
+struct PageImageQuery {
+    #[serde(default)]
+    pages: Vec<PageImage>,
+}
+
+#[derive(Deserialize)]
+struct PageImage {
+    index: Option<u32>,
+    thumbnail: Option<WikipediaThumbnail>,
+}
+
+#[derive(Deserialize)]
+struct PageImageError {
+    code: String,
+}
+
+fn image_url(src: &str) -> Option<String> {
+    let normalized = if src.starts_with("//") {
+        format!("https:{src}")
+    } else {
+        src.to_string()
+    };
+    let url = reqwest::Url::parse(&normalized).ok()?;
+    if !matches!(url.scheme(), "http" | "https") || url.path().to_lowercase().ends_with(".svg") {
+        return None;
+    }
+    Some(normalized)
+}
+
+/// Keep exact article galleries when available, then search page titles and
+/// aliases when the query is not an exact title or the article has no images.
+/// The manual chooser can therefore accept names such as "Ikuta Lilas" whose
+/// English article is titled "Lilas Ikuta".
 pub fn image_urls_by_title(title: &str, lang: &str, count: usize) -> Result<Vec<String>, String> {
-    if title.trim().is_empty() || lang.trim().is_empty() {
+    if title.trim().is_empty() || lang.trim().is_empty() || count == 0 {
         return Ok(Vec::new());
     }
     let client = Client::builder()
-        .timeout(Duration::from_secs(15))
+        // Both requests fit within the chooser's eight-second search budget.
+        .timeout(Duration::from_secs(4))
         .user_agent(USER_AGENT)
         .build()
         .map_err(|e| e.to_string())?;
-    let url = format!(
+    let media_url = format!(
         "https://{}.wikipedia.org/api/rest_v1/page/media-list/{}",
         lang,
         percent_encode(title)
     );
-    let response = client.get(&url).send().map_err(|e| e.to_string())?;
-    if !response.status().is_success() {
-        return Ok(Vec::new());
-    }
-    let list: MediaList = response.json().map_err(|e| e.to_string())?;
+    let search_url = format!("https://{lang}.wikipedia.org/w/api.php");
+    image_urls_with_client(&client, &media_url, &search_url, title, count)
+}
+
+fn image_urls_with_client(
+    client: &Client,
+    media_url: &str,
+    search_url: &str,
+    title: &str,
+    count: usize,
+) -> Result<Vec<String>, String> {
+    // An uncached or unavailable REST article must not prevent the independent
+    // Action API name search from returning results.
+    let gallery = (|| -> Result<MediaList, String> {
+        let response = client
+            .get(media_url)
+            .timeout(Duration::from_secs(3))
+            .send()
+            .map_err(|e| e.to_string())?;
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(MediaList { items: Vec::new() });
+        }
+        crate::providers::checked_search_response(response)?
+            .json::<MediaList>()
+            .map_err(|e| e.to_string())
+    })();
+    let (list, gallery_error) = match gallery {
+        Ok(list) => (list, None),
+        Err(error) => (MediaList { items: Vec::new() }, Some(error)),
+    };
     let mut urls = Vec::new();
     for item in &list.items {
         if urls.len() >= count {
@@ -183,14 +247,61 @@ pub fn image_urls_by_title(title: &str, lang: &str, count: usize) -> Result<Vec<
         let Some(src) = item.srcset.last().map(|s| s.src.clone()) else {
             continue;
         };
-        if src.to_lowercase().ends_with(".svg") {
-            continue;
+        if let Some(url) = image_url(&src) {
+            if !urls.contains(&url) {
+                urls.push(url);
+            }
         }
-        urls.push(if src.starts_with("//") {
-            format!("https:{src}")
-        } else {
-            src
-        });
+    }
+    if !urls.is_empty() {
+        return Ok(urls);
+    }
+
+    let response = client
+        .get(search_url)
+        .query(&[
+            ("action", "query"),
+            ("format", "json"),
+            ("formatversion", "2"),
+            ("generator", "search"),
+            ("gsrsearch", title),
+            ("gsrnamespace", "0"),
+            ("gsrlimit", &count.clamp(1, 10).to_string()),
+            ("gsrenablerewrites", "1"),
+            ("prop", "pageimages"),
+            ("piprop", "thumbnail"),
+            ("pithumbsize", "800"),
+            ("pilicense", "any"),
+        ])
+        .send()
+        .map_err(|e| e.to_string())?;
+    let mut result: PageImageSearch = crate::providers::checked_search_response(response)?
+        .json()
+        .map_err(|e| e.to_string())?;
+    if let Some(error) = result.error {
+        return Err(format!("Wikipedia search failed ({})", error.code));
+    }
+    result
+        .query
+        .pages
+        .sort_by_key(|page| page.index.unwrap_or(u32::MAX));
+    for page in result.query.pages {
+        if let Some(url) = page
+            .thumbnail
+            .and_then(|thumbnail| image_url(&thumbnail.source))
+        {
+            if !urls.contains(&url) {
+                urls.push(url);
+            }
+            if urls.len() >= count {
+                break;
+            }
+        }
+    }
+    if urls.is_empty() {
+        if let Some(error) = gallery_error {
+            return Err(error);
+        }
     }
     Ok(urls)
 }

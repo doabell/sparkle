@@ -98,7 +98,7 @@ fn test_root() -> PathBuf {
 fn in_memory_db() -> Connection {
     let conn = Connection::open_in_memory().unwrap();
     conn.execute_batch(
-        "CREATE TABLE lyrics (track_id INTEGER NOT NULL, source TEXT NOT NULL, synced_text TEXT, plain_text TEXT, fetched_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY (track_id, source)); \
+        "CREATE TABLE tracks (id INTEGER PRIMARY KEY, lyrics_revision INTEGER NOT NULL DEFAULT 0); CREATE TABLE lyrics (track_id INTEGER NOT NULL, source TEXT NOT NULL, synced_text TEXT, plain_text TEXT, fetched_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY (track_id, source)); \
          CREATE TABLE artist_info (artist_id INTEGER PRIMARY KEY, source TEXT NOT NULL, file_path TEXT, fetched_at INTEGER NOT NULL, expires_at INTEGER NOT NULL); \
          CREATE TABLE images (entity_type TEXT NOT NULL, entity_id INTEGER NOT NULL, source TEXT NOT NULL, url TEXT, file_path TEXT, mime_type TEXT, fetched_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY (entity_type, entity_id, source));"
     ).unwrap();

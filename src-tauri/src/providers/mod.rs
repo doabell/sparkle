@@ -4,6 +4,23 @@ pub mod lyrics;
 
 use std::io::Read;
 
+pub(crate) fn checked_search_response(
+    response: reqwest::blocking::Response,
+) -> Result<reqwest::blocking::Response, String> {
+    if response.status().is_success() {
+        Ok(response)
+    } else {
+        let reason = match response.status().as_u16() {
+            401 | 403 => "provider rejected the request",
+            405 => "provider rejected this request method or client",
+            429 => "provider rate limit reached; try again later",
+            500..=599 => "provider is temporarily unavailable",
+            _ => "search failed",
+        };
+        Err(format!("{reason} (HTTP {})", response.status()))
+    }
+}
+
 /// Artwork comes from third-party hosts, so never let a response allocate an
 /// unbounded byte buffer before the image decoder gets a chance to validate it.
 pub fn read_image_response(response: reqwest::blocking::Response) -> Result<Vec<u8>, String> {

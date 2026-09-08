@@ -4,7 +4,7 @@ fn library_fixture() -> rusqlite::Connection {
     let conn = crate::db::test_connection();
     conn.execute_batch("INSERT INTO artists (id,name) VALUES (1,'Alice'),(2,'Bob');
         INSERT INTO albums (id,title) VALUES (1,'Album');
-        INSERT INTO album_artists VALUES (1,1),(1,2);
+        INSERT INTO album_artists (album_id, artist_id) VALUES (1,1),(1,2);
         INSERT INTO tracks (id,file_path,title,album_id,genre,year,track_number,duration_ms,audio_format,sample_rate_hz,bit_depth,channels,file_size_bytes,embedded_lyrics) VALUES
         (1,'C:/Music/one.flac','Song',1,'Pop',2000,1,180000,'flac',96000,24,2,1000,'Words'),
         (2,'C:/Music/two.mp3',' song ',1,'Pop',2001,2,20000,'mp3',44100,NULL,1,500,NULL),
@@ -217,6 +217,51 @@ fn library_health_counts_agree_with_every_drill_down() {
 }
 
 #[test]
+fn archived_tracks_leave_browsing_but_keep_playlist_membership_for_reconnection() {
+    let mut conn = library_fixture();
+    let playlist = create_playlist_with_connection(&conn, "Mine".into(), None, None).unwrap();
+    add_tracks_to_playlist_with_connection(&mut conn, playlist.id, &[1, 2, 3]).unwrap();
+    conn.execute("UPDATE tracks SET missing_since = 1 WHERE album_id = 1", [])
+        .unwrap();
+
+    assert!(search_with_connection(&conn, "Alice")
+        .unwrap()
+        .artists
+        .is_empty());
+    assert!(search_with_connection(&conn, "Album")
+        .unwrap()
+        .albums
+        .is_empty());
+    assert!(search_with_connection(&conn, "Song")
+        .unwrap()
+        .tracks
+        .is_empty());
+    let health = library_health_with_connection(&conn).unwrap();
+    assert_eq!(
+        (health.track_count, health.album_count, health.artist_count),
+        (1, 0, 0)
+    );
+    assert_eq!(playlist_track_count(&conn, playlist.id, None).unwrap(), 1);
+    assert_eq!(tracks_in_playlist(&conn, playlist.id).unwrap().len(), 1);
+    assert_eq!(playlist_members(&conn, playlist.id).len(), 3);
+
+    conn.execute("UPDATE tracks SET missing_since = NULL WHERE id = 1", [])
+        .unwrap();
+    assert_eq!(playlist_track_count(&conn, playlist.id, None).unwrap(), 2);
+    assert_eq!(
+        search_with_connection(&conn, "Alice")
+            .unwrap()
+            .artists
+            .len(),
+        1
+    );
+    assert_eq!(
+        search_with_connection(&conn, "Album").unwrap().albums.len(),
+        1
+    );
+}
+
+#[test]
 fn search_preserves_artist_credits_and_finds_lyrics_on_untagged_tracks() {
     let conn = library_fixture();
     let results = search_with_connection(&conn, " Alice ").unwrap();
@@ -330,7 +375,7 @@ fn lyric_snippets_are_unicode_safe_and_use_synced_fallback() {
 fn clearing_custom_lyrics_releases_the_custom_provider_override() {
     let conn = rusqlite::Connection::open_in_memory().unwrap();
     conn.execute_batch(
-        "CREATE TABLE tracks (id INTEGER PRIMARY KEY, lyrics_source TEXT); \
+        "CREATE TABLE tracks (id INTEGER PRIMARY KEY, lyrics_source TEXT, lrc_offset_ms INTEGER NOT NULL DEFAULT 0, lyrics_revision INTEGER NOT NULL DEFAULT 0); \
          CREATE TABLE lyrics (track_id INTEGER NOT NULL, source TEXT NOT NULL, PRIMARY KEY (track_id, source));",
     )
     .unwrap();
@@ -354,7 +399,7 @@ fn clearing_custom_lyrics_releases_the_custom_provider_override() {
 fn changing_lyrics_source_keeps_cached_provider_rows() {
     let conn = rusqlite::Connection::open_in_memory().unwrap();
     conn.execute_batch(
-        "CREATE TABLE tracks (id INTEGER PRIMARY KEY, lyrics_source TEXT); \
+        "CREATE TABLE tracks (id INTEGER PRIMARY KEY, lyrics_source TEXT, lrc_offset_ms INTEGER NOT NULL DEFAULT 0, lyrics_revision INTEGER NOT NULL DEFAULT 0); \
          CREATE TABLE lyrics (track_id INTEGER NOT NULL, source TEXT NOT NULL, PRIMARY KEY (track_id, source)); \
          INSERT INTO tracks (id) VALUES (1); \
          INSERT INTO lyrics (track_id, source) VALUES (1, 'lrclib'), (1, 'netease');",
@@ -395,11 +440,13 @@ fn listening_stats_use_only_finalized_meaningful_listens() {
          CREATE TABLE track_artists (
             track_id INTEGER NOT NULL,
             artist_id INTEGER NOT NULL,
-            role TEXT NOT NULL
+            role TEXT NOT NULL,
+            position INTEGER NOT NULL DEFAULT 0
          );
          CREATE TABLE album_artists (
             album_id INTEGER NOT NULL,
-            artist_id INTEGER NOT NULL
+            artist_id INTEGER NOT NULL,
+            position INTEGER NOT NULL DEFAULT 0
          );
          CREATE TABLE listens (
             track_id INTEGER NOT NULL,
@@ -415,8 +462,8 @@ fn listening_stats_use_only_finalized_meaningful_listens() {
          INSERT INTO tracks VALUES
             (1, 'Track A', 1, 'Rock', 2000),
             (2, 'Track B', 2, 'Rock', 2010);
-         INSERT INTO track_artists VALUES (1, 1, 'main'), (2, 2, 'main');
-         INSERT INTO album_artists VALUES (1, 1), (2, 2);
+         INSERT INTO track_artists (track_id, artist_id, role) VALUES (1, 1, 'main'), (2, 2, 'main');
+         INSERT INTO album_artists (album_id, artist_id) VALUES (1, 1), (2, 2);
          INSERT INTO listens VALUES
             (1, 'session-a', 1700000000000, 60000, 1, 1, 1),
             (2, 'session-a', 1700000060000, 45000, 1, 0, 1),
