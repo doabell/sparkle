@@ -58,7 +58,6 @@ fn settings_roundtrip() {
     .unwrap();
     let mut settings = Settings::default();
     settings.monitored_folders.push("C:\\Music".to_string());
-    settings.artist_split_regex = "foo".to_string();
     settings.accent_color = "FA243C".to_string();
     settings.accent_foreground_preference = AccentForegroundPreference::Light;
     settings.debug_logging_enabled = true;
@@ -72,12 +71,7 @@ fn settings_roundtrip() {
     save_settings(&conn, &settings).unwrap();
     let loaded = load_settings(&conn).unwrap();
     assert_eq!(loaded.monitored_folders, settings.monitored_folders);
-    assert_eq!(loaded.artist_split_regex, settings.artist_split_regex);
     assert!(loaded.sound_check_enabled);
-    assert_eq!(
-        loaded.artist_split_exceptions,
-        settings.artist_split_exceptions
-    );
     assert_eq!(loaded.scan_on_startup, settings.scan_on_startup);
     assert_eq!(loaded.ui_font, settings.ui_font);
     assert_eq!(loaded.lyrics_font, settings.lyrics_font);

@@ -6,6 +6,7 @@ import {
     pause as backendPause,
     stop as backendStop,
     seek as backendSeek,
+    seekLyrics as backendSeekLyrics,
     nextTrack as backendNextTrack,
     previousTrack as backendPreviousTrack,
     setVolume as backendSetVolume,
@@ -21,6 +22,7 @@ import {
     type PlaybackActionSource,
     type PlaybackContext,
     type RepeatMode,
+    LYRICS_CHANGED_EVENT,
 } from "$lib/api";
 
 export interface Track extends ApiTrack {}
@@ -43,9 +45,31 @@ const initialState: PlaybackState = {
 };
 
 export function createPlaybackStore() {
-    const { subscribe, set, update } = writable<PlaybackState>({
+    const {
+        subscribe,
+        set: setState,
+        update,
+    } = writable<PlaybackState>({
         ...initialState,
     });
+    const localOffsets = new Map<number, number>();
+
+    function withLocalOffset(track: Track | null): Track | null {
+        if (!track || !localOffsets.has(track.id)) return track;
+        const offset = localOffsets.get(track.id)!;
+        if (track.lrc_offset_ms === offset) {
+            localOffsets.delete(track.id);
+            return track;
+        }
+        return { ...track, lrc_offset_ms: offset };
+    }
+
+    function set(state: PlaybackState) {
+        setState({
+            ...state,
+            current_track: withLocalOffset(state.current_track),
+        });
+    }
 
     async function init() {
         try {
@@ -70,7 +94,7 @@ export function createPlaybackStore() {
                 update((state) => ({
                     ...state,
                     is_playing: event.payload.is_playing,
-                    current_track: event.payload.current_track,
+                    current_track: withLocalOffset(event.payload.current_track),
                     first_lyric_line: event.payload.first_lyric_line,
                     album_art: event.payload.album_art,
                     position_ms: event.payload.position_ms,
@@ -108,6 +132,11 @@ export function createPlaybackStore() {
     }
 
     if (typeof window !== "undefined") {
+        window.addEventListener?.(LYRICS_CHANGED_EVENT, (event) => {
+            const trackId = (event as CustomEvent<{ trackId: number }>).detail
+                ?.trackId;
+            if (trackId != null) updateCurrentTrackLrcOffset(trackId, 0);
+        });
         init();
     }
 
@@ -138,6 +167,7 @@ export function createPlaybackStore() {
     }
 
     function updateCurrentTrackLrcOffset(trackId: number, offsetMs: number) {
+        localOffsets.set(trackId, offsetMs);
         updateCurrentTrack(trackId, { lrc_offset_ms: offsetMs });
     }
 
@@ -159,6 +189,8 @@ export function createPlaybackStore() {
             callCommand(() => backendStop(source)),
         seek: (positionMs: number, source: PlaybackActionSource = "ui") =>
             callCommand(() => backendSeek(positionMs, source)),
+        seekLyrics: (trackId: number, positionMs: number) =>
+            callCommand(() => backendSeekLyrics(trackId, positionMs)),
         nextTrack: (source: PlaybackActionSource = "ui") =>
             callCommand(() => backendNextTrack(source)),
         previousTrack: (source: PlaybackActionSource = "ui") =>
@@ -254,6 +286,7 @@ export const {
     pause,
     stop,
     seek,
+    seekLyrics,
     nextTrack,
     previousTrack,
     setVolume,

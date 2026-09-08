@@ -1,14 +1,6 @@
-use regex::Regex;
-
-pub fn split_artists(input: &str, regex: &Regex, exceptions: &[String]) -> Vec<String> {
-    let trimmed = input.trim();
-    for exc in exceptions {
-        if trimmed == exc.trim() {
-            return vec![trimmed.to_string()];
-        }
-    }
-    regex
-        .split(input)
+pub fn split_artists(input: &str) -> Vec<String> {
+    input
+        .split('\0')
         .map(normalize_artist_name)
         .filter(|s| !s.is_empty())
         .collect()

@@ -14,7 +14,6 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::State;
 
-type LyricsCacheLookup = (Option<Lyrics>, Vec<Lyrics>, Option<String>);
 type ArtistInfoLookup = (
     Option<String>,
     Option<ArtistInfo>,
@@ -46,125 +45,109 @@ fn can_cache_lyrics_result(
     expected_override == current_override
 }
 
+struct LyricsSnapshot {
+    metadata: TrackMetadata,
+    custom: Option<Lyrics>,
+    cached: Vec<Lyrics>,
+    override_source: Option<String>,
+    sources: Vec<String>,
+    revision: i64,
+}
+
+fn lyrics_snapshot(conn: &rusqlite::Connection, track_id: i64) -> Result<LyricsSnapshot, String> {
+    let (override_source, revision): (Option<String>, i64) = conn
+        .query_row(
+            "SELECT NULLIF(lyrics_source, ''), lyrics_revision FROM tracks WHERE id = ?",
+            [track_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|e| e.to_string())?;
+    let sources = match &override_source {
+        Some(source) => vec![source.clone()],
+        None => settings::load_settings(conn)?.lyrics_sources,
+    };
+    Ok(LyricsSnapshot {
+        metadata: lyrics::fetch_track_metadata(conn, track_id)?,
+        custom: cache::get_lyrics_from_source(conn, track_id, "custom")?,
+        cached: cache::get_non_custom_lyrics(conn, track_id)?,
+        override_source,
+        sources,
+        revision,
+    })
+}
+
+fn snapshot_is_current(
+    conn: &rusqlite::Connection,
+    track_id: i64,
+    snapshot: &LyricsSnapshot,
+) -> Result<bool, String> {
+    let current: Option<(Option<String>, i64)> = conn
+        .query_row(
+            "SELECT NULLIF(lyrics_source, ''), lyrics_revision FROM tracks WHERE id = ?",
+            [track_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    let Some((source, revision)) = current else {
+        return Ok(false);
+    };
+    let sources = match &source {
+        Some(source) => vec![source.clone()],
+        None => settings::load_settings(conn)?.lyrics_sources,
+    };
+    Ok(can_cache_lyrics_result(&snapshot.override_source, &source)
+        && snapshot.revision == revision
+        && snapshot.sources == sources)
+}
+
+fn lookup_track_lyrics(
+    db: &Arc<Mutex<rusqlite::Connection>>,
+    track_id: i64,
+) -> Result<Lyrics, String> {
+    // A selection, edit or rescan can finish while a provider is loading.
+    // Re-read that revision instead of returning or caching obsolete content.
+    for _ in 0..3 {
+        let snapshot = {
+            let conn = db.lock().map_err(|e| e.to_string())?;
+            lyrics_snapshot(&conn, track_id)?
+        };
+        let result = lyrics::fetch_lyrics_from_sources_with_cache(
+            &snapshot.sources,
+            &snapshot.metadata,
+            snapshot.custom.as_ref(),
+            &snapshot.cached,
+        )?;
+        let conn = db.lock().map_err(|e| e.to_string())?;
+        let tx =
+            rusqlite::Transaction::new_unchecked(&conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| e.to_string())?;
+        if !snapshot_is_current(&tx, track_id, &snapshot)? {
+            continue;
+        }
+        let result = result.ok_or("lyrics not found")?;
+        if result.source != "custom" {
+            cache::set_lyrics(
+                &tx,
+                track_id,
+                &result.source,
+                result.synced_text.as_deref(),
+                result.plain_text.as_deref(),
+            )?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        return Ok(result);
+    }
+    Err("lyrics changed while loading; try again".into())
+}
+
 #[tauri::command]
 #[allow(non_snake_case)]
 pub async fn get_lyrics(state: State<'_, AppState>, trackId: i64) -> Result<Lyrics, String> {
     let db = state.db.clone();
-    let settings = load_settings_async(&db).await?;
-
-    // 1. Cache + per-track provider override with a short DB lock. Custom
-    //    lyrics are retained independently, like custom artwork.
-    let (custom, cached, override_source) = tokio::task::spawn_blocking({
-        let db = db.clone();
-        move || -> Result<LyricsCacheLookup, String> {
-            let conn = db.lock().map_err(|e| e.to_string())?;
-            let custom = cache::get_lyrics_from_source(&conn, trackId, "custom")?;
-            let cached = cache::get_non_custom_lyrics(&conn, trackId)?;
-            let override_source: Option<String> = conn
-                .query_row(
-                    "SELECT NULLIF(lyrics_source, '') FROM tracks WHERE id = ?",
-                    [trackId],
-                    |row| row.get(0),
-                )
-                .optional()
-                .map_err(|e| e.to_string())?
-                .flatten();
-            Ok((custom, cached, override_source))
-        }
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-
-    if let Some(source) = override_source.as_deref() {
-        if source == "none" {
-            return Ok(lyrics::no_lyrics());
-        }
-        if source == "custom" {
-            if let Some(lyrics) = custom.clone() {
-                return Ok(lyrics);
-            }
-        } else if let Some(lyrics) = cached.iter().find(|lyrics| lyrics.source == source) {
-            return Ok(lyrics.clone());
-        }
-    } else {
-        let cached = settings.lyrics_sources.iter().find_map(|source| {
-            if source == "custom" {
-                custom.as_ref()
-            } else {
-                cached.iter().find(|lyrics| lyrics.source == *source)
-            }
-        });
-        if let Some(lyrics) = cached {
-            return Ok(lyrics.clone());
-        }
-    }
-
-    // 2. Read the track metadata needed by providers. Still a short DB lock.
-    let metadata = tokio::task::spawn_blocking({
-        let db = db.clone();
-        move || -> Result<TrackMetadata, String> {
-            let conn = db.lock().map_err(|e| e.to_string())?;
-            lyrics::fetch_track_metadata(&conn, trackId)
-        }
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-
-    // 3. Fetch lyrics from the override source (if any) or the configured
-    //    list, without holding the DB lock. Network I/O happens here.
-    let expected_override = override_source.clone();
-    let sources = match override_source {
-        Some(source) => vec![source],
-        None => settings.lyrics_sources.clone(),
-    };
-    let custom_for_fetch = custom.clone();
-    let lyrics = tokio::task::spawn_blocking(move || -> Result<Option<Lyrics>, String> {
-        lyrics::fetch_lyrics_from_sources_with_custom(
-            &sources,
-            &metadata,
-            custom_for_fetch.as_ref(),
-        )
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-
-    // 4. Write cache with a short DB lock.
-    if let Some(ref lyrics) = lyrics {
-        let lyrics = lyrics.clone();
-        tokio::task::spawn_blocking({
-            let db = db.clone();
-            let expected_override = expected_override.clone();
-            move || -> Result<(), String> {
-                let conn = db.lock().map_err(|e| e.to_string())?;
-                let current_override: Option<String> = conn
-                    .query_row(
-                        "SELECT NULLIF(lyrics_source, '') FROM tracks WHERE id = ?",
-                        [trackId],
-                        |row| row.get(0),
-                    )
-                    .optional()
-                    .map_err(|e| e.to_string())?
-                    .flatten();
-                if !can_cache_lyrics_result(&expected_override, &current_override) {
-                    // A source selection or custom lyric changed while this
-                    // network request was running. Let its newer request own
-                    // the cache instead of restoring stale lyrics.
-                    return Ok(());
-                }
-                cache::set_lyrics(
-                    &conn,
-                    trackId,
-                    &lyrics.source,
-                    lyrics.synced_text.as_deref(),
-                    lyrics.plain_text.as_deref(),
-                )
-            }
-        })
+    tokio::task::spawn_blocking(move || lookup_track_lyrics(&db, trackId))
         .await
-        .map_err(|e| e.to_string())??;
-    }
-
-    lyrics.ok_or_else(|| "lyrics not found".to_string())
+        .map_err(|e| e.to_string())?
 }
 
 fn lyric_preview(plain: Option<&str>) -> String {
@@ -282,13 +265,7 @@ fn store_manual_lyrics_choice(
 ) -> Result<(), String> {
     // A result chosen by the user is user-owned content, not a disposable
     // provider cache entry. This mirrors manually selected artist artwork.
-    cache::set_lyrics(conn, track_id, "custom", synced_text, plain_text)?;
-    conn.execute(
-        "UPDATE tracks SET lyrics_source = 'custom' WHERE id = ?",
-        [track_id],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
+    cache::set_custom_lyrics(conn, track_id, synced_text, plain_text)
 }
 
 /// Stores a manually picked lyrics result as durable custom content.
@@ -319,7 +296,107 @@ pub fn set_track_lyrics_choice(
         &source,
         syncedText.as_deref(),
         plainText.as_deref(),
-    )
+    )?;
+    drop(conn);
+    state.audio.refresh_track_lyrics(trackId)
+}
+
+fn edited_lyrics(
+    conn: &rusqlite::Connection,
+    track_id: i64,
+    text: &str,
+    apply_offset: bool,
+) -> Result<Lyrics, String> {
+    let offset: i64 = conn
+        .query_row(
+            "SELECT lrc_offset_ms FROM tracks WHERE id = ?",
+            [track_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    let synced = !lyrics::parse_lrc(text).is_empty();
+    let text = if synced && apply_offset {
+        lyrics::apply_lrc_offset(text, offset)
+    } else {
+        text.to_string()
+    };
+    let plain = lyrics::strip_lrc_timestamps(&text);
+    if plain.trim().is_empty() {
+        return Err("lyrics contain no text".into());
+    }
+    Ok(Lyrics {
+        source: "custom".into(),
+        synced_text: synced.then_some(text),
+        plain_text: Some(plain),
+    })
+}
+
+fn save_edited_lyrics(
+    conn: &rusqlite::Connection,
+    track_id: i64,
+    text: &str,
+    apply_offset: bool,
+) -> Result<Lyrics, String> {
+    let tx = rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| e.to_string())?;
+    let lyrics = edited_lyrics(&tx, track_id, text, apply_offset)?;
+    cache::set_custom_lyrics_record(
+        &tx,
+        track_id,
+        lyrics.synced_text.as_deref(),
+        lyrics.plain_text.as_deref(),
+        apply_offset && lyrics.synced_text.is_some(),
+    )?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(lyrics)
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+pub fn save_track_lyrics_text(
+    state: State<'_, AppState>,
+    trackId: i64,
+    text: String,
+    applyOffset: Option<bool>,
+) -> Result<Lyrics, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let lyrics = save_edited_lyrics(&conn, trackId, &text, applyOffset.unwrap_or(false))?;
+    drop(conn);
+    state.audio.refresh_track_lyrics(trackId)?;
+    Ok(lyrics)
+}
+
+fn export_lyrics_file(
+    conn: &rusqlite::Connection,
+    track_id: i64,
+    text: &str,
+    path: &std::path::Path,
+) -> Result<(), String> {
+    if !path
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case("lrc"))
+    {
+        return Err("choose a filename ending in .lrc".into());
+    }
+    let lyrics = edited_lyrics(conn, track_id, text, false)?;
+    let synced = lyrics
+        .synced_text
+        .ok_or("lyrics have no timestamps to export")?;
+    std::fs::write(path, format!("{}\n", synced.trim_end()))
+        .map_err(|e| format!("failed to export lyrics: {e}"))
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+pub fn export_track_lyrics(
+    state: State<'_, AppState>,
+    trackId: i64,
+    text: String,
+    path: String,
+) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    export_lyrics_file(&conn, trackId, &text, std::path::Path::new(&path))
 }
 
 #[tauri::command]
@@ -611,7 +688,7 @@ async fn cache_artist_image_result(
 
 /// Sets the artist's per-field metadata providers (mix & match): each of
 /// bio and image can come from the global list, a specific provider
-/// ("wikipedia:{lang}", "brave"), or the user's own content ("custom").
+/// ("wikipedia:{lang}", "deezer", "brave"), or the user's own content ("custom").
 /// Search terms override the artist name per field. Clears cached online
 /// data so the next view refetches.
 #[tauri::command]
@@ -668,8 +745,7 @@ fn manual_image_search_sources(settings: &Settings) -> Vec<String> {
         .artist_image_sources
         .iter()
         .filter(|source| {
-            matches!(source.as_str(), "brave" | "duckduckgo" | "shazam")
-                || source.starts_with("wikipedia:")
+            matches!(source.as_str(), "deezer" | "brave") || source.starts_with("wikipedia:")
         })
         .cloned()
         .collect()
@@ -810,25 +886,23 @@ pub async fn search_artist_images(
             candidates: Vec::new(),
             failed_sources: Vec::new(),
             timed_out_sources: Vec::new(),
+            provider_errors: Default::default(),
         });
     };
 
+    let sources = manual_image_search_sources(&settings);
+    if sources.is_empty() {
+        return Err("Enable an online artist image provider in Settings to search.".into());
+    }
     tokio::task::spawn_blocking(move || {
         // Start every enabled source in parallel, but do not let a stalled
         // provider trap the chooser in its loading state.
-        let sources = manual_image_search_sources(&settings);
         log::debug!(
             target: "sparkle::manual_image_search",
             "event=search_started provider_count={} providers={}",
             sources.len(),
             sources.join(",")
         );
-        if sources.is_empty() {
-            log::debug!(
-                target: "sparkle::manual_image_search",
-                "event=no_enabled_providers"
-            );
-        }
         let api_key = settings.brave_api_key.clone();
         let lang_hint = crate::providers::artist::brave_lang_hint(None, &settings).to_string();
         let outcome = collect_manual_image_search(
@@ -836,15 +910,10 @@ pub async fn search_artist_images(
             MANUAL_IMAGE_SEARCH_TIMEOUT,
             move |source| -> Result<Vec<ImageCandidate>, String> {
                 let urls = match source.as_str() {
+                    "deezer" => crate::providers::artist::deezer::search_image_urls(&title, 10),
                     "brave" => crate::providers::artist::brave::search_image_urls(
                         &title, &api_key, 10, &lang_hint,
                     ),
-                    "duckduckgo" => {
-                        crate::providers::artist::duckduckgo::search_image_urls(&title, 10)
-                    }
-                    "shazam" => {
-                        crate::providers::artist::shazam::search_image_urls(&title, 10)
-                    }
                     source if source.starts_with("wikipedia:") => {
                         let lang = source.trim_start_matches("wikipedia:");
                         crate::providers::artist::wikipedia::image_urls_by_title(&title, lang, 4)
@@ -873,6 +942,7 @@ pub async fn search_artist_images(
             );
         }
         let candidates = unique_image_candidates(outcome.candidates, 24);
+        let provider_errors = outcome.failed_sources.iter().cloned().collect();
         let failed_sources = outcome
             .failed_sources
             .into_iter()
@@ -897,6 +967,7 @@ pub async fn search_artist_images(
             candidates,
             failed_sources,
             timed_out_sources: outcome.timed_out_sources,
+            provider_errors,
         }
     })
     .await
@@ -919,9 +990,7 @@ pub async fn download_artist_image_candidate(
             .build()
             .map_err(|e| e.to_string())?;
         let mut request = client.get(&url);
-        if source == "duckduckgo" {
-            request = request.header("Referer", "https://duckduckgo.com/");
-        } else if let Some(lang) = source.strip_prefix("wikipedia:") {
+        if let Some(lang) = source.strip_prefix("wikipedia:") {
             request = request.header("Referer", format!("https://{lang}.wikipedia.org/"));
         }
         let response = request.send().map_err(|e| e.to_string())?;
@@ -1137,8 +1206,6 @@ pub fn get_online_settings(state: State<'_, AppState>) -> Result<OnlineSettings,
         artist_info_sources: settings.artist_info_sources,
         artist_image_sources: settings.artist_image_sources,
         album_art_sources: settings.album_art_sources,
-        artist_split_regex: settings.artist_split_regex,
-        artist_split_exceptions: settings.artist_split_exceptions,
         ui_font: settings.ui_font,
         lyrics_font: settings.lyrics_font,
         reduce_motion: settings.reduce_motion,
@@ -1179,8 +1246,6 @@ pub fn set_online_settings(
     full.artist_info_sources = settings.artist_info_sources;
     full.artist_image_sources = settings.artist_image_sources;
     full.album_art_sources = settings.album_art_sources;
-    full.artist_split_regex = settings.artist_split_regex;
-    full.artist_split_exceptions = settings.artist_split_exceptions;
     full.ui_font = settings.ui_font;
     full.lyrics_font = settings.lyrics_font;
     full.reduce_motion = settings.reduce_motion;

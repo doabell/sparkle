@@ -1,6 +1,32 @@
 use super::*;
 
 #[test]
+fn lyric_seek_caps_and_pauses_at_end_without_touching_a_new_track() {
+    assert_eq!(
+        lyric_seek_target(Some(1), 1, 180_000, 120_000),
+        Some((119_999, true))
+    );
+    assert_eq!(
+        lyric_seek_target(Some(1), 1, 120_000, 120_000),
+        Some((119_999, true))
+    );
+    assert_eq!(
+        lyric_seek_target(Some(1), 1, -200, 120_000),
+        Some((0, false))
+    );
+    assert_eq!(
+        lyric_seek_target(Some(1), 1, 60_000, 120_000),
+        Some((60_000, false))
+    );
+    assert_eq!(lyric_seek_target(Some(2), 1, 180_000, 120_000), None);
+    assert_eq!(lyric_seek_target(None, 1, 180_000, 120_000), None);
+    assert_eq!(
+        lyric_seek_target(Some(1), 1, 180_000, 0),
+        Some((180_000, false))
+    );
+}
+
+#[test]
 fn automatic_repeat_one_replays_but_manual_next_advances() {
     for repeat in [RepeatMode::Off, RepeatMode::All, RepeatMode::One] {
         assert_eq!(
@@ -184,11 +210,11 @@ fn playback_metadata_keeps_all_main_artists_and_missing_tracks_are_errors() {
     conn.execute_batch("INSERT INTO artists (id,name) VALUES (1,'Bob'),(2,'Alice'),(3,'Composer');
         INSERT INTO albums (id,title) VALUES (1,'Album');
         INSERT INTO tracks (id,file_path,title,album_id,duration_ms,lrc_offset_ms,embedded_lyrics) VALUES (1,'unused.flac','Song',1,180000,-50,'[00:02.00]Second\n[00:01.00]First');
-        INSERT INTO track_artists (track_id,artist_id,role) VALUES (1,1,'main'),(1,2,'main'),(1,3,'composer');").unwrap();
+        INSERT INTO track_artists (track_id,artist_id,role,position) VALUES (1,1,'main',0),(1,2,'main',1),(1,3,'composer',0);").unwrap();
     let db = Arc::new(Mutex::new(conn));
     let track = load_track_from_db(&db, 1).unwrap();
-    assert_eq!(track.artist_ids, vec![2, 1]);
-    assert_eq!(track.artist_names, vec!["Alice", "Bob"]);
+    assert_eq!(track.artist_ids, vec![1, 2]);
+    assert_eq!(track.artist_names, vec!["Bob", "Alice"]);
     assert_eq!(track.album_title.as_deref(), Some("Album"));
     assert_eq!(track.lrc_offset_ms, -50);
     assert!(load_track_from_db(&db, 99)

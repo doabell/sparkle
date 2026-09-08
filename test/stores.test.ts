@@ -12,6 +12,7 @@ import {
 } from "../src/lib/stores/playback";
 import { invoke, initializeMedia, listen } from "./support/platform";
 import { initializeMediaSessionOnce } from "../src/lib/utils/mediaSession";
+import { LYRICS_CHANGED_EVENT } from "../src/lib/api";
 
 test("UI preferences default without a window and persist falsy values and updates", () => {
     expect(get(uiPref("server", "fallback"))).toBe("fallback");
@@ -97,6 +98,55 @@ const state = {
     shuffle: false,
     repeat_mode: "off",
 };
+
+test("lyric timing edits are immediate, survive stale playback replies, and reset after replacement", async () => {
+    const handlers = new Map();
+    globalThis.window = {
+        addEventListener: (name, handler) => handlers.set(name, handler),
+    };
+    invoke.mockResolvedValue(state);
+    listen.mockResolvedValue(() => {});
+    try {
+        const store = createPlaybackStore();
+        for (let i = 0; i < 10; i++) await Promise.resolve();
+        store.updateCurrentTrackLrcOffset(7, -100);
+        expect(get(store).current_track.lrc_offset_ms).toBe(-100);
+        await store.pause();
+        expect(get(store).current_track.lrc_offset_ms).toBe(-100);
+        handlers.get(LYRICS_CHANGED_EVENT)({ detail: { trackId: 7 } });
+        expect(get(store).current_track.lrc_offset_ms).toBe(0);
+        // Once native state acknowledges the edit, later native metadata
+        // changes (such as restoring a backup) must no longer be masked.
+        store.set({
+            ...state,
+            current_track: { id: 7, lrc_offset_ms: 0 },
+            error: null,
+        });
+        store.set({
+            ...state,
+            current_track: { id: 7, lrc_offset_ms: 250 },
+            error: null,
+        });
+        expect(get(store).current_track.lrc_offset_ms).toBe(250);
+        store.set({
+            ...state,
+            current_track: { id: 8, lrc_offset_ms: 350 },
+            error: null,
+        });
+        expect(get(store).current_track.lrc_offset_ms).toBe(350);
+        handlers.get(LYRICS_CHANGED_EVENT)({ detail: { trackId: 7 } });
+        expect(get(store).current_track.lrc_offset_ms).toBe(350);
+        await store.seekLyrics(8, 180_000);
+        expect(invoke).toHaveBeenLastCalledWith("seek_lyrics", {
+            trackId: 8,
+            positionMs: 180_000,
+        });
+    } finally {
+        delete globalThis.window;
+        invoke.mockReset();
+        listen.mockReset();
+    }
+});
 
 test("playback initializes from native state and merges events without losing volume", async () => {
     const handlers = new Map();

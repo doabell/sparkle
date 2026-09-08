@@ -45,6 +45,19 @@ full-row link, with any independent action raised above that hit target.
   neutral interactive backgrounds.
 - Text inputs, artwork previews, and navigation rows use the smaller surface
   radii. Rounded controls do not require every surface to become a pill.
+- Lyrics and artist search use the shared `SearchField` and `SearchFeedback`
+  components. Search uses the standard text input and secondary button in one
+  aligned row, at the same control height as dialog actions and source selectors.
+  The search button uses background feedback without movement. Empty results, provider failures, and partial
+  results have distinct inline states; provider details expand on demand.
+- Search dialogs use the shared `search-dialog` styles. Lyrics search is
+  28rem wide and artist editing is 32rem, bounded by the viewport. The separate
+  LRC editor is 44rem. Keep the heading and actions visible while the body
+  scrolls. Source and online search stay together, separated by one rule.
+- Lyrics results open a full text preview before Use Lyrics commits the
+  selection. Artist image results use circular previews with provider names
+  underneath; choosing one opens a crop view with Back and Use Image. Image
+  and Biography use the existing segmented control and save independently.
 
 ## Surface hierarchy
 
@@ -98,6 +111,19 @@ glyph metrics; a subtle text stroke gives the active line its bolder appearance
 without changing glyph advances. Focus must never rewrap a line, including with
 custom lyric fonts. Auto-centering scrolls only the lyric panel and respects
 both motion preferences.
+
+Blank timed LRC cues are deliberately ignored, keeping the current sentence
+visible through instrumental gaps. The first nonempty sentence is shown during
+the intro even when its timestamp is later in the song. Source selection and
+search share one popup, which contains the Edit lyrics action. Choose File is
+shown only when the Custom source is selected, for both lyrics and artist images.
+Biography search terms are editable for Default and explicit online sources.
+Adjust and LRC export live in the editor opened from the lyrics popup. In the Album and Artist
+layouts, the lyric panel's Timing toggle reveals only the offset adjustment
+controls. The Lyrics layout keeps these controls visible. Only Adjust bakes
+the current correction into the timestamps and resets the track offset to zero.
+Save keeps the written timestamps and playback offset; Export keeps the written
+timestamps and does not change the library.
 
 ## Page structure
 

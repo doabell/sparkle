@@ -438,6 +438,22 @@ impl AudioController {
         self.get_playback_state()
     }
 
+    pub fn seek_lyrics(&self, track_id: i64, position_ms: i64) -> Result<PlaybackState, String> {
+        self.tx
+            .send(AudioCommand::SeekLyrics(track_id, position_ms))
+            .map_err(|e| e.to_string())?;
+        self.get_playback_state()
+    }
+
+    pub fn refresh_track_lyrics(&self, track_id: i64) -> Result<(), String> {
+        self.tx
+            .send(AudioCommand::RefreshLyrics(track_id))
+            .map_err(|e| e.to_string())?;
+        // Complete after the in-memory metadata is current, so subsequent
+        // pause/seek responses cannot restore an old source or timing offset.
+        self.get_playback_state().map(|_| ())
+    }
+
     pub fn next_track(&self, source: PlaybackSource) -> Result<PlaybackState, String> {
         self.tx
             .send(AudioCommand::Next(source))
@@ -609,6 +625,8 @@ enum AudioCommand {
     Pause(PlaybackSource),
     Stop(PlaybackSource),
     Seek(i64, PlaybackSource),
+    SeekLyrics(i64, i64),
+    RefreshLyrics(i64),
     Next(PlaybackSource),
     Previous(PlaybackSource),
     SetVolume(f64, PlaybackSource),
@@ -1837,6 +1855,61 @@ fn handle_command(
                 source.as_str()
             );
         }
+        AudioCommand::SeekLyrics(track_id, position_ms) => {
+            let target = {
+                let s = lock_state(state);
+                lyric_seek_target(
+                    s.current_track.as_ref().map(|track| track.id),
+                    track_id,
+                    position_ms,
+                    s.duration_ms,
+                )
+            };
+            if let Some((position_ms, pause_at_end)) = target {
+                if pause_at_end {
+                    handle_command(
+                        AudioCommand::Pause(PlaybackSource::Ui),
+                        player,
+                        state,
+                        db,
+                        writer,
+                        app_handle,
+                    );
+                }
+                handle_command(
+                    AudioCommand::Seek(position_ms, PlaybackSource::Ui),
+                    player,
+                    state,
+                    db,
+                    writer,
+                    app_handle,
+                );
+            }
+        }
+        AudioCommand::RefreshLyrics(track_id) => {
+            let is_current = lock_state(state)
+                .current_track
+                .as_ref()
+                .map(|track| track.id)
+                == Some(track_id);
+            if is_current {
+                if let Ok(track) = load_track_from_db(db, track_id) {
+                    let first_line = known_first_lyric_line(db, &track).ok().flatten();
+                    {
+                        let mut s = lock_state(state);
+                        if let Some(current) = s
+                            .current_track
+                            .as_mut()
+                            .filter(|track| track.id == track_id)
+                        {
+                            *current = track;
+                            s.first_lyric_line = first_line;
+                        }
+                    }
+                    emit_state_changed(app_handle, state);
+                }
+            }
+        }
         AudioCommand::Next(source) => {
             advance(player, state, db, writer, app_handle, false, source);
             save_session_to_db(state, writer);
@@ -2120,6 +2193,24 @@ fn seek_to_start(player: Option<&Player>, state: &Arc<Mutex<SharedState>>) {
         let mut s = lock_state(state);
         s.position_ms = 0;
         s.seek_target = Some((0, Instant::now()));
+    }
+}
+
+fn lyric_seek_target(
+    current_track_id: Option<i64>,
+    requested_track_id: i64,
+    position_ms: i64,
+    duration_ms: i64,
+) -> Option<(i64, bool)> {
+    if current_track_id != Some(requested_track_id) {
+        return None;
+    }
+    if duration_ms > 0 && position_ms >= duration_ms {
+        // Keep the decoder inside this track and pause before seeking. An
+        // invalid LRC timestamp must not exhaust the source and advance queue.
+        Some((duration_ms.saturating_sub(1), true))
+    } else {
+        Some((position_ms.max(0), false))
     }
 }
 
@@ -2577,33 +2668,28 @@ fn known_first_lyric_line(
         None => load_lyrics_sources(&conn)?,
     };
 
-    // get_lyrics returns a cached provider before probing any source. Mirror
-    // that choice so the layout hint describes the lyrics it will return.
-    for source in &sources {
-        if let Some(cached) = cache::get_lyrics_from_source(&conn, track.id, source)? {
-            return Ok(cached
-                .synced_text
-                .as_deref()
-                .and_then(lyrics::first_synced_line));
-        }
-    }
+    let custom = cache::get_lyrics_from_source(&conn, track.id, "custom")?;
+    let cached = cache::get_non_custom_lyrics(&conn, track.id)?;
     drop(conn);
-
-    // Embedded and sidecar lyrics can be established without a network
-    // lookup. Remote providers stay unknown until get_lyrics finishes.
     let metadata = TrackMetadata {
         file_path: Some(track.file_path.clone()),
         embedded_lyrics: track.embedded_lyrics.clone(),
         ..TrackMetadata::default()
     };
+    // Resolve in the same order as get_lyrics. A remote cache miss is unknown
+    // here; the layout hint must not jump ahead to a lower-priority source.
     for source in sources {
-        let lyrics = match source.as_str() {
-            "custom" => None,
-            "embedded" => lyrics::embedded::fetch(&metadata)?,
-            "lrc" => lyrics::lrc::fetch(&metadata)?,
-            _ => return Ok(None),
+        let result = match source.as_str() {
+            "none" => return Ok(None),
+            "custom" => custom.clone(),
+            "embedded" => lyrics::embedded::fetch(&metadata).ok().flatten(),
+            "lrc" => lyrics::lrc::fetch(&metadata).ok().flatten(),
+            _ => match cached.iter().find(|lyrics| lyrics.source == source) {
+                Some(lyrics) => Some(lyrics.clone()),
+                None => return Ok(None),
+            },
         };
-        if let Some(lyrics) = lyrics {
+        if let Some(lyrics) = result {
             return Ok(lyrics
                 .synced_text
                 .as_deref()
@@ -2643,7 +2729,7 @@ fn load_track_artists(
             "SELECT a.id, a.name FROM artists a \
              JOIN track_artists ta ON ta.artist_id = a.id \
              WHERE ta.track_id = ? AND ta.role = 'main' \
-             ORDER BY a.name",
+             ORDER BY ta.position, a.name",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt

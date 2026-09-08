@@ -34,6 +34,9 @@
     import Artwork from "$lib/components/Artwork.svelte";
     import ArtistAvatar from "$lib/components/ArtistAvatar.svelte";
     import Select from "$lib/components/Select.svelte";
+    import SearchField from "$lib/components/SearchField.svelte";
+    import SearchFeedback from "$lib/components/SearchFeedback.svelte";
+    import { dialogFocus } from "$lib/utils/dialogFocus";
     import { onMount } from "svelte";
     import { addToast } from "$lib/stores/toast";
     import { windowPageTitle } from "$lib/stores/windowPageTitle";
@@ -49,18 +52,20 @@
     let error = $state<string | null>(null);
 
     let editOpen = $state(false);
+    let editSection = $state<"image" | "bio">("image");
     let editInfoProvider = $state("default");
     let editImageProvider = $state("default");
     let editInfoTerm = $state("");
-    let editImageTerm = $state("");
     let editBio = $state("");
     let editSaving = $state(false);
     let imageCandidates = $state<ImageCandidate[]>([]);
     let searchingImages = $state(false);
+    let imageSearchRequest = 0;
     type ImageSearchStatus =
         "idle" | "searching" | "success" | "empty" | "partial" | "failed";
     let imageSearchStatus = $state<ImageSearchStatus>("idle");
     let imageSearchMessage = $state<string | null>(null);
+    let imageSearchIssues = $state<string[]>([]);
     let chooserQuery = $state("");
     // URLs that fail both direct and Rust-backed preview loading are hidden.
     let brokenCandidates = $state<Set<string>>(new Set());
@@ -86,7 +91,7 @@
         return (
             {
                 brave: "Brave Image Search",
-                duckduckgo: "DuckDuckGo Images",
+                deezer: "Deezer",
                 embedded: "Embedded tags",
                 cover_art_archive: "Cover Art Archive",
                 lrclib: "LRCLIB",
@@ -144,6 +149,8 @@
     });
 
     async function load(id: number) {
+        imageSearchRequest += 1;
+        editOpen = false;
         loading = true;
         error = null;
         artist = null;
@@ -199,10 +206,17 @@
     }
 
     function openEdit() {
+        if (editBusy) return;
+        imageSearchRequest += 1;
+        searchingImages = false;
+        editSection = "image";
+        imageSearchIssues = [];
+        brokenCandidates = new Set();
+        cropCandidate = null;
+        cropLoadingUrl = null;
         editInfoProvider = artist?.info_provider ?? "default";
         editImageProvider = artist?.image_provider ?? "default";
         editInfoTerm = artist?.info_term ?? "";
-        editImageTerm = artist?.image_term ?? "";
         editBio = artist?.bio ?? "";
         chooserQuery =
             artist?.image_term || artist?.info_term || artist?.name || "";
@@ -214,8 +228,15 @@
         editOpen = true;
     }
 
+    function closeEdit() {
+        if (editBusy) return;
+        imageSearchRequest += 1;
+        editOpen = false;
+    }
+
     async function findImages() {
-        if (searchingImages || !chooserQuery.trim()) return;
+        if (searchingImages || editBusy || !chooserQuery.trim()) return;
+        const request = ++imageSearchRequest;
         searchingImages = true;
         imageCandidates = [];
         brokenCandidates = new Set();
@@ -223,49 +244,49 @@
         candidatePreviewLoading = new Set();
         cropCandidate = null;
         imageSearchStatus = "searching";
-        imageSearchMessage = "Searching enabled image providers…";
+        imageSearchMessage = "Searching online providers…";
+        imageSearchIssues = [];
         try {
             const result: ImageSearchResults = await searchArtistImages(
                 artistId,
                 chooserQuery,
             );
+            if (request !== imageSearchRequest || !editOpen) return;
             imageCandidates = result.candidates;
-            const failures = [
-                result.timed_out_sources.length > 0
-                    ? `Timed out waiting for ${result.timed_out_sources.join(", ")}.`
-                    : null,
-                result.failed_sources.length > 0
-                    ? `Could not search ${result.failed_sources.join(", ")}.`
-                    : null,
-            ].filter((message): message is string => message !== null);
-            if (failures.length > 0) {
-                const availability =
-                    imageCandidates.length > 0
-                        ? "Showing available results."
-                        : "No usable image results were found.";
-                imageSearchStatus =
-                    imageCandidates.length > 0 ? "partial" : "failed";
-                imageSearchMessage = `${failures.join(" ")} ${availability}`;
-                addToast(imageSearchMessage, "error");
-            } else if (imageCandidates.length === 0) {
-                imageSearchStatus = "empty";
-                imageSearchMessage = "No images found online for this artist.";
-                addToast("No images found online for this artist", "error");
+            imageSearchIssues = [
+                ...result.timed_out_sources.map(
+                    (source) => `${providerOptionLabel(source)}: timed out`,
+                ),
+                ...result.failed_sources.map(
+                    (source) =>
+                        `${providerOptionLabel(source)}: ${result.provider_errors?.[source] ?? "search unavailable"}`,
+                ),
+            ];
+            if (imageCandidates.length > 0) {
+                imageSearchStatus = imageSearchIssues.length
+                    ? "partial"
+                    : "success";
+                imageSearchMessage = `${imageCandidates.length} result${imageCandidates.length === 1 ? "" : "s"}${imageSearchIssues.length ? " · Some providers unavailable" : ""}`;
             } else {
-                imageSearchStatus = "success";
-                imageSearchMessage = `Found ${imageCandidates.length} image${imageCandidates.length === 1 ? "" : "s"}.`;
+                imageSearchStatus = imageSearchIssues.length
+                    ? "failed"
+                    : "empty";
+                imageSearchMessage = imageSearchIssues.length
+                    ? "Search unavailable. Try again or choose a file."
+                    : "No matches. Try another spelling or artist name.";
             }
         } catch (e) {
+            if (request !== imageSearchRequest || !editOpen) return;
             imageSearchStatus = "failed";
             imageSearchMessage = `Image search failed: ${String(e)}`;
-            addToast(imageSearchMessage, "error");
         } finally {
-            searchingImages = false;
+            if (request === imageSearchRequest) searchingImages = false;
         }
     }
 
     async function handleCandidateError(candidate: ImageCandidate) {
         const { source, url } = candidate;
+        const request = imageSearchRequest;
         if (brokenCandidates.has(url) || candidatePreviewLoading.has(url)) {
             return;
         }
@@ -275,13 +296,14 @@
             const nextPreviewUrls = new Map(candidatePreviewUrls);
             nextPreviewUrls.delete(url);
             candidatePreviewUrls = nextPreviewUrls;
-            brokenCandidates = new Set(brokenCandidates).add(url);
+            markCandidateBroken(url);
             return;
         }
 
         candidatePreviewLoading = new Set(candidatePreviewLoading).add(url);
         try {
             const image = await downloadArtistImageCandidate(url, source);
+            if (request !== imageSearchRequest || !editOpen) return;
             const previewUrl = imageDataToUrl(image, "");
             if (!previewUrl) throw new Error("downloaded preview was empty");
             candidatePreviewUrls = new Map(candidatePreviewUrls).set(
@@ -289,26 +311,26 @@
                 previewUrl,
             );
         } catch {
-            const nextBrokenCandidates = new Set(brokenCandidates).add(url);
-            brokenCandidates = nextBrokenCandidates;
-            const remaining = imageCandidates.filter(
-                (item) => !nextBrokenCandidates.has(item.url),
-            ).length;
-            if (remaining > 0) {
-                imageSearchStatus = "partial";
-                imageSearchMessage =
-                    "Some image hosts blocked thumbnails; remaining results are shown.";
-            } else {
-                imageSearchStatus = "failed";
-                imageSearchMessage =
-                    "The image hosts blocked every result. Try another search.";
-                addToast(imageSearchMessage, "error");
-            }
+            if (request !== imageSearchRequest || !editOpen) return;
+            markCandidateBroken(url);
         } finally {
-            const nextLoading = new Set(candidatePreviewLoading);
-            nextLoading.delete(url);
-            candidatePreviewLoading = nextLoading;
+            if (request === imageSearchRequest) {
+                const nextLoading = new Set(candidatePreviewLoading);
+                nextLoading.delete(url);
+                candidatePreviewLoading = nextLoading;
+            }
         }
+    }
+
+    function markCandidateBroken(url: string) {
+        brokenCandidates = new Set(brokenCandidates).add(url);
+        const remaining = imageCandidates.filter(
+            (item) => !brokenCandidates.has(item.url),
+        ).length;
+        imageSearchStatus = remaining ? "partial" : "failed";
+        imageSearchMessage = remaining
+            ? `${remaining} results · Some previews unavailable`
+            : "Images could not be loaded. Try another search or choose a file.";
     }
 
     // --- Crop & focus --------------------------------------------------------
@@ -323,17 +345,22 @@
     let cropZoom = $state(1);
     let cropNatural = $state<[number, number]>([1, 1]);
     let cropSaving = $state(false);
+    let editBusy = $derived(
+        editSaving || cropSaving || cropLoadingUrl !== null,
+    );
     let dragStart: { x: number; y: number; fx: number; fy: number } | null =
         null;
 
     async function startCrop(candidate: ImageCandidate) {
-        if (cropLoadingUrl) return;
+        if (editBusy || searchingImages) return;
+        const request = imageSearchRequest;
         cropLoadingUrl = candidate.url;
         try {
             const image = await downloadArtistImageCandidate(
                 candidate.url,
                 candidate.source,
             );
+            if (request !== imageSearchRequest || !editOpen) return;
             cropCandidate = image;
             cropUrl = imageDataToUrl(image, "");
             cropX = 0.5;
@@ -343,14 +370,16 @@
                 const img = new Image();
                 img.src = cropUrl;
                 await img.decode();
+                if (request !== imageSearchRequest || !editOpen) return;
                 cropNatural = [img.naturalWidth || 1, img.naturalHeight || 1];
             } catch {
-                cropNatural = [1, 1];
+                if (request === imageSearchRequest) cropNatural = [1, 1];
             }
         } catch (e) {
+            if (request !== imageSearchRequest || !editOpen) return;
             addToast(String(e), "error");
         } finally {
-            cropLoadingUrl = null;
+            if (request === imageSearchRequest) cropLoadingUrl = null;
         }
     }
 
@@ -395,9 +424,24 @@
     }
 
     // Bakes the crop into a 512px square and stores it as the custom image.
-    // Shared by the "Use image" button and Save (a crop left open is part of
-    // saving — one click commits everything).
-    async function applyCrop() {
+    // The crop view has one explicit action that commits this image.
+    // The command replaces all four fields. Fill untouched fields from the
+    // saved artist, so changing an image cannot reset its biography source.
+    function saveArtistProviderFields(
+        target: Artist,
+        changes: Parameters<typeof setArtistProviders>[1],
+    ) {
+        return setArtistProviders(target.id, {
+            infoProvider: target.info_provider ?? null,
+            imageProvider: target.image_provider ?? null,
+            infoTerm: target.info_term ?? null,
+            imageTerm: target.image_term ?? null,
+            ...changes,
+        });
+    }
+
+    async function applyCrop(target: Artist) {
+        const targetId = target.id;
         if (!cropCandidate) return;
         const img = new Image();
         img.src = cropUrl;
@@ -423,22 +467,28 @@
         );
         if (!blob) throw new Error("failed to encode image");
         const bytes = Array.from(new Uint8Array(await blob.arrayBuffer()));
-        await setArtistImageData(artistId, bytes);
+        await setArtistImageData(targetId, bytes);
         // A hand-picked image is custom content — persist the provider right
         // away, otherwise the old explicit provider keeps serving the old image.
-        await setArtistProviders(artistId, { imageProvider: "custom" });
+        await saveArtistProviderFields(target, { imageProvider: "custom" });
         editImageProvider = "custom";
-        artistImage = null;
-        invalidateArtistImage(artistId);
-        refreshMetadata();
+        invalidateArtistImage(targetId);
+        if (artistId === targetId) {
+            artist = await getArtist(targetId);
+            artistImage = null;
+            refreshMetadata();
+        }
         cropCandidate = null;
     }
 
     async function confirmCrop() {
-        if (!cropCandidate || cropSaving) return;
+        if (!artist || !cropCandidate || editBusy) return;
+        const target = artist;
+        const targetId = target.id;
         cropSaving = true;
         try {
-            await applyCrop();
+            await applyCrop(target);
+            if (artistId === targetId) editOpen = false;
             addToast("Artist image updated", "success");
         } catch (e) {
             addToast(String(e), "error");
@@ -448,32 +498,50 @@
     }
 
     async function saveEdit() {
-        if (!artist) return;
+        if (!artist || editBusy) return;
+        const target = artist;
+        const targetId = target.id;
+        const section = editSection;
+        const newBio = editBio.trim() || undefined;
         editSaving = true;
         try {
-            // A crop still open in the chooser is part of the save.
-            if (cropCandidate) {
-                await applyCrop();
+            if (section === "image") {
+                await saveArtistProviderFields(target, {
+                    imageProvider:
+                        editImageProvider === "default"
+                            ? null
+                            : editImageProvider,
+                    imageTerm:
+                        chooserQuery.trim() === target.name
+                            ? null
+                            : chooserQuery.trim() || null,
+                });
+            } else {
+                await saveArtistProviderFields(target, {
+                    infoProvider:
+                        editInfoProvider === "default"
+                            ? null
+                            : editInfoProvider,
+                    infoTerm: editInfoTerm.trim() || null,
+                });
+                if (newBio !== (target.bio ?? undefined))
+                    await setArtistBio(targetId, newBio);
             }
-            await setArtistProviders(artistId, {
-                infoProvider:
-                    editInfoProvider === "default" ? null : editInfoProvider,
-                imageProvider:
-                    editImageProvider === "default" ? null : editImageProvider,
-                infoTerm: editInfoTerm.trim() || null,
-                imageTerm: editImageTerm.trim() || null,
-            });
-            const newBio = editBio.trim() || undefined;
-            if (newBio !== (artist.bio ?? undefined)) {
-                await setArtistBio(artistId, newBio);
+            const updated = await getArtist(targetId);
+            invalidateArtistImage(targetId);
+            if (artistId === targetId) {
+                artist = updated;
+                artistInfo = null;
+                artistImage = null;
+                refreshMetadata();
+                editOpen = false;
             }
-            artist = await getArtist(artistId);
-            artistInfo = null;
-            artistImage = null;
-            invalidateArtistImage(artistId);
-            refreshMetadata();
-            addToast("Artist updated", "success");
-            editOpen = false;
+            addToast(
+                section === "image"
+                    ? "Image source updated"
+                    : "Biography updated",
+                "success",
+            );
         } catch (e) {
             addToast(String(e), "error");
         } finally {
@@ -482,34 +550,53 @@
     }
 
     async function handlePickImage() {
-        if (!artist) return;
-        const path = await pickImageFile();
-        if (!path) return;
+        if (!artist || editBusy) return;
+        const target = artist;
+        const targetId = target.id;
+        editSaving = true;
         try {
-            await setArtistImageFile(artistId, path);
-            // A hand-picked image is custom content — persist the provider right
-            // away, otherwise the old explicit provider keeps serving the old image.
-            await setArtistProviders(artistId, { imageProvider: "custom" });
-            editImageProvider = "custom";
-            artistImage = null;
-            invalidateArtistImage(artistId);
-            refreshMetadata();
+            const path = await pickImageFile();
+            if (!path) return;
+            await setArtistImageFile(targetId, path);
+            await saveArtistProviderFields(target, { imageProvider: "custom" });
+            const updated = await getArtist(targetId);
+            invalidateArtistImage(targetId);
+            if (artistId === targetId) {
+                artist = updated;
+                artistImage = null;
+                refreshMetadata();
+                editOpen = false;
+            }
             addToast("Artist image updated", "success");
         } catch (e) {
             addToast(String(e), "error");
+        } finally {
+            editSaving = false;
         }
     }
 
     async function handleClearImage() {
-        if (!artist) return;
+        if (!artist || editBusy) return;
+        const target = artist;
+        const targetId = target.id;
+        editSaving = true;
         try {
-            await clearArtistCustomImage(artistId);
-            artistImage = null;
-            invalidateArtistImage(artistId);
-            refreshMetadata();
+            await clearArtistCustomImage(targetId);
+            if (target.image_provider === "custom")
+                await saveArtistProviderFields(target, { imageProvider: null });
+            const updated = await getArtist(targetId);
+            invalidateArtistImage(targetId);
+            if (artistId === targetId) {
+                artist = updated;
+                editImageProvider = updated?.image_provider ?? "default";
+                artistImage = null;
+                refreshMetadata();
+            }
             addToast("Custom image removed", "success");
         } catch (e) {
             addToast(String(e), "error");
+        } finally {
+            editSaving = false;
         }
     }
 
@@ -847,292 +934,253 @@
 {#if editOpen && artist}
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div
-        class="dialog-overlay"
+        class="search-dialog-overlay"
         role="presentation"
         tabindex="-1"
-        onclick={() => (editOpen = false)}
-        onkeydown={(e: KeyboardEvent) => {
-            if (e.key === "Escape") editOpen = false;
-        }}
+        onclick={closeEdit}
     >
         <div
-            class="dialog"
+            class="search-dialog"
+            style:--search-dialog-width="32rem"
             role="dialog"
             aria-modal="true"
             aria-labelledby="artist-edit-title"
             tabindex="-1"
-            onclick={(e: MouseEvent) => e.stopPropagation()}
+            use:dialogFocus={closeEdit}
+            onclick={(e) => e.stopPropagation()}
         >
-            <h2 id="artist-edit-title" class="dialog-title">Edit artist</h2>
-
-            <div class="dialog-body">
-                <div class="field">
-                    <div class="field-head">
-                        <span class="field-label">Bio</span>
-                        <div class="field-control">
-                            <Select
-                                options={infoProviderOptions}
-                                value={editInfoProvider}
-                                onchange={(v) => (editInfoProvider = v)}
-                                ariaLabel="Bio provider"
+            <header class="search-dialog-heading">
+                <h2 id="artist-edit-title">
+                    {cropCandidate ? "Crop Image" : "Edit Artist"}
+                </h2>
+            </header>
+            {#if !cropCandidate}
+                <div
+                    class="segmented-control edit-sections"
+                    role="group"
+                    aria-label="Artist details"
+                >
+                    <button
+                        class:active={editSection === "image"}
+                        aria-pressed={editSection === "image"}
+                        disabled={editBusy}
+                        onclick={() => (editSection = "image")}>Image</button
+                    >
+                    <button
+                        class:active={editSection === "bio"}
+                        aria-pressed={editSection === "bio"}
+                        disabled={editBusy}
+                        onclick={() => (editSection = "bio")}>Biography</button
+                    >
+                </div>
+            {/if}
+            <div class="search-dialog-body">
+                {#if cropCandidate}
+                    <div class="crop-area">
+                        <div
+                            class="crop-frame"
+                            role="application"
+                            aria-label="Drag to position the crop"
+                            onpointerdown={cropPointerDown}
+                            onpointermove={cropPointerMove}
+                            onpointerup={cropPointerUp}
+                        >
+                            <img
+                                src={cropUrl}
+                                alt=""
+                                draggable="false"
+                                style:object-position={`${cropX * 100}% ${cropY * 100}%`}
+                                style:transform={`scale(${cropZoom})`}
+                                style:transform-origin={`${cropX * 100}% ${cropY * 100}%`}
+                            />
+                            <div class="crop-circle" aria-hidden="true"></div>
+                        </div>
+                        <div class="crop-zoom">
+                            <span class="crop-zoom-label">Zoom</span>
+                            <input
+                                type="range"
+                                min="1"
+                                max="3"
+                                step="0.01"
+                                bind:value={cropZoom}
+                                aria-label="Zoom"
                             />
                         </div>
+                        <p class="hint">
+                            Drag to position, use the slider to zoom. The circle
+                            previews the artist avatar crop.
+                        </p>
                     </div>
-                    {#if editInfoProvider.startsWith("wikipedia:")}
-                        <input
-                            type="text"
-                            bind:value={editInfoTerm}
-                            placeholder={artist.name}
-                            spellcheck="false"
-                            aria-label="Wikipedia search term"
-                        />
-                        <p class="hint">
-                            Search term for the Wikipedia page. Leave empty to
-                            use the artist name.
-                        </p>
-                    {:else if editInfoProvider === "custom"}
-                        <textarea
-                            bind:value={editBio}
-                            rows="4"
-                            placeholder="Write your own bio"
-                            aria-label="Custom bio"></textarea>
-                        <p class="hint">
-                            Your own text, shown instead of an online biography.
-                        </p>
-                    {:else}
-                        <p class="hint">
-                            Providers from Settings are tried in order.
-                        </p>
-                    {/if}
-                </div>
-
-                <div class="field">
-                    <div class="field-head">
-                        <span class="field-label">Image</span>
-                        <div class="field-control">
+                {:else if editSection === "image"}
+                    <section
+                        class="search-dialog-section"
+                        aria-label="Artist image source"
+                    >
+                        <div class="search-dialog-row">
+                            <span class="search-dialog-label">Source</span>
                             <Select
                                 options={imageProviderOptions}
                                 value={editImageProvider}
-                                onchange={(v) => (editImageProvider = v)}
-                                ariaLabel="Image provider"
-                            />
-                        </div>
-                    </div>
-                    {#if editImageProvider.startsWith("wikipedia:") || editImageProvider === "brave"}
-                        <input
-                            type="text"
-                            bind:value={editImageTerm}
-                            placeholder={editInfoTerm || artist.name}
-                            spellcheck="false"
-                            aria-label="Image search term"
-                        />
-                        <p class="hint">
-                            Search term for the image lookup. Leave empty to use
-                            the artist name.
-                        </p>
-                    {:else if editImageProvider === "custom"}
-                        <div class="image-actions">
-                            <button
-                                class="btn-pill btn-secondary"
-                                onclick={handlePickImage}
-                                disabled={editSaving}
-                            >
-                                Choose file...
-                            </button>
-                            <button
-                                class="btn-pill btn-secondary"
-                                onclick={handleClearImage}
-                                disabled={editSaving}
-                            >
-                                Remove image
-                            </button>
-                        </div>
-                        <p class="hint">
-                            A local image file, shown instead of an online
-                            image.
-                        </p>
-                    {:else}
-                        <p class="hint">
-                            Providers from Settings are tried in order.
-                        </p>
-                    {/if}
-
-                    <div class="chooser">
-                        <span class="chooser-title">
-                            <svg
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                aria-hidden="true"
-                            >
-                                <rect
-                                    x="3"
-                                    y="3"
-                                    width="18"
-                                    height="18"
-                                    rx="2"
-                                    ry="2"
-                                />
-                                <circle cx="8.5" cy="8.5" r="1.5" />
-                                <path d="m21 15-5-5L5 21" />
-                            </svg>
-                            Find an Image Online
-                        </span>
-                        <div class="chooser-search">
-                            <input
-                                type="text"
-                                bind:value={chooserQuery}
-                                placeholder={`Search the web for images of ${artist.name}…`}
-                                spellcheck="false"
-                                aria-label="Image search term"
-                                onkeydown={(e) => {
-                                    if (e.key === "Enter") findImages();
+                                onchange={(v) => {
+                                    if (!editBusy) editImageProvider = v;
                                 }}
+                                ariaLabel="Image provider"
+                                disabled={editBusy}
                             />
-                            <button
-                                class="btn-pill btn-secondary"
-                                onclick={findImages}
-                                disabled={searchingImages ||
-                                    !chooserQuery.trim()}
-                            >
-                                {#if searchingImages}
-                                    <Loading variant="inline" />
-                                    Searching…
-                                {:else if imageSearchStatus === "failed" || imageSearchStatus === "empty"}
-                                    Retry search
-                                {:else}
-                                    <svg
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                        aria-hidden="true"
-                                    >
-                                        <circle cx="11" cy="11" r="8" />
-                                        <path d="m21 21-4.3-4.3" />
-                                    </svg>
-                                    Search images
-                                {/if}
-                            </button>
                         </div>
-                        {#if imageSearchMessage}
-                            <p class="hint" role="status">
-                                {imageSearchMessage}
-                            </p>
-                        {/if}
-                        {#if cropCandidate}
-                            <div class="crop-area">
-                                <div
-                                    class="crop-frame"
-                                    role="application"
-                                    aria-label="Drag to position the crop"
-                                    onpointerdown={cropPointerDown}
-                                    onpointermove={cropPointerMove}
-                                    onpointerup={cropPointerUp}
+                        {#if editImageProvider === "custom"}
+                            <div class="search-dialog-tools">
+                                <button
+                                    class="btn-pill btn-secondary"
+                                    onclick={handlePickImage}
+                                    disabled={editBusy}>Choose File…</button
                                 >
-                                    <img
-                                        src={cropUrl}
-                                        alt=""
-                                        draggable="false"
-                                        style:object-position={`${cropX * 100}% ${cropY * 100}%`}
-                                        style:transform={`scale(${cropZoom})`}
-                                        style:transform-origin={`${cropX * 100}% ${cropY * 100}%`}
-                                    />
-                                    <div
-                                        class="crop-circle"
-                                        aria-hidden="true"
-                                    ></div>
-                                </div>
-                                <div class="crop-zoom">
-                                    <span class="crop-zoom-label">Zoom</span>
-                                    <input
-                                        type="range"
-                                        min="1"
-                                        max="3"
-                                        step="0.01"
-                                        bind:value={cropZoom}
-                                        aria-label="Zoom"
-                                    />
-                                </div>
-                                <div class="crop-actions">
+                                {#if artist.image_provider === "custom" || artistImage?.source === "custom"}
                                     <button
                                         class="btn-pill btn-secondary"
-                                        onclick={() => (cropCandidate = null)}
-                                        disabled={cropSaving}
+                                        onclick={handleClearImage}
+                                        disabled={editBusy}
+                                        >Remove Custom</button
                                     >
-                                        Back
-                                    </button>
-                                    <button
-                                        class="btn-pill btn-primary"
-                                        onclick={confirmCrop}
-                                        disabled={cropSaving}
-                                    >
-                                        {cropSaving ? "Saving…" : "Use image"}
-                                    </button>
-                                </div>
-                                <p class="hint">
-                                    Drag to position, use the slider to zoom.
-                                    The circle previews the artist avatar crop.
-                                </p>
+                                {/if}
                             </div>
-                        {:else if imageCandidates.length > 0}
-                            <div class="candidate-grid">
+                        {/if}
+                    </section>
+                    <section
+                        class="search-dialog-section"
+                        aria-label="Search artist images online"
+                    >
+                        <SearchField
+                            bind:value={chooserQuery}
+                            label="Search Online"
+                            placeholder="Artist name"
+                            busy={searchingImages}
+                            disabled={editBusy}
+                            onsearch={findImages}
+                        />
+                        <SearchFeedback
+                            message={imageSearchMessage}
+                            issues={imageSearchIssues}
+                            failed={imageSearchStatus === "failed"}
+                        />
+                        {#if imageCandidates.length > 0}
+                            <div
+                                class="candidate-grid"
+                                aria-label="Image results"
+                            >
                                 {#each imageCandidates.filter((c) => !brokenCandidates.has(c.url)) as candidate, index (candidate.url + "#" + index)}
                                     <button
                                         class="candidate"
                                         onclick={() => startCrop(candidate)}
-                                        title={`Crop this image (${candidate.source})`}
-                                        disabled={cropLoadingUrl !== null}
+                                        aria-label={`Preview image ${index + 1} from ${providerOptionLabel(candidate.source)}`}
+                                        title={`Preview image from ${providerOptionLabel(candidate.source)}`}
+                                        disabled={editBusy || searchingImages}
                                     >
-                                        <img
-                                            src={candidatePreviewUrls.get(
-                                                candidate.url,
-                                            ) ?? candidate.url}
-                                            alt=""
-                                            loading="lazy"
-                                            referrerpolicy="no-referrer"
-                                            onerror={() =>
-                                                handleCandidateError(candidate)}
-                                        />
-                                        {#if cropLoadingUrl === candidate.url || candidatePreviewLoading.has(candidate.url)}
-                                            <span class="candidate-loading">
-                                                <Loading variant="inline" />
-                                            </span>
-                                        {/if}
+                                        <span class="candidate-art">
+                                            <img
+                                                src={candidatePreviewUrls.get(
+                                                    candidate.url,
+                                                ) ?? candidate.url}
+                                                alt=""
+                                                loading="lazy"
+                                                referrerpolicy="no-referrer"
+                                                onerror={() =>
+                                                    handleCandidateError(
+                                                        candidate,
+                                                    )}
+                                            />
+                                            {#if cropLoadingUrl === candidate.url || candidatePreviewLoading.has(candidate.url)}
+                                                <span class="candidate-loading"
+                                                    ><Loading
+                                                        variant="inline"
+                                                    /></span
+                                                >
+                                            {/if}
+                                        </span>
                                         <span class="candidate-source"
-                                            >{candidate.source}</span
+                                            >{providerOptionLabel(
+                                                candidate.source,
+                                            )}</span
                                         >
                                     </button>
                                 {/each}
                             </div>
-                            <p class="hint">
-                                Click an image to adjust the crop — it becomes
-                                this artist's custom image.
-                            </p>
                         {/if}
-                    </div>
-                </div>
+                    </section>
+                {:else}
+                    <section
+                        class="search-dialog-section"
+                        aria-label="Artist biography"
+                    >
+                        <div class="search-dialog-row">
+                            <span class="search-dialog-label">Source</span>
+                            <Select
+                                options={infoProviderOptions}
+                                value={editInfoProvider}
+                                onchange={(v) => {
+                                    if (!editBusy) editInfoProvider = v;
+                                }}
+                                ariaLabel="Bio provider"
+                                disabled={editBusy}
+                            />
+                        </div>
+                        {#if editInfoProvider !== "custom"}
+                            <label
+                                class="search-dialog-label"
+                                for="artist-bio-term">Search Term</label
+                            >
+                            <input
+                                id="artist-bio-term"
+                                type="text"
+                                bind:value={editInfoTerm}
+                                placeholder={artist.name}
+                                spellcheck="false"
+                                disabled={editBusy}
+                            />
+                        {:else if editInfoProvider === "custom"}
+                            <textarea
+                                class="bio-editor"
+                                bind:value={editBio}
+                                rows="8"
+                                placeholder="Write a biography…"
+                                aria-label="Custom biography"
+                                disabled={editBusy}></textarea>
+                        {/if}
+                    </section>
+                {/if}
             </div>
-
-            <div class="dialog-actions">
-                <button
-                    class="btn-pill btn-secondary"
-                    onclick={() => (editOpen = false)}
-                    disabled={editSaving}>Cancel</button
-                >
-                <button
-                    class="btn-pill btn-primary"
-                    onclick={saveEdit}
-                    disabled={editSaving}
-                >
-                    {editSaving ? "Saving..." : "Save"}
-                </button>
-            </div>
+            <footer class="search-dialog-actions">
+                {#if cropCandidate}
+                    <button
+                        class="btn-pill btn-secondary"
+                        onclick={() => (cropCandidate = null)}
+                        disabled={editBusy}>Back</button
+                    >
+                    <button
+                        class="btn-pill btn-primary"
+                        onclick={confirmCrop}
+                        disabled={editBusy}
+                        >{cropSaving ? "Saving…" : "Use Image"}</button
+                    >
+                {:else}
+                    <button
+                        class="btn-pill btn-secondary"
+                        onclick={closeEdit}
+                        disabled={editBusy}>Cancel</button
+                    >
+                    <button
+                        class="btn-pill btn-primary"
+                        onclick={saveEdit}
+                        disabled={editBusy}
+                    >
+                        {editSaving
+                            ? "Saving…"
+                            : editSection === "image"
+                              ? "Save Image Source"
+                              : "Save Biography"}
+                    </button>
+                {/if}
+            </footer>
         </div>
     </div>
 {/if}
@@ -1241,64 +1289,6 @@
         height: 1rem;
     }
 
-    .dialog-overlay {
-        position: fixed;
-        inset: 0;
-        z-index: 100;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background-color: rgba(0, 0, 0, 0.6);
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
-        padding: var(--spacing-md);
-    }
-
-    .dialog {
-        width: 100%;
-        max-width: 440px;
-        background-color: var(--color-surface);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-xl);
-        padding: var(--spacing-xl);
-        display: flex;
-        flex-direction: column;
-        gap: var(--spacing-lg);
-        box-shadow: var(--shadow-lg);
-        max-height: calc(100vh - 2 * var(--spacing-xl));
-        overflow-y: auto;
-    }
-
-    .dialog-title {
-        font-size: var(--font-size-xl);
-        font-weight: var(--font-weight-bold);
-        letter-spacing: -0.01em;
-    }
-
-    .dialog-body {
-        display: flex;
-        flex-direction: column;
-        gap: var(--spacing-md);
-    }
-
-    .field {
-        display: flex;
-        flex-direction: column;
-        gap: var(--spacing-xs);
-    }
-
-    .field .field-label {
-        font-weight: var(--font-weight-semibold);
-        font-size: var(--font-size-sm);
-        color: var(--color-text);
-    }
-
-    .field textarea {
-        resize: vertical;
-        min-height: 4rem;
-        font-family: inherit;
-    }
-
     .hint {
         margin: 0;
         font-size: var(--font-size-xs);
@@ -1306,113 +1296,65 @@
         line-height: var(--line-height);
     }
 
-    .image-actions {
-        display: flex;
-        gap: var(--spacing-sm);
-        flex-wrap: wrap;
+    .edit-sections {
+        align-self: flex-start;
     }
-
-    .field-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: var(--spacing-md);
+    .bio-editor {
+        resize: vertical;
+        min-height: 10rem;
+        font-family: inherit;
     }
-
-    .chooser {
-        display: flex;
-        flex-direction: column;
-        gap: var(--spacing-sm);
-        margin-top: var(--spacing-xs);
-        padding: var(--spacing-md);
-        border: 1px dashed var(--color-border);
-        border-radius: var(--radius-lg);
-        background: rgba(var(--color-surface-rgb), 0.4);
-    }
-
-    .chooser-title {
-        display: inline-flex;
-        align-items: center;
-        gap: var(--spacing-xs);
-        font-size: var(--font-size-xs);
-        font-weight: var(--font-weight-semibold);
-        letter-spacing: normal;
-        color: var(--color-text-secondary);
-    }
-
-    .chooser-title svg {
-        width: 0.875rem;
-        height: 0.875rem;
-    }
-
-    .chooser-search {
-        display: flex;
-        gap: var(--spacing-sm);
-    }
-
-    .chooser-search input {
-        flex: 1;
-        min-width: 0;
-    }
-
-    .chooser-search button svg {
-        width: 0.875rem;
-        height: 0.875rem;
-    }
-
     .candidate-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(5rem, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: var(--spacing-sm);
     }
-
     .candidate {
-        position: relative;
-        aspect-ratio: 1;
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xs);
+        padding: var(--spacing-xs);
+        min-width: 0;
         border-radius: var(--radius);
-        overflow: hidden;
-        border: 2px solid transparent;
-        transition:
-            border-color var(--transition-fast),
-            transform var(--transition-fast);
-        background-color: var(--color-surface-elevated);
+        text-align: center;
+        transition: background-color var(--transition-fast);
     }
-
-    .candidate:hover {
+    .candidate:hover:not(:disabled) {
         background: var(--interactive-hover);
-        transform: scale(var(--motion-hover-scale));
     }
-
-    .candidate:disabled {
-        cursor: default;
+    .candidate:active:not(:disabled) {
+        background: var(--interactive-active);
     }
-
+    .candidate:focus-visible {
+        outline-offset: -2px;
+    }
+    .candidate-art {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 1;
+        overflow: hidden;
+        border-radius: var(--radius-full);
+        background: var(--color-surface-elevated);
+    }
     .candidate img {
         width: 100%;
         height: 100%;
         object-fit: cover;
     }
-
     .candidate-loading {
         position: absolute;
         inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: rgba(0, 0, 0, 0.55);
-        color: var(--color-text);
+        display: grid;
+        place-items: center;
+        background: var(--color-surface-elevated);
     }
-
     .candidate-source {
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        padding: 1px var(--spacing-xs);
-        font-size: 0.625rem;
-        background-color: rgba(0, 0, 0, 0.65);
-        color: rgba(255, 255, 255, 0.85);
-        text-align: center;
+        font-size: var(--font-size-xs);
+        color: var(--color-text-secondary);
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     .crop-area {
@@ -1422,6 +1364,7 @@
     }
 
     .crop-frame {
+        align-self: center;
         position: relative;
         width: 100%;
         max-width: 16rem;
@@ -1470,16 +1413,5 @@
     .crop-zoom input[type="range"] {
         flex: 1;
         accent-color: var(--color-accent-native);
-    }
-
-    .crop-actions {
-        display: flex;
-        gap: var(--spacing-sm);
-    }
-
-    .dialog-actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: var(--spacing-md);
     }
 </style>

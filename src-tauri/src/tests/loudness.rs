@@ -243,6 +243,7 @@ fn measurement_connection() -> Connection {
             file_mtime INTEGER NOT NULL,
             file_size_bytes INTEGER
          );
+         CREATE VIEW available_tracks AS SELECT * FROM tracks;
          CREATE TABLE track_loudness (
             track_id INTEGER PRIMARY KEY,
             status TEXT NOT NULL,

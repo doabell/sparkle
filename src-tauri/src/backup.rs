@@ -1374,7 +1374,7 @@ fn artist_names_for_track(conn: &Connection, track_id: i64) -> Result<Vec<String
     let mut stmt = conn
         .prepare(
             "SELECT ar.name FROM track_artists ta JOIN artists ar ON ar.id = ta.artist_id \
-             WHERE ta.track_id = ? AND ta.role = 'main' ORDER BY ta.rowid",
+             WHERE ta.track_id = ? AND ta.role = 'main' ORDER BY ta.position, ta.rowid",
         )
         .map_err(|e| e.to_string())?;
     let names = stmt
@@ -1389,7 +1389,7 @@ fn artist_names_for_album(conn: &Connection, album_id: i64) -> Result<Vec<String
     let mut stmt = conn
         .prepare(
             "SELECT ar.name FROM album_artists aa JOIN artists ar ON ar.id = aa.artist_id \
-             WHERE aa.album_id = ? ORDER BY ar.name",
+             WHERE aa.album_id = ? ORDER BY aa.position, ar.name",
         )
         .map_err(|e| e.to_string())?;
     let names = stmt

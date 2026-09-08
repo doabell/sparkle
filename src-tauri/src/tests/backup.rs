@@ -7,7 +7,10 @@ fn settings_and_custom_metadata_roundtrip_preserves_local_secrets_and_folders() 
     let source = crate::db::test_connection();
     insert_test_track(&source, 1, "C:/Music/one.flac");
     source
-        .execute("INSERT INTO album_artists VALUES (1,1)", [])
+        .execute(
+            "INSERT INTO album_artists (album_id, artist_id) VALUES (1,1)",
+            [],
+        )
         .unwrap();
     source
         .execute("UPDATE artists SET bio='Custom biography' WHERE id=1", [])
@@ -57,7 +60,10 @@ fn settings_and_custom_metadata_roundtrip_preserves_local_secrets_and_folders() 
     let target = crate::db::test_connection();
     insert_test_track(&target, 99, "D:/Moved/one.flac");
     target
-        .execute("INSERT INTO album_artists VALUES (99,99)", [])
+        .execute(
+            "INSERT INTO album_artists (album_id, artist_id) VALUES (99,99)",
+            [],
+        )
         .unwrap();
     let local = settings::Settings {
         brave_api_key: "local-secret".into(),
@@ -246,7 +252,8 @@ fn create_playlist_test_schema(conn: &Connection) {
          CREATE TABLE track_artists (
             track_id INTEGER NOT NULL,
             artist_id INTEGER NOT NULL,
-            role TEXT NOT NULL
+            role TEXT NOT NULL,
+            position INTEGER NOT NULL DEFAULT 0
          );
          CREATE TABLE playlists (
             id INTEGER PRIMARY KEY,

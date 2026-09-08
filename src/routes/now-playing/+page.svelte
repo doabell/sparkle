@@ -1,9 +1,9 @@
 <script lang="ts">
-    import { onMount } from "svelte";
+    import { onMount, untrack } from "svelte";
     import {
         playback,
         interpolatedPositionMs,
-        seek,
+        seekLyrics,
         updateCurrentTrackLrcOffset,
         updateCurrentTrackLyricsSource,
     } from "$lib/stores/playback";
@@ -12,15 +12,20 @@
         getAlbumArt,
         getArtistImage,
         setLrcOffset,
+        getLrcOffset,
         getOnlineSettings,
         setTrackLyricsSource,
         setTrackCustomLyrics,
         clearTrackCustomLyrics,
         searchLyricsOnline,
         setTrackLyricsChoice,
+        saveTrackLyricsText,
+        exportTrackLyrics,
+        pickLyricsToSave,
         pickLyricsFile,
         LYRICS_CHANGED_EVENT,
         type Lyrics,
+        type Track,
         type LyricCandidate,
         type LyricSearchResults,
     } from "$lib/api";
@@ -28,8 +33,12 @@
     import { getFontStack } from "$lib/utils/fonts";
     import { addToast } from "$lib/stores/toast";
     import { listen } from "@tauri-apps/api/event";
+    import { parseLrc, lrcFileOffsetMs } from "$lib/utils/lrc";
     import SyncedLyrics from "$lib/components/SyncedLyrics.svelte";
     import Select from "$lib/components/Select.svelte";
+    import SearchField from "$lib/components/SearchField.svelte";
+    import SearchFeedback from "$lib/components/SearchFeedback.svelte";
+    import { dialogFocus } from "$lib/utils/dialogFocus";
     import ArtistCredits from "$lib/components/ArtistCredits.svelte";
     import ArtistLinks from "$lib/components/ArtistLinks.svelte";
     import LyricsOffsetControls from "$lib/components/LyricsOffsetControls.svelte";
@@ -49,7 +58,32 @@
     );
     let lyricsFont = $state(getFontStack("Monospace"));
     let providerDialogOpen = $state(false);
+    let providerTrack = $state<Track | null>(null);
+    let providerSession = 0;
     let providerChoice = $state("default");
+    let lyricsDialogMode = $state<"source" | "edit">("source");
+    let providerLyrics = $state<Lyrics | null>(null);
+    let providerLoading = $state(false);
+    let providerOffset = $state(0);
+    let editorText = $state("");
+    let editorSaving = $state(false);
+    let editorAdjusting = $state(false);
+    let providerSaving = $state(false);
+    let lyricsExporting = $state(false);
+    let lyricApplying = $state(false);
+    let showTimingControls = $state(false);
+    let offsetMs = $derived($playback.current_track?.lrc_offset_ms ?? 0);
+    let hasCurrentTimestamps = $derived(
+        parseLrc(lyrics?.synced_text ?? "").length > 0,
+    );
+    let editorHasTimestamps = $derived(parseLrc(editorText).length > 0);
+    let canApplyOffset = $derived(
+        editorHasTimestamps &&
+            (providerOffset !== 0 || lrcFileOffsetMs(editorText) !== 0),
+    );
+    let providerBusy = $derived(
+        editorSaving || providerSaving || lyricsExporting || lyricApplying,
+    );
 
     const PROVIDER_OPTIONS = [
         { value: "default", label: "Default (settings order)" },
@@ -87,10 +121,6 @@
         loading = true;
         error = null;
         lyrics = null;
-        offsetMs =
-            $playback.current_track?.id === trackId
-                ? ($playback.current_track.lrc_offset_ms ?? 0)
-                : 0;
         try {
             const loadedLyrics = await getLyrics(trackId);
             if (
@@ -152,11 +182,14 @@
 
     onMount(() => {
         let unlisten: (() => void) | undefined;
+        let unlistenScan: (() => void) | undefined;
+        let disposed = false;
         const handleLyricsChanged = (event: Event) => {
             const trackId = (event as CustomEvent<{ trackId: number }>).detail
                 ?.trackId;
             const track = $playback.current_track;
             if (track && track.id === trackId) {
+                offsetRevision += 1;
                 loadLyrics(track.id, true);
             }
         };
@@ -186,9 +219,19 @@
                     loadLyrics(track.id, true);
                 }
             });
+            unlistenScan = await listen("library-scanned", () => {
+                const track = $playback.current_track;
+                if (track) loadLyrics(track.id, true);
+            });
+            if (disposed) {
+                unlisten?.();
+                unlistenScan?.();
+            }
         })();
         return () => {
+            disposed = true;
             unlisten?.();
+            unlistenScan?.();
             window.removeEventListener(
                 LYRICS_CHANGED_EVENT,
                 handleLyricsChanged,
@@ -198,111 +241,152 @@
 
     $effect(() => {
         const track = $playback.current_track;
-        if (track) {
-            loadLyrics(track.id);
-            loadArt(track.album_id);
-            loadArtistArt(
-                $nowPlayingLayout === "artist"
-                    ? (track.artist_ids?.[0] ?? null)
-                    : null,
-            );
-        } else {
-            lyricsRequest += 1;
-            lyrics = null;
-            loading = false;
-            lastTrackId = null;
-            lastAlbumId = null;
-            artUrl = "";
-            lastArtistId = null;
-            artistArtUrl = "";
-            offsetMs = 0;
-        }
+        const layout = $nowPlayingLayout;
+        untrack(() => {
+            if (track) {
+                loadLyrics(track.id);
+                loadArt(track.album_id);
+                loadArtistArt(
+                    layout === "artist"
+                        ? (track.artist_ids?.[0] ?? null)
+                        : null,
+                );
+            } else {
+                lyricsRequest += 1;
+                lyrics = null;
+                loading = false;
+                lastTrackId = null;
+                lastAlbumId = null;
+                artUrl = "";
+                lastArtistId = null;
+                artistArtUrl = "";
+            }
+        });
     });
 
-    let offsetMs = $state(0);
-    let offsetSaveTimeout = $state<ReturnType<typeof setTimeout> | null>(null);
+    let offsetRevision = 0;
 
-    function saveOffset(trackId: number, value: number) {
-        if (offsetSaveTimeout) clearTimeout(offsetSaveTimeout);
-        offsetSaveTimeout = setTimeout(async () => {
-            try {
-                await setLrcOffset(trackId, value);
-                updateCurrentTrackLrcOffset(trackId, value);
-            } catch (e) {
-                console.error("Failed to save LRC offset:", e);
+    async function saveOffset(trackId: number, value: number) {
+        const previous = offsetMs;
+        const revision = ++offsetRevision;
+        updateCurrentTrackLrcOffset(trackId, value);
+        try {
+            await setLrcOffset(trackId, value);
+        } catch (e) {
+            if (revision === offsetRevision) {
+                const saved = await getLrcOffset(trackId).catch(() => previous);
+                if (revision === offsetRevision)
+                    updateCurrentTrackLrcOffset(trackId, saved);
             }
-        }, 500);
+            addToast(`Failed to save lyrics timing: ${String(e)}`, "error");
+        }
     }
 
     function adjustOffset(delta: number) {
         const track = $playback.current_track;
         if (!track) return;
-        offsetMs = Math.max(-5000, Math.min(5000, offsetMs + delta));
-        saveOffset(track.id, offsetMs);
+        void saveOffset(
+            track.id,
+            Math.max(-5000, Math.min(5000, offsetMs + delta)),
+        );
     }
 
     function handleSeek(timeMs: number) {
-        seek(timeMs);
-    }
-
-    function openProviderDialog() {
-        providerChoice = $playback.current_track?.lyrics_source ?? "default";
-        lyricCandidates = [];
-        lyricSearchQuery = defaultLyricQuery();
-        providerDialogOpen = true;
-    }
-
-    function defaultLyricQuery(): string {
         const track = $playback.current_track;
-        if (!track) return "";
+        if (track)
+            void seekLyrics(track.id, timeMs).catch((e) =>
+                addToast(String(e), "error"),
+            );
+    }
+
+    async function openLyricsDialog() {
+        if (providerBusy) return;
+        providerTrack = $playback.current_track;
+        if (!providerTrack) return;
+        const track = providerTrack;
+        const session = ++providerSession;
+        providerChoice = providerTrack.lyrics_source ?? "default";
+        lyricsDialogMode = "source";
+        providerLyrics = null;
+        providerOffset = track.lrc_offset_ms;
+        editorText = "";
+        providerLoading = true;
+        lyricSearchResults = null;
+        lyricSearchError = null;
+        selectedLyric = null;
+        lyricSearching = false;
+        lyricSearchQuery = defaultLyricQuery(providerTrack);
+        providerDialogOpen = true;
+        const [loaded, offset] = await Promise.all([
+            getLyrics(track.id).catch(() => null),
+            getLrcOffset(track.id).catch(() => track.lrc_offset_ms),
+        ]);
+        if (session !== providerSession) return;
+        providerLyrics = loaded;
+        providerOffset = offset;
+        editorText = loaded?.synced_text || loaded?.plain_text || "";
+        providerLoading = false;
+    }
+
+    function closeProviderDialog() {
+        if (providerBusy) return;
+        dismissProviderDialog();
+    }
+
+    function dismissProviderDialog() {
+        providerSession += 1;
+        providerDialogOpen = false;
+    }
+
+    function defaultLyricQuery(track: Track): string {
         return [track.title ?? "", track.artist_names?.join(" ") ?? ""]
             .join(" ")
             .trim();
     }
 
     async function applyProviderChoice() {
-        const track = $playback.current_track;
-        if (!track) return;
+        const track = providerTrack;
+        if (!track || providerBusy) return;
+        const source = providerChoice === "default" ? null : providerChoice;
+        if (source === (track.lyrics_source ?? null)) {
+            closeProviderDialog();
+            return;
+        }
+        providerSaving = true;
         try {
-            if (providerChoice === "custom") {
-                await setTrackLyricsSource(track.id, "custom");
-                updateCurrentTrackLyricsSource(track.id, "custom");
-                addToast("Custom lyrics selected", "success");
-            } else {
-                await setTrackLyricsSource(
-                    track.id,
-                    providerChoice === "default" ? undefined : providerChoice,
-                );
-                updateCurrentTrackLyricsSource(
-                    track.id,
-                    providerChoice === "default" ? null : providerChoice,
-                );
-                addToast("Lyrics source updated", "success");
-            }
-            providerDialogOpen = false;
+            await setTrackLyricsSource(track.id, source ?? undefined);
+            updateCurrentTrackLyricsSource(track.id, source);
+            addToast("Lyrics source updated", "success");
+            dismissProviderDialog();
         } catch (e) {
             addToast(String(e), "error");
+        } finally {
+            providerSaving = false;
         }
     }
 
     async function chooseCustomLyrics() {
-        const track = $playback.current_track;
-        if (!track) return;
+        const track = providerTrack;
+        if (!track || providerBusy) return;
+        providerSaving = true;
         try {
             const path = await pickLyricsFile();
             if (!path) return;
             await setTrackCustomLyrics(track.id, path);
             updateCurrentTrackLyricsSource(track.id, "custom");
             addToast("Custom lyrics saved", "success");
-            providerDialogOpen = false;
+            dismissProviderDialog();
         } catch (e) {
             addToast(String(e), "error");
+        } finally {
+            providerSaving = false;
         }
     }
 
     async function removeCustomLyrics() {
-        const track = $playback.current_track;
-        if (!track) return;
+        const track = providerTrack;
+        if (!track || providerBusy) return;
+        providerSaving = true;
         try {
             await clearTrackCustomLyrics(track.id);
             const fallbackSource =
@@ -312,9 +396,11 @@
             updateCurrentTrackLyricsSource(track.id, fallbackSource);
             providerChoice = fallbackSource ?? "default";
             addToast("Custom lyrics deleted", "success");
-            providerDialogOpen = false;
+            dismissProviderDialog();
         } catch (e) {
             addToast(String(e), "error");
+        } finally {
+            providerSaving = false;
         }
     }
 
@@ -323,31 +409,71 @@
     let lyricCandidates = $derived(lyricSearchResults?.candidates ?? []);
     let lyricSearchQuery = $state("");
     let lyricSearching = $state(false);
-    let lyricApplying = $state(false);
+    let lyricSearchError = $state<string | null>(null);
+    let selectedLyric = $state<LyricCandidate | null>(null);
+    let lyricSearchIssues = $derived([
+        ...(lyricSearchResults?.failed_sources ?? []).map(
+            (source) =>
+                `${PROVIDER_LABELS[source] ?? source}: search unavailable`,
+        ),
+        ...(lyricSearchResults?.timed_out_sources ?? []).map(
+            (source) => `${PROVIDER_LABELS[source] ?? source}: timed out`,
+        ),
+    ]);
+    let lyricSearchMessage = $derived(
+        lyricSearching
+            ? "Searching online providers…"
+            : lyricSearchError
+              ? lyricSearchError
+              : !lyricSearchResults
+                ? null
+                : lyricCandidates.length > 0
+                  ? `${lyricCandidates.length} result${lyricCandidates.length === 1 ? "" : "s"}${lyricSearchIssues.length ? " · Some providers unavailable" : ""}`
+                  : lyricSearchIssues.length
+                    ? "Search unavailable. Try again or choose a file."
+                    : !lyricSearchResults.enabled_sources.length
+                      ? "Enable a lyrics search provider in Settings."
+                      : "No matches. Try the song title or a different artist name.",
+    );
+    let selectedLyricPreview = $derived(
+        selectedLyric?.synced_text
+            ? parseLrc(selectedLyric.synced_text)
+                  .map((line) => line.text)
+                  .join("\n")
+            : (selectedLyric?.plain_text ?? ""),
+    );
 
     async function runLyricSearch() {
-        const track = $playback.current_track;
-        if (!track || lyricSearching) return;
+        const track = providerTrack;
+        if (
+            !track ||
+            lyricSearching ||
+            providerBusy ||
+            !lyricSearchQuery.trim()
+        )
+            return;
         lyricSearching = true;
         lyricSearchResults = null;
+        lyricSearchError = null;
+        selectedLyric = null;
+        const session = providerSession;
         try {
-            lyricSearchResults = await searchLyricsOnline(
+            const results = await searchLyricsOnline(
                 track.id,
                 lyricSearchQuery,
             );
-            if (lyricCandidates.length === 0) {
-                addToast("No lyrics found online", "error");
-            }
+            if (session !== providerSession) return;
+            lyricSearchResults = results;
         } catch (e) {
-            addToast(String(e), "error");
+            if (session === providerSession) lyricSearchError = String(e);
         } finally {
-            lyricSearching = false;
+            if (session === providerSession) lyricSearching = false;
         }
     }
 
     async function applyLyricCandidate(candidate: LyricCandidate) {
-        const track = $playback.current_track;
-        if (!track || lyricApplying) return;
+        const track = providerTrack;
+        if (!track || providerBusy) return;
         lyricApplying = true;
         try {
             await setTrackLyricsChoice(track.id, {
@@ -355,12 +481,90 @@
                 syncedText: candidate.synced_text,
                 plainText: candidate.plain_text,
             });
+            updateCurrentTrackLyricsSource(track.id, "custom");
             addToast("Lyrics updated", "success");
-            providerDialogOpen = false;
+            dismissProviderDialog();
         } catch (e) {
             addToast(String(e), "error");
         } finally {
             lyricApplying = false;
+        }
+    }
+
+    async function saveEditedLyrics(applyOffset = false) {
+        const track = providerTrack;
+        if (!track || providerBusy || !editorText.trim()) return;
+        editorSaving = true;
+        editorAdjusting = applyOffset;
+        const session = providerSession;
+        try {
+            const saved = await saveTrackLyricsText(
+                track.id,
+                editorText,
+                applyOffset,
+            );
+            updateCurrentTrackLyricsSource(track.id, "custom");
+            if (applyOffset) updateCurrentTrackLrcOffset(track.id, 0);
+            if (session !== providerSession) return;
+            providerLyrics = saved;
+            editorText = saved.synced_text || saved.plain_text || "";
+            if (applyOffset) providerOffset = 0;
+            providerChoice = "custom";
+            providerTrack = {
+                ...track,
+                lyrics_source: "custom",
+                lrc_offset_ms: providerOffset,
+            };
+            addToast(
+                applyOffset ? "Lyrics timing adjusted" : "Custom lyrics saved",
+                "success",
+            );
+        } catch (e) {
+            addToast(String(e), "error");
+        } finally {
+            if (session === providerSession) {
+                editorSaving = false;
+                editorAdjusting = false;
+            }
+        }
+    }
+
+    async function adjustProviderOffset(delta: number | null) {
+        const track = providerTrack;
+        if (!track) return;
+        const session = providerSession;
+        const previous = providerOffset;
+        const next =
+            delta === null
+                ? 0
+                : Math.max(-5000, Math.min(5000, previous + delta));
+        providerOffset = next;
+        updateCurrentTrackLrcOffset(track.id, next);
+        try {
+            await setLrcOffset(track.id, next);
+        } catch (e) {
+            const saved = await getLrcOffset(track.id).catch(() => previous);
+            if (session === providerSession) providerOffset = saved;
+            updateCurrentTrackLrcOffset(track.id, saved);
+            addToast(`Failed to save lyrics timing: ${String(e)}`, "error");
+        }
+    }
+
+    async function exportLyrics() {
+        const track = providerTrack;
+        if (!track || !editorHasTimestamps || providerBusy) return;
+        const text = editorText;
+        const session = providerSession;
+        lyricsExporting = true;
+        try {
+            const path = await pickLyricsToSave(track.title ?? "lyrics");
+            if (!path) return;
+            await exportTrackLyrics(track.id, text, path);
+            addToast("LRC file exported", "success");
+        } catch (e) {
+            addToast(String(e), "error");
+        } finally {
+            if (session === providerSession) lyricsExporting = false;
         }
     }
 </script>
@@ -532,7 +736,7 @@
                         <button
                             class="provider-tag"
                             type="button"
-                            onclick={openProviderDialog}
+                            onclick={openLyricsDialog}
                             title="Change lyrics source"
                         >
                             {providerLabel ? `From ${providerLabel}` : "Source"}
@@ -551,19 +755,30 @@
                                 <path d="m15 5 4 4" />
                             </svg>
                         </button>
+                        {#if hasCurrentTimestamps && $nowPlayingLayout !== "lyrics"}
+                            <button
+                                type="button"
+                                aria-expanded={showTimingControls}
+                                aria-controls="lyrics-timing"
+                                onclick={() =>
+                                    (showTimingControls = !showTimingControls)}
+                                >Timing</button
+                            >
+                        {/if}
                     </div>
                 {/if}
             </div>
-            {#if lyrics?.synced_text}
-                <LyricsOffsetControls
-                    value={offsetMs}
-                    onadjust={adjustOffset}
-                    onreset={() => {
-                        offsetMs = 0;
-                        const track = $playback.current_track;
-                        if (track) saveOffset(track.id, 0);
-                    }}
-                />
+            {#if hasCurrentTimestamps && ($nowPlayingLayout === "lyrics" || showTimingControls)}
+                <div class="lyrics-timing" id="lyrics-timing">
+                    <LyricsOffsetControls
+                        value={offsetMs}
+                        onadjust={adjustOffset}
+                        onreset={() => {
+                            const track = $playback.current_track;
+                            if (track) saveOffset(track.id, 0);
+                        }}
+                    />
+                </div>
             {/if}
         </div>
         {#if loading}
@@ -588,150 +803,247 @@
 {#if providerDialogOpen}
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div
-        class="dialog-overlay"
+        class="search-dialog-overlay"
         role="presentation"
         tabindex="-1"
-        onclick={() => (providerDialogOpen = false)}
-        onkeydown={(e: KeyboardEvent) => {
-            if (e.key === "Escape") providerDialogOpen = false;
-        }}
+        onclick={closeProviderDialog}
     >
         <div
-            class="dialog"
+            class="search-dialog"
+            style:--search-dialog-width={lyricsDialogMode === "edit"
+                ? "44rem"
+                : "28rem"}
             role="dialog"
             aria-modal="true"
             aria-labelledby="lyrics-provider-title"
             tabindex="-1"
-            onclick={(e: MouseEvent) => e.stopPropagation()}
+            use:dialogFocus={closeProviderDialog}
+            onclick={(e) => e.stopPropagation()}
         >
-            <h2 id="lyrics-provider-title" class="dialog-title">
-                Lyrics source
-            </h2>
-            <div class="dialog-body">
-                <Select
-                    options={PROVIDER_OPTIONS}
-                    value={providerChoice}
-                    onchange={(v) => (providerChoice = v)}
-                    ariaLabel="Lyrics source"
-                />
-                <p class="hint">
-                    Choose this song's lyrics provider. Custom lyrics are saved
-                    for this song; a sidecar .lrc file is read from beside the
-                    audio file. No lyrics disables lookup for this song.
-                </p>
-
-                {#if providerChoice === "custom"}
-                    <div class="custom-lyrics-actions">
-                        <button
-                            class="btn-pill btn-secondary"
-                            onclick={chooseCustomLyrics}
-                        >
-                            {$playback.current_track?.lyrics_source === "custom"
-                                ? "Replace custom lyrics file"
-                                : "Choose custom lyrics file"}
-                        </button>
-                        <button
-                            class="btn-pill btn-secondary"
-                            onclick={removeCustomLyrics}
-                        >
-                            Delete custom lyrics
-                        </button>
-                    </div>
-                    <p class="hint custom-lyrics-hint">
-                        Custom lyrics stay with this song. Picked files are
-                        copied into Sparkle's cache, so the original can move or
-                        be deleted.
-                    </p>
-                {/if}
-
-                <div class="lyric-search">
-                    <p class="hint">
-                        Searches your enabled online providers together and
-                        keeps each result separate.
-                    </p>
-                    <div class="lyric-search-row">
-                        <input
-                            type="text"
+            <header class="search-dialog-heading">
+                <h2 id="lyrics-provider-title">
+                    {lyricsDialogMode === "edit" ? "Edit Lyrics" : "Lyrics"}
+                </h2>
+            </header>
+            <div class="search-dialog-body">
+                {#if lyricsDialogMode === "source"}
+                    <section
+                        class="search-dialog-section"
+                        aria-label="Lyrics source"
+                    >
+                        <div class="search-dialog-row">
+                            <span class="search-dialog-label">Source</span>
+                            <Select
+                                options={PROVIDER_OPTIONS}
+                                value={providerChoice}
+                                onchange={(v) => {
+                                    if (!providerBusy) {
+                                        providerChoice = v;
+                                        selectedLyric = null;
+                                    }
+                                }}
+                                ariaLabel="Lyrics source"
+                                disabled={providerBusy}
+                            />
+                        </div>
+                        <div class="search-dialog-tools">
+                            <button
+                                type="button"
+                                class="btn-pill btn-secondary"
+                                disabled={providerBusy || providerLoading}
+                                onclick={() => (lyricsDialogMode = "edit")}
+                                >Edit Lyrics</button
+                            >
+                            {#if providerChoice === "custom"}
+                                <button
+                                    type="button"
+                                    class="btn-pill btn-secondary"
+                                    disabled={providerBusy}
+                                    onclick={chooseCustomLyrics}
+                                    >Choose File…</button
+                                >
+                            {/if}
+                            {#if providerChoice === "custom" && providerTrack?.lyrics_source === "custom"}
+                                <button
+                                    type="button"
+                                    class="btn-pill btn-secondary"
+                                    disabled={providerBusy}
+                                    onclick={removeCustomLyrics}
+                                    >Remove Custom</button
+                                >
+                            {/if}
+                        </div>
+                    </section>
+                    <section
+                        class="search-dialog-section"
+                        aria-label="Search lyrics online"
+                    >
+                        <SearchField
                             bind:value={lyricSearchQuery}
-                            placeholder="Search lyrics…"
-                            spellcheck="false"
-                            aria-label="Lyrics search query"
-                            onkeydown={(e) => {
-                                if (e.key === "Enter") runLyricSearch();
-                            }}
+                            label="Search Online"
+                            placeholder="Song title and artist"
+                            busy={lyricSearching}
+                            disabled={providerBusy}
+                            onsearch={runLyricSearch}
                         />
-                        <button
-                            class="btn-pill btn-secondary"
-                            onclick={runLyricSearch}
-                            disabled={lyricSearching}
-                        >
-                            {lyricSearching ? "Searching…" : "Search"}
-                        </button>
-                    </div>
-                    {#if lyricSearchResults}
-                        <p class="provider-status">
-                            Searched {lyricSearchResults.enabled_sources
-                                .map(
-                                    (source) =>
-                                        PROVIDER_LABELS[source] ?? source,
-                                )
-                                .join(", ") || "no enabled providers"}.
-                            {#if lyricSearchResults.failed_sources.length > 0}
-                                Failed: {lyricSearchResults.failed_sources
-                                    .map(
-                                        (source) =>
-                                            PROVIDER_LABELS[source] ?? source,
-                                    )
-                                    .join(", ")}.
-                            {/if}
-                            {#if lyricSearchResults.timed_out_sources.length > 0}
-                                Timed out: {lyricSearchResults.timed_out_sources
-                                    .map(
-                                        (source) =>
-                                            PROVIDER_LABELS[source] ?? source,
-                                    )
-                                    .join(", ")}.
-                            {/if}
-                        </p>
-                    {/if}
-                    {#if lyricCandidates.length > 0}
-                        <ul class="lyric-candidates">
-                            {#each lyricCandidates as candidate, i (i)}
-                                <li>
+                        <SearchFeedback
+                            message={lyricSearchMessage}
+                            issues={lyricSearchIssues}
+                            failed={!!lyricSearchError ||
+                                (!!lyricSearchResults &&
+                                    !lyricCandidates.length &&
+                                    !!lyricSearchIssues.length)}
+                        />
+                        {#if selectedLyric}
+                            <div class="search-dialog-row">
+                                <span class="search-dialog-label"
+                                    >{PROVIDER_LABELS[selectedLyric.source] ??
+                                        selectedLyric.source}
+                                    · {selectedLyric.synced_text
+                                        ? "Synced"
+                                        : "Plain text"}</span
+                                >
+                                <div class="search-dialog-tools">
                                     <button
-                                        class="lyric-candidate"
-                                        onclick={() =>
-                                            applyLyricCandidate(candidate)}
-                                        disabled={lyricApplying}
+                                        class="btn-pill btn-secondary"
+                                        disabled={providerBusy}
+                                        onclick={() => (selectedLyric = null)}
+                                        >All Results</button
                                     >
-                                        <span class="candidate-source-tag"
-                                            >{PROVIDER_LABELS[
-                                                candidate.source
-                                            ] ?? candidate.source}</span
+                                </div>
+                            </div>
+                            <pre
+                                class="lyric-preview">{selectedLyricPreview}</pre>
+                        {:else if lyricCandidates.length > 0}
+                            <ul class="lyric-candidates">
+                                {#each lyricCandidates as candidate, i (i)}
+                                    <li>
+                                        <button
+                                            class="lyric-candidate"
+                                            onclick={() =>
+                                                (selectedLyric = candidate)}
+                                            disabled={providerBusy}
                                         >
-                                        <span class="candidate-preview"
-                                            >{candidate.preview}</span
-                                        >
-                                    </button>
-                                </li>
-                            {/each}
-                        </ul>
-                        <p class="hint">
-                            Click a result to use it for this song.
-                        </p>
+                                            <span class="candidate-source-tag"
+                                                >{PROVIDER_LABELS[
+                                                    candidate.source
+                                                ] ?? candidate.source}
+                                                <span class="candidate-kind"
+                                                    >{candidate.synced_text
+                                                        ? "Synced"
+                                                        : "Plain text"}</span
+                                                >
+                                            </span>
+                                            <span class="candidate-preview"
+                                                >{candidate.preview}</span
+                                            >
+                                        </button>
+                                    </li>
+                                {/each}
+                            </ul>
+                        {/if}
+                    </section>
+                {:else}
+                    {#if providerLoading}
+                        <p class="hint">Loading lyrics…</p>
+                    {:else}
+                        <div class="editor-toolbar">
+                            {#if editorHasTimestamps}
+                                <LyricsOffsetControls
+                                    value={providerOffset}
+                                    disabled={providerBusy}
+                                    onadjust={(delta) => {
+                                        if (!providerBusy)
+                                            void adjustProviderOffset(delta);
+                                    }}
+                                    onreset={() => {
+                                        if (!providerBusy)
+                                            void adjustProviderOffset(null);
+                                    }}
+                                />
+                            {/if}
+                            <div class="search-dialog-tools">
+                                <button
+                                    type="button"
+                                    class="btn-pill btn-secondary"
+                                    disabled={providerBusy || !canApplyOffset}
+                                    onclick={() => saveEditedLyrics(true)}
+                                    >{editorAdjusting
+                                        ? "Adjusting…"
+                                        : "Adjust"}</button
+                                >
+                                <button
+                                    class="btn-pill btn-secondary"
+                                    disabled={providerBusy ||
+                                        !editorHasTimestamps}
+                                    onclick={exportLyrics}
+                                    >{lyricsExporting
+                                        ? "Exporting…"
+                                        : "Export LRC"}</button
+                                >
+                            </div>
+                        </div>
+                        <textarea
+                            class="lyrics-editor"
+                            bind:value={editorText}
+                            aria-label="LRC or plain lyrics"
+                            spellcheck="false"
+                            disabled={providerBusy}
+                            placeholder="Paste LRC or plain lyrics here…"
+                        ></textarea>
                     {/if}
-                </div>
+                {/if}
             </div>
-            <div class="dialog-actions">
-                <button
-                    class="btn-pill btn-secondary"
-                    onclick={() => (providerDialogOpen = false)}>Cancel</button
-                >
-                <button
-                    class="btn-pill btn-primary"
-                    onclick={applyProviderChoice}>Apply</button
-                >
-            </div>
+            <footer class="search-dialog-actions">
+                {#if lyricsDialogMode === "edit"}
+                    <button
+                        class="btn-pill btn-secondary"
+                        disabled={providerBusy}
+                        onclick={() => (lyricsDialogMode = "source")}
+                        >Back</button
+                    >
+                    <button
+                        class="btn-pill btn-primary"
+                        disabled={providerBusy ||
+                            providerLoading ||
+                            !editorText.trim()}
+                        onclick={() => saveEditedLyrics()}
+                        >{editorSaving && !editorAdjusting
+                            ? "Saving…"
+                            : "Save Lyrics"}</button
+                    >
+                {:else if selectedLyric}
+                    <button
+                        class="btn-pill btn-secondary"
+                        disabled={providerBusy}
+                        onclick={closeProviderDialog}>Cancel</button
+                    >
+                    <button
+                        class="btn-pill btn-primary"
+                        disabled={providerBusy}
+                        onclick={() => {
+                            if (selectedLyric)
+                                void applyLyricCandidate(selectedLyric);
+                        }}>{lyricApplying ? "Saving…" : "Use Lyrics"}</button
+                    >
+                {:else}
+                    <button
+                        class="btn-pill btn-secondary"
+                        disabled={providerBusy}
+                        onclick={closeProviderDialog}>Close</button
+                    >
+                    {#if providerChoice !== (providerTrack?.lyrics_source ?? "default")}
+                        <button
+                            class="btn-pill btn-primary"
+                            disabled={providerBusy}
+                            onclick={applyProviderChoice}
+                            >{providerSaving
+                                ? "Saving…"
+                                : "Apply Source"}</button
+                        >
+                    {/if}
+                {/if}
+            </footer>
         </div>
     </div>
 {/if}
@@ -1170,42 +1482,28 @@
         border-left: 1px solid var(--color-border);
     }
 
-    .dialog-overlay {
-        position: fixed;
-        inset: 0;
-        z-index: 100;
+    .lyrics-timing,
+    .editor-toolbar {
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
-        justify-content: center;
-        background-color: rgba(0, 0, 0, 0.6);
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
-        padding: var(--spacing-md);
+        gap: var(--spacing-sm);
     }
 
-    .dialog {
+    .editor-toolbar {
+        justify-content: space-between;
+    }
+
+    .lyrics-editor {
         width: 100%;
-        max-width: 380px;
-        background-color: var(--color-surface);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-xl);
-        padding: var(--spacing-xl);
-        display: flex;
-        flex-direction: column;
-        gap: var(--spacing-lg);
-        box-shadow: var(--shadow-lg);
-    }
-
-    .dialog-title {
-        font-size: var(--font-size-xl);
-        font-weight: var(--font-weight-bold);
-        letter-spacing: -0.01em;
-    }
-
-    .dialog-body {
-        display: flex;
-        flex-direction: column;
-        gap: var(--spacing-md);
+        min-height: 16rem;
+        height: min(26rem, 45vh);
+        resize: vertical;
+        white-space: pre;
+        overflow: auto;
+        font-family: monospace;
+        font-size: var(--font-size-sm);
+        line-height: 1.6;
     }
 
     .hint {
@@ -1215,29 +1513,11 @@
         line-height: var(--line-height);
     }
 
-    .lyric-search {
-        display: flex;
-        flex-direction: column;
-        gap: var(--spacing-sm);
-        padding-top: var(--spacing-md);
-        border-top: 1px solid var(--color-border);
-    }
-
-    .lyric-search-row {
-        display: flex;
-        gap: var(--spacing-sm);
-    }
-
-    .lyric-search-row input {
-        flex: 1;
-        min-width: 0;
-    }
-
     .lyric-candidates {
         display: flex;
         flex-direction: column;
-        gap: var(--spacing-xs);
-        max-height: 14rem;
+        gap: 0;
+        max-height: 18rem;
         overflow-y: auto;
     }
 
@@ -1249,18 +1529,38 @@
         text-align: left;
         padding: var(--spacing-sm) var(--spacing-md);
         border-radius: var(--radius);
-        background: rgba(255, 255, 255, 0.08);
-        border: 1px solid var(--color-border);
-        transition:
-            border-color var(--transition-fast),
-            background-color var(--transition-fast);
+        transition: background-color var(--transition-fast);
     }
 
     .lyric-candidate:hover:not(:disabled) {
         background: var(--interactive-hover);
     }
 
+    .lyric-candidates li + li {
+        border-top: 1px solid var(--color-border);
+    }
+    .lyric-candidate:focus-visible {
+        outline-offset: -2px;
+    }
+    .lyric-preview {
+        max-height: 18rem;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        font-family: inherit;
+        font-size: var(--font-size-sm);
+        line-height: 1.7;
+        padding: var(--spacing-sm) 0;
+    }
+    .candidate-kind {
+        color: var(--color-text-muted);
+        font-weight: var(--font-weight-normal);
+    }
     .candidate-source-tag {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--spacing-sm);
         font-size: var(--font-size-xs);
         font-weight: var(--font-weight-semibold);
         color: var(--color-text-muted);
@@ -1278,23 +1578,6 @@
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
         overflow: hidden;
-    }
-
-    .dialog-actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: var(--spacing-md);
-    }
-
-    .custom-lyrics-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--spacing-md);
-        margin-top: var(--spacing-md);
-    }
-
-    .custom-lyrics-hint {
-        margin-top: var(--spacing-sm);
     }
 
     @media (max-width: 767px) {

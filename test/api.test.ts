@@ -292,6 +292,96 @@ test("file pickers restrict extensions and treat cancel/unexpected multi-select 
     }
 });
 
+test("lyrics replacement waits for earlier timing saves and other tracks remain independent", async () => {
+    const pending = deferred();
+    const calls = [];
+    invoke.mockImplementation((command, args) => {
+        calls.push([command, args.trackId]);
+        return command === "set_lrc_offset" && args.trackId === 901
+            ? pending.promise
+            : Promise.resolve();
+    });
+    const offset = api.setLrcOffset(901, -200);
+    const replace = api.setTrackLyricsChoice(901, {
+        source: "custom",
+        syncedText: "[00:01]New",
+    });
+    await api.setLrcOffset(902, 50);
+    expect(calls).toEqual([
+        ["set_lrc_offset", 901],
+        ["set_lrc_offset", 902],
+    ]);
+    pending.resolve();
+    await Promise.all([offset, replace]);
+    expect(calls.at(-1)).toEqual(["set_track_lyrics_choice", 901]);
+
+    invoke.mockRejectedValueOnce(Error("offset save failed"));
+    await expect(api.setLrcOffset(901, 100)).rejects.toThrow(
+        "offset save failed",
+    );
+    invoke.mockResolvedValueOnce();
+    await api.setTrackLyricsSource(901, "lrc");
+    expect(invoke).toHaveBeenLastCalledWith("set_track_lyrics_source", {
+        trackId: 901,
+        source: "lrc",
+    });
+});
+
+test("editing and exporting wait for pending offsets and editing returns the saved text", async () => {
+    const pending = deferred();
+    const saved = {
+        source: "custom",
+        synced_text: "[00:10.700]Words",
+        plain_text: "Words",
+    };
+    const calls = [];
+    invoke.mockImplementation((command, args) => {
+        calls.push([command, args]);
+        if (command === "set_lrc_offset") return pending.promise;
+        return Promise.resolve(
+            command === "save_track_lyrics_text" ? saved : undefined,
+        );
+    });
+    const offset = api.setLrcOffset(905, 700);
+    const edit = api.saveTrackLyricsText(905, "[00:10]Words");
+    const exported = api.exportTrackLyrics(
+        905,
+        saved.synced_text,
+        "C:/lyrics/song.lrc",
+    );
+    await flush();
+    expect(calls.map(([command]) => command)).toEqual(["set_lrc_offset"]);
+    pending.resolve();
+    expect(await edit).toEqual(saved);
+    await Promise.all([offset, exported]);
+    expect(calls.map(([command]) => command)).toEqual([
+        "set_lrc_offset",
+        "save_track_lyrics_text",
+        "export_track_lyrics",
+    ]);
+    expect(calls[2][1]).toEqual({
+        trackId: 905,
+        text: saved.synced_text,
+        path: "C:/lyrics/song.lrc",
+    });
+    expect(calls[1][1]).toEqual({
+        trackId: 905,
+        text: "[00:10]Words",
+        applyOffset: false,
+    });
+    await api.saveTrackLyricsText(905, "[00:10]Words", true);
+    expect(calls.at(-1)).toEqual([
+        "save_track_lyrics_text",
+        { trackId: 905, text: "[00:10]Words", applyOffset: true },
+    ]);
+    save.mockResolvedValue(null);
+    expect(await api.pickLyricsToSave("Title: part/one?")).toBeNull();
+    expect(save.mock.lastCall[0]).toEqual({
+        defaultPath: "Title_ part_one_.lrc",
+        filters: [{ name: "LRC lyrics", extensions: ["lrc"] }],
+    });
+});
+
 test("lyrics share in-flight reads, retry failures, and invalidate before announcing edits", async () => {
     const first = deferred(),
         next = deferred();

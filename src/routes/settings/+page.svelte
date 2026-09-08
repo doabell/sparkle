@@ -54,8 +54,6 @@
     } from "$lib/utils/theme";
     import type { SongIndexLanguage } from "$lib/utils/songIndex";
 
-    const DEFAULT_SPLIT_REGEX = ";";
-    const DEFAULT_SPLIT_EXCEPTIONS = ["AC/DC", "Tyler, The Creator"];
     const DEFAULT_BACKUP_SECTIONS: BackupSections = {
         settings: true,
         playlists: true,
@@ -217,13 +215,7 @@
         {
             key: "artist_image_sources",
             label: "Artist images",
-            builtins: [
-                "custom",
-                "wikipedia:en",
-                "shazam",
-                "brave",
-                "duckduckgo",
-            ],
+            builtins: ["custom", "deezer", "wikipedia:en", "brave"],
             wikipedia: true,
         },
         {
@@ -242,9 +234,8 @@
         netease: "NetEase",
         kashinavi: "KashiNavi",
         qq: "QQ Music",
-        shazam: "Shazam / Apple Music",
         brave: "Brave Image Search",
-        duckduckgo: "DuckDuckGo Images",
+        deezer: "Deezer",
         cover_art_archive: "Cover Art Archive",
     };
 
@@ -356,8 +347,6 @@
     let saveState = $state<"clean" | "dirty" | "saving" | "saved">("clean");
     let saveTimer: ReturnType<typeof setTimeout> | null = null;
     let lastSavedJson = "";
-    let lastSplitKey = "";
-    let rulesNeedRescan = $state(false);
     let artworkStorageTestBusy = $state(false);
     let artworkStorageTestUrl = $state<string | null>(null);
 
@@ -383,14 +372,6 @@
             );
             lastSavedJson = json;
             saveState = "saved";
-            const splitKey = JSON.stringify([
-                snapshot.artist_split_regex,
-                snapshot.artist_split_exceptions,
-            ]);
-            if (lastSplitKey && splitKey !== lastSplitKey) {
-                rulesNeedRescan = true;
-            }
-            lastSplitKey = splitKey;
         } catch (e) {
             saveState = "dirty";
             addToast(String(e), "error");
@@ -541,12 +522,6 @@
     onMount(async () => {
         try {
             const loaded = await getOnlineSettings();
-            if (!loaded.artist_split_regex) {
-                loaded.artist_split_regex = DEFAULT_SPLIT_REGEX;
-            }
-            if (!loaded.artist_split_exceptions?.length) {
-                loaded.artist_split_exceptions = [...DEFAULT_SPLIT_EXCEPTIONS];
-            }
             if (!loaded.ui_font) {
                 loaded.ui_font = "System";
             }
@@ -605,10 +580,6 @@
             }
             settings = loaded;
             lastSavedJson = JSON.stringify(loaded);
-            lastSplitKey = JSON.stringify([
-                loaded.artist_split_regex,
-                loaded.artist_split_exceptions,
-            ]);
             displayOrders = Object.fromEntries(
                 SOURCE_CATEGORIES.map((c) => {
                     const enabled = loaded[c.key] as string[];
@@ -782,13 +753,6 @@
         }
     }
 
-    function removeSource(key: keyof OnlineSettings, value: string) {
-        if (!settings) return;
-        (settings[key] as string[]) = (settings[key] as string[]).filter(
-            (s) => s !== value,
-        );
-    }
-
     // Visual order of every provider row (enabled + disabled) per category.
     // Disabled rows stay in place, just dimmed — nothing jumps to the bottom.
     let displayOrders = $state<Record<string, string[]>>({});
@@ -849,23 +813,6 @@
         if (!lang) return;
         addSource(key, `wikipedia:${lang}`);
     }
-
-    function handleSourceKeydown(e: KeyboardEvent, key: keyof OnlineSettings) {
-        const input = e.currentTarget as HTMLInputElement;
-        if (e.key === "Enter" || e.key === ",") {
-            e.preventDefault();
-            addSource(key, input.value);
-            input.value = "";
-        }
-    }
-
-    function handleSourceBlur(e: FocusEvent, key: keyof OnlineSettings) {
-        const input = e.currentTarget as HTMLInputElement;
-        if (input.value.trim()) {
-            addSource(key, input.value);
-            input.value = "";
-        }
-    }
 </script>
 
 {#snippet sectionTitle(title: string)}
@@ -880,61 +827,6 @@
 
 {#snippet hint(text: string)}
     <p class="hint">{text}</p>
-{/snippet}
-
-{#snippet pillList(key: keyof OnlineSettings, placeholder: string)}
-    {#if settings}
-        {@const sources = settings[key] as string[]}
-        <div
-            class="pill-list"
-            tabindex={0}
-            role="button"
-            aria-label="Focus source input"
-            onclick={(e) => {
-                const input = (e.currentTarget as HTMLElement).querySelector(
-                    "input",
-                );
-                input?.focus();
-            }}
-            onkeydown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    const input = (
-                        e.currentTarget as HTMLElement
-                    ).querySelector("input");
-                    input?.focus();
-                }
-            }}
-        >
-            {#each sources as source (source)}
-                <span class="pill" role="listitem">
-                    <span class="pill-text">{source}</span>
-                    <button
-                        class="pill-remove"
-                        aria-label={`Remove ${source}`}
-                        onclick={() => removeSource(key, source)}
-                    >
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="currentColor"
-                            aria-hidden="true"
-                        >
-                            <path
-                                d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
-                            />
-                        </svg>
-                    </button>
-                </span>
-            {/each}
-            <input
-                type="text"
-                class="pill-input"
-                {placeholder}
-                onkeydown={(e) => handleSourceKeydown(e, key)}
-                onblur={(e) => handleSourceBlur(e, key)}
-            />
-        </div>
-    {/if}
 {/snippet}
 
 {#snippet sortableSourceList(category: SourceCategory)}
@@ -1314,7 +1206,7 @@
             </div>
 
             <div class="settings-section" hidden={activeCategory !== "library"}>
-                {@render sectionTitle("Scanning & artist names")}
+                {@render sectionTitle("Library scanning")}
 
                 <div class="field field-inline">
                     <label class="toggle">
@@ -1327,41 +1219,6 @@
                         <span>Scan library on startup</span>
                     </label>
                 </div>
-
-                <div class="field">
-                    {@render fieldLabel(
-                        "Artist name separators",
-                        "artist-split-regex",
-                    )}
-                    <input
-                        id="artist-split-regex"
-                        type="text"
-                        bind:value={settings.artist_split_regex}
-                    />
-                    {@render hint("Splits combined artist names.")}
-                </div>
-
-                <div class="field">
-                    {@render fieldLabel(
-                        "Never split these artists",
-                        "artist-split-exceptions",
-                    )}
-                    {@render pillList(
-                        "artist_split_exceptions",
-                        "Add an artist name…",
-                    )}
-                </div>
-
-                {#if rulesNeedRescan}
-                    <div class="field field-inline">
-                        <span class="rescan-note">
-                            Rescan changed rules in <a
-                                class="rescan-link"
-                                href="/folders">Folders</a
-                            >.
-                        </span>
-                    </div>
-                {/if}
             </div>
 
             <div
@@ -2568,78 +2425,6 @@
         color: var(--color-text);
     }
 
-    .pill-list {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: var(--spacing-sm);
-        padding: var(--spacing-sm);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius);
-        background: var(--color-surface-elevated);
-        min-height: 2.5rem;
-        cursor: text;
-    }
-
-    .pill-list:focus-within {
-        border-color: var(--color-accent-focus);
-    }
-
-    .pill {
-        display: inline-flex;
-        align-items: center;
-        gap: var(--spacing-xs);
-        padding: var(--spacing-xs) var(--spacing-sm);
-        background-color: var(--color-surface-raised);
-        border-radius: var(--radius-full);
-        font-size: var(--font-size-sm);
-        color: var(--color-text);
-    }
-
-    .pill-text {
-        max-width: 16rem;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .pill-remove {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 1rem;
-        height: 1rem;
-        color: var(--color-text-muted);
-        border-radius: var(--radius-full);
-        transition:
-            color var(--transition-fast),
-            background-color var(--transition-fast);
-    }
-
-    .pill-remove:hover {
-        color: var(--color-text);
-        background-color: var(--interactive-hover);
-    }
-
-    .pill-remove svg {
-        width: 0.875rem;
-        height: 0.875rem;
-    }
-
-    .pill-input {
-        flex: 1;
-        min-width: 6rem;
-        border: none;
-        background: transparent;
-        padding: var(--spacing-xs);
-        font-size: var(--font-size-sm);
-    }
-
-    .pill-input:focus {
-        outline: none;
-        border: none;
-    }
-
     .source-list {
         display: flex;
         flex-direction: column;
@@ -2716,15 +2501,6 @@
         font-size: var(--font-size-xs);
         font-weight: var(--font-weight-medium);
         white-space: nowrap;
-    }
-
-    .rescan-note {
-        font-size: var(--font-size-sm);
-        color: var(--color-accent-content);
-    }
-
-    .rescan-link {
-        color: inherit;
     }
 
     .accent-row {

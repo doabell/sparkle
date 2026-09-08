@@ -1,6 +1,7 @@
 mod analytics;
 mod artwork_store;
 mod audio_engine;
+mod audio_identity;
 mod backup;
 mod cache;
 mod commands;
@@ -486,9 +487,6 @@ pub fn run() {
             // a fresh database. Custom artist images live here, and losing
             // them is worse than a few orphaned files; clearing is manual
             // from Settings.
-            // Legacy: lyrics were cached as files in schema v1; they live
-            // in the database again since v2.
-            let _ = std::fs::remove_dir_all(cache_dir.join("lyrics"));
             cache::ensure_dirs(&cache_dir);
             let image_cache_dir = cache_dir.join("images");
             app.asset_protocol_scope()
@@ -561,6 +559,14 @@ pub fn run() {
                         );
                     } else {
                         log::info!(target: "sparkle::scanner", "event=startup_scan_completed");
+                        let state = app_handle.state::<AppState>();
+                        if let Ok(playback) = state.audio.get_playback_state() {
+                            if let Some(track) = playback.current_track {
+                                let _ = state.audio.refresh_track_lyrics(track.id);
+                            }
+                        }
+                        use tauri::Emitter;
+                        let _ = app_handle.emit("library-scanned", ());
                     }
                 } else {
                     log::debug!(target: "sparkle::scanner", "event=startup_scan_skipped reason=disabled");
@@ -683,6 +689,7 @@ pub fn run() {
             playback_commands::pause,
             playback_commands::stop,
             playback_commands::seek,
+            playback_commands::seek_lyrics,
             playback_commands::next_track,
             playback_commands::previous_track,
             playback_commands::set_volume,
@@ -697,6 +704,8 @@ pub fn run() {
             online_commands::get_lyrics,
             online_commands::search_lyrics_online,
             online_commands::set_track_lyrics_choice,
+            online_commands::save_track_lyrics_text,
+            online_commands::export_track_lyrics,
             online_commands::get_artist_info,
             online_commands::get_artist_image,
             online_commands::get_album_art,

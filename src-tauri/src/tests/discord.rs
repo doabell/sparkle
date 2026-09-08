@@ -138,6 +138,7 @@ fn cache_cleanup_keeps_persisted_catbox_urls() {
     let conn = Connection::open_in_memory().unwrap();
     conn.execute_batch(
         "
+        CREATE TABLE tracks (id INTEGER PRIMARY KEY, lyrics_revision INTEGER NOT NULL DEFAULT 0);
         CREATE TABLE lyrics (track_id INTEGER PRIMARY KEY, source TEXT NOT NULL);
         CREATE TABLE artist_info (artist_id INTEGER PRIMARY KEY, source TEXT NOT NULL);
         CREATE TABLE images (

@@ -77,6 +77,16 @@ pub fn seek(
 }
 
 #[tauri::command]
+#[allow(non_snake_case)]
+pub fn seek_lyrics(
+    state: State<'_, AppState>,
+    trackId: i64,
+    positionMs: i64,
+) -> Result<PlaybackState, String> {
+    state.audio.seek_lyrics(trackId, positionMs)
+}
+
+#[tauri::command]
 pub fn next_track(
     state: State<'_, AppState>,
     source: Option<PlaybackSource>,
@@ -187,5 +197,6 @@ pub fn set_lrc_offset(
         [offsetMs, trackId],
     )
     .map_err(|e| e.to_string())?;
-    Ok(())
+    drop(conn);
+    state.audio.refresh_track_lyrics(trackId)
 }

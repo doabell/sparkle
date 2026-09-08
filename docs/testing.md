@@ -63,17 +63,29 @@ SQLite with the real schema and isolated temporary files, plus existing fake
 storage adapters.
 
 Scanner tests ingest a tiny, tagged synthetic FLAC through Lofty and SQLite,
-then exercise rescans, changed artist-splitting rules, corrupt files, disabled
-folders, metadata updates, and stale-record cleanup. Sound Check tests decode
+then exercise rescans, ordered NUL-separated and repeated artist tags, corrupt
+files, disabled folders, and metadata updates. Audio-packet fingerprints preserve
+track IDs across renames and retagging; tests also cover reconnecting missing
+files, retaining lyrics/playlists/history, and refusing ambiguous copy matches.
+Album grouping remains title/year, with deterministic album-artist credits.
+The shared `test/fixtures/lrc.json` contract checks frontend/native parsing,
+file offsets, word cues, and timing application. Separate regressions cover
+fresh local lyrics in provider order, stale request rejection, and exports that
+preserve library data. Sound Check tests decode
 synthetic FLAC/PCM files through Rodio and EBU R128, checking short signals,
 silence, attenuation, cancellation, and file-revision changes. No audio device
 is opened; FFmpeg is only needed to regenerate the committed FLAC fixture.
 
-LRCLIB and Cover Art Archive tests use bounded loopback HTTP fixtures with
+LRCLIB, Deezer, Wikipedia image search, and Cover Art Archive tests use bounded loopback HTTP fixtures with
 provider-shaped JSON. The real request/response and decoding code runs against
 these fixtures, including HTTP errors, malformed JSON, artwork preference,
 oversized downloads, and truncated responses. They do not validate live
 service availability. Test clients disable proxies and only target localhost.
+Artist image tests preserve exact-page galleries, resolve nonexact artist names
+through Wikipedia search, and distinguish blocked providers from empty matches.
+Deezer tests also check alias queries, image-size preference, duplicate and
+placeholder filtering, API errors inside successful HTTP responses, and original
+downloaded bytes.
 
 Queue tests exercise the decision helpers used by the real command handlers:
 manual versus automatic advance, repeat modes, the previous-button restart

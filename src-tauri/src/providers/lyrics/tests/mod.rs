@@ -1,5 +1,13 @@
 use super::*;
 
+fn fetch_lyrics_from_sources_with_custom(
+    sources: &[String],
+    metadata: &TrackMetadata,
+    custom: Option<&Lyrics>,
+) -> Result<Option<Lyrics>, String> {
+    fetch_lyrics_from_sources_with_cache(sources, metadata, custom, &[])
+}
+
 #[test]
 fn local_provider_dispatch_respects_custom_none_and_missing_metadata() {
     let metadata = TrackMetadata {
@@ -76,7 +84,7 @@ fn translations_expand_repeated_timestamps_and_leave_unmatched_lines_alone() {
             "\n[00:03.00]Last\n[00:01.00][00:02.00]Hello\nuntimed",
             "\n[00:01.00][00:02.00]你好\nuntimed"
         ),
-        "[00:01.00]Hello/你好\n[00:02.00]Hello/你好\n[00:03.00]Last"
+        "[00:01.000]Hello/你好\n[00:02.000]Hello/你好\n[00:03.000]Last"
     );
     assert_eq!(inject_translation("", ""), "");
 }

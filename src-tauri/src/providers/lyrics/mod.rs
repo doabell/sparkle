@@ -1,7 +1,11 @@
 use crate::models::Lyrics;
-use regex::Regex;
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
+
+mod document;
+pub use document::{
+    apply_lrc_offset, first_synced_line, inject_translation, parse_lrc, strip_lrc_timestamps,
+};
 
 pub mod embedded;
 pub mod kashinavi;
@@ -37,7 +41,7 @@ pub fn fetch_track_metadata(conn: &Connection, track_id: i64) -> Result<TrackMet
              LEFT JOIN albums al ON al.id = t.album_id \
              LEFT JOIN track_artists ta ON ta.track_id = t.id AND ta.role = 'main' \
              LEFT JOIN artists a ON a.id = ta.artist_id \
-             WHERE t.id = ? LIMIT 1",
+             WHERE t.id = ? ORDER BY ta.position, ta.artist_id LIMIT 1",
             [track_id],
             |row| {
                 Ok((
@@ -65,14 +69,23 @@ pub fn fetch_track_metadata(conn: &Connection, track_id: i64) -> Result<TrackMet
 /// first usable result. That keeps the settings order meaningful and avoids
 /// calling NetEase, QQ, and other later providers when an earlier source has
 /// already supplied lyrics.
-pub fn fetch_lyrics_from_sources_with_custom(
+pub fn fetch_lyrics_from_sources_with_cache(
     sources: &[String],
     metadata: &TrackMetadata,
     custom: Option<&Lyrics>,
+    cached: &[Lyrics],
 ) -> Result<Option<Lyrics>, String> {
     fetch_from_sources(sources, |source| {
         if source == "custom" {
             return Ok(custom.cloned());
+        }
+        // Local text is cheap to re-read, and its lifetime follows the file,
+        // not the remote cache. Consult each remote cache only at its own
+        // position in the configured order.
+        if !matches!(source, "embedded" | "lrc" | "none") {
+            if let Some(lyrics) = cached.iter().find(|lyrics| lyrics.source == source) {
+                return Ok(Some(lyrics.clone()));
+            }
         }
         fetch_lyrics_from_source(source, metadata)
     })
@@ -158,82 +171,6 @@ pub fn lrc_path_for_track(file_path: &str) -> PathBuf {
     let mut lrc = path.file_stem().unwrap_or_default().to_os_string();
     lrc.push(".lrc");
     path.with_file_name(lrc)
-}
-
-pub fn strip_lrc_timestamps(synced: &str) -> String {
-    let re = Regex::new(r"\[\d{2}:\d{2}(?:\.\d{2,3})?\]").unwrap();
-    re.replace_all(synced, "")
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-pub fn first_synced_line(text: &str) -> Option<String> {
-    let timestamp = Regex::new(r"\[(\d+):(\d+(?:\.\d+)?)\]").unwrap();
-    text.lines()
-        .filter_map(|line| {
-            let first_time_ms = timestamp
-                .captures_iter(line)
-                .filter_map(|captures| {
-                    let minutes = captures.get(1)?.as_str().parse::<f64>().ok()?;
-                    let seconds = captures.get(2)?.as_str().parse::<f64>().ok()?;
-                    Some(((minutes * 60.0 + seconds) * 1000.0).round() as i64)
-                })
-                .min()?;
-            let lyric = timestamp.replace_all(line.trim(), "").trim().to_string();
-            (!lyric.is_empty()).then_some((first_time_ms, lyric))
-        })
-        .min_by_key(|(time_ms, _)| *time_ms)
-        .map(|(_, lyric)| lyric)
-}
-
-pub fn inject_translation(original: &str, translation: &str) -> String {
-    let re = Regex::new(r"((?:\[.+?\])+)(.*)").unwrap();
-    let time_re = Regex::new(r"\[.+?\]").unwrap();
-    let mut entries: Vec<(String, String)> = Vec::new();
-    for line in original.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        if let Some(caps) = re.captures(line) {
-            let timestamps = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-            let content = caps.get(2).map(|m| m.as_str().trim()).unwrap_or("");
-            for t in time_re.find_iter(timestamps) {
-                entries.push((t.as_str().to_string(), content.to_string()));
-            }
-        }
-    }
-    let mut trans_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-    for line in translation.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        if let Some(caps) = re.captures(line) {
-            let timestamps = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-            let content = caps.get(2).map(|m| m.as_str().trim()).unwrap_or("");
-            for t in time_re.find_iter(timestamps) {
-                trans_map.insert(t.as_str().to_string(), content.to_string());
-            }
-        }
-    }
-    let mut lines = Vec::new();
-    for (time, content) in entries {
-        if let Some(trans) = trans_map.get(&time) {
-            lines.push((time.clone(), format!("{}{}/{}", time, content, trans)));
-        } else {
-            lines.push((time.clone(), format!("{}{}", time, content)));
-        }
-    }
-    lines.sort_by(|a, b| a.0.cmp(&b.0));
-    lines
-        .into_iter()
-        .map(|(_, line)| line)
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 #[cfg(test)]
