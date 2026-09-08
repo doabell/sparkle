@@ -619,7 +619,7 @@
     .more-button:hover,
     .more-button:focus-visible {
         color: var(--color-text);
-        background-color: var(--interactive-hover);
+        background-color: var(--interactive-active);
     }
 
     .more-button svg {
@@ -682,7 +682,7 @@
 
     .popover-item:hover,
     .popover-item:focus-visible {
-        background-color: var(--interactive-hover);
+        background-color: var(--interactive-active);
     }
 
     .popover-empty,

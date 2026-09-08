@@ -112,12 +112,8 @@
     --transition-fast: var(--motion-duration-fast) var(--motion-ease-standard);
     --transition-base: var(--motion-duration-base) var(--motion-ease-standard);
     --transition-slow: var(--motion-duration-slow) var(--motion-ease-enter);
-    --interactive-hover: color-mix(in srgb, var(--color-text) 9%, transparent);
-    --interactive-active: color-mix(
-        in srgb,
-        var(--color-text) 14%,
-        transparent
-    );
+    --interactive-hover: var(--color-surface-elevated);
+    --interactive-active: var(--color-surface-raised);
     --interactive-selected: var(--color-surface-raised);
     --control-height-sm: 2rem;
     --control-height: 2.5rem;
@@ -446,7 +442,7 @@ svg {
 }
 
 .btn-secondary {
-    background-color: color-mix(in srgb, var(--color-text) 8%, transparent);
+    background-color: var(--color-surface-elevated);
     color: var(--color-text);
     border: 1px solid var(--color-border);
 }
@@ -603,7 +599,7 @@ svg {
     height: 2.25rem;
     flex-shrink: 0;
     border-radius: var(--radius-full);
-    background-color: color-mix(in srgb, var(--color-text) 8%, transparent);
+    background-color: var(--color-surface-elevated);
     border: 1px solid var(--color-border);
     color: var(--color-text-secondary);
     transition:
@@ -829,8 +825,9 @@ svg {
     border-radius: var(--radius-lg);
 }
 
-.card-grid-item:hover {
-    background-color: var(--color-surface);
+.card-grid-item:hover,
+.card-grid-item:focus-within {
+    background-color: var(--interactive-hover);
 }
 
 .card-grid-item a {
@@ -841,27 +838,13 @@ svg {
     transition: background-color var(--transition-feedback);
 }
 
-.card-grid-item:hover a {
-    background-color: var(--color-surface);
-}
-
 /* Cards with separate thumb and text links (albums, artists, playlists) */
 .card-grid-item.split {
     padding: var(--spacing-md);
 }
 
-.card-grid-item.split:hover,
-.card-grid-item.split:focus-within {
-    background-color: var(--color-surface);
-}
-
 .card-grid-item.split a {
     padding: 0;
-}
-
-.card-grid-item.split:hover a,
-.card-grid-item.split:focus-within a {
-    background-color: transparent;
 }
 
 .card-grid-thumb {
@@ -1040,7 +1023,7 @@ svg {
 
 .segmented-control button:hover {
     color: var(--color-text);
-    background: var(--interactive-hover);
+    background: var(--interactive-active);
 }
 
 .segmented-control button.active {
@@ -1091,7 +1074,7 @@ svg {
 }
 
 .control-cluster button:hover {
-    background: var(--interactive-hover);
+    background: var(--interactive-active);
     color: var(--color-text);
 }
 
@@ -1134,7 +1117,7 @@ svg {
 
 .list-row:hover,
 .list-row:focus-within {
-    background-color: var(--color-surface-elevated);
+    background-color: var(--interactive-hover);
 }
 
 .list-row-hit {
@@ -1316,13 +1299,13 @@ svg {
     outline: none;
 }
 
-.track-row:hover,
-.track-row:focus-visible {
-    background-color: var(--color-surface-elevated);
-}
-
 .track-row.current {
     background-color: rgba(var(--color-surface-rgb), 0.5);
+}
+
+.track-row:hover,
+.track-row:focus-visible {
+    background-color: var(--interactive-hover);
 }
 
 /* Empty states — Apple Music empty card */

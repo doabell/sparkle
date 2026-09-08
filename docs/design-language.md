@@ -15,8 +15,11 @@ the music rather than competing with it.
 
 Use one primary response for each interaction:
 
-- Rows, cards, and contained controls use an instant, subtle background change
-  over their full hit area. Their position stays fixed on hover.
+- Rows, cards, and contained controls use an instant, clearly visible background
+  change over their full hit area. Their position stays fixed on hover.
+  `--interactive-hover` uses the same solid elevated surface as the Songs list;
+  controls already on that surface use the raised `--interactive-active` fill.
+  Avoid faint transparent white overlays for neutral interaction feedback.
 - Text and icon links use a color change. App navigation and metadata links do
   not underline.
 - Prominent contained actions and interactive artwork may gradually scale to

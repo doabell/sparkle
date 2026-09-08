@@ -44,7 +44,7 @@
         height: 1.875rem;
         border-radius: var(--radius-full);
         border: 1px solid var(--color-border);
-        background-color: rgba(255, 255, 255, 0.08);
+        background-color: var(--color-surface-elevated);
         color: var(--color-text-secondary);
         cursor: pointer;
         transition:
@@ -54,7 +54,7 @@
     }
 
     .sort-dir:hover {
-        background-color: var(--interactive-hover);
+        background-color: var(--interactive-active);
         color: var(--color-text);
     }
 

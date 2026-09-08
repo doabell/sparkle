@@ -723,12 +723,13 @@
         max-width: 100%;
     }
 
-    .artist a {
+    .artist :global(a) {
         color: inherit;
         transition: color var(--transition-feedback);
     }
 
-    .artist a:hover {
+    .artist :global(a:hover),
+    .artist :global(a:focus-visible) {
         color: var(--color-text);
     }
 
@@ -748,7 +749,8 @@
         transition: color var(--transition-feedback);
     }
 
-    .lyric-line:hover {
+    .lyric-line:hover,
+    .lyric-line:focus-visible {
         color: var(--color-text);
     }
 
