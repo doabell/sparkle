@@ -16,7 +16,7 @@ import {
 } from "../src/lib/utils/theme.ts";
 
 const DARK_SURFACES = ["#0b0b0d", "#171719", "#242426", "#303034"];
-const LIGHT_SURFACES = ["#f5f5f7", "#ffffff", "#e9e9ed", "#d8d8de"];
+const LIGHT_SURFACES = ["#ffffff", "#fafafa", "#eeeeee", "#dedede"];
 const PRESETS = [
     "#fa243c",
     "#fa5a24",

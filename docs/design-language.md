@@ -74,6 +74,12 @@ preview, artwork, a selected option, or an editable input. Supporting text and
 save status remain plain text. A selectable preview has one background state,
 not another enclosing frame.
 
+Light mode uses a white canvas and neutral near-white surfaces, with solid gray
+hover fills. Shadows stay small and soft; home artwork shadows must fit within
+the hero padding, including on hover. The light player bar is opaque white with
+a thin divider and no cast shadow or play-button glow. Dark mode retains its
+existing surfaces, translucency, and shadows.
+
 ## Accent roles
 
 Appearance offers System, Light, and Dark. System is the default and follows

@@ -25,19 +25,19 @@
     --accent-dark-on-selection: #ffffff;
     --accent-dark-focus: #fa243c;
     --accent-dark-native: #e7002f;
-    --accent-light-content: #ba0024;
-    --accent-light-graphic: #ec0331;
+    --accent-light-content: #bf0025;
+    --accent-light-graphic: #f11234;
     --accent-light-fill: #e7002f;
     --accent-light-fill-hover: #d5002a;
     --accent-light-fill-active: #c50027;
     --accent-light-fill-disabled: #a2625f;
     --accent-light-on-fill: #ffffff;
     --accent-light-on-fill-disabled: #ffffff;
-    --accent-light-subtle: #ebd1d8;
+    --accent-light-subtle: #efd6d9;
     --accent-light-on-subtle: #000000;
-    --accent-light-selection: #f7b6bf;
+    --accent-light-selection: #febdc5;
     --accent-light-on-selection: #000000;
-    --accent-light-focus: #ec0331;
+    --accent-light-focus: #f11234;
     --accent-light-native: #e7002f;
     --color-accent-content: var(--accent-dark-content);
     --color-accent-graphic: var(--accent-dark-graphic);
@@ -121,15 +121,23 @@
     --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.22);
     --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.32);
     --shadow-lg: 0 20px 52px rgba(0, 0, 0, 0.44);
+    --shadow-hero-art: var(--shadow-lg);
+    --shadow-hero-art-hover: var(--shadow-lg), 0 24px 48px rgba(0, 0, 0, 0.35);
+    --player-background: rgba(var(--color-surface-rgb), 0.65);
+    --player-border: rgba(255, 255, 255, 0.08);
+    --shadow-player: 0 -4px 24px rgba(0, 0, 0, 0.15);
+    --shadow-player-action: 0 4px 16px rgba(0, 0, 0, 0.3);
+    --shadow-player-action-hover: 0 6px 20px
+        color-mix(in srgb, var(--color-accent-seed) 35%, transparent);
 }
 
 @media (prefers-color-scheme: light) {
     :root:not([data-theme="dark"]) {
         color-scheme: light;
-        --color-background: #f5f5f7;
-        --color-surface: #ffffff;
-        --color-surface-elevated: #e9e9ed;
-        --color-surface-raised: #d8d8de;
+        --color-background: #ffffff;
+        --color-surface: #fafafa;
+        --color-surface-elevated: #eeeeee;
+        --color-surface-raised: #dedede;
         --color-text: #111113;
         --color-text-secondary: #5a5a5a;
         --color-text-muted: #6a6a6a;
@@ -152,7 +160,17 @@
         --color-border: rgba(0, 0, 0, 0.1);
         --color-overlay: rgba(0, 0, 0, 0.35);
 
-        --color-surface-rgb: 255, 255, 255;
+        --color-surface-rgb: 250, 250, 250;
+        --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.06);
+        --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+        --shadow-lg: 0 6px 18px rgba(0, 0, 0, 0.1);
+        --shadow-hero-art: var(--shadow-md);
+        --shadow-hero-art-hover: 0 4px 14px rgba(0, 0, 0, 0.12);
+        --player-background: var(--color-background);
+        --player-border: var(--color-border);
+        --shadow-player: none;
+        --shadow-player-action: none;
+        --shadow-player-action-hover: none;
     }
 }
 
@@ -160,10 +178,10 @@
    above and is excluded from the system-light rule. System stays live in CSS. */
 :root[data-theme="light"] {
     color-scheme: light;
-    --color-background: #f5f5f7;
-    --color-surface: #ffffff;
-    --color-surface-elevated: #e9e9ed;
-    --color-surface-raised: #d8d8de;
+    --color-background: #ffffff;
+    --color-surface: #fafafa;
+    --color-surface-elevated: #eeeeee;
+    --color-surface-raised: #dedede;
     --color-text: #111113;
     --color-text-secondary: #5a5a5a;
     --color-text-muted: #6a6a6a;
@@ -185,7 +203,17 @@
     --color-error: #d70015;
     --color-border: rgba(0, 0, 0, 0.1);
     --color-overlay: rgba(0, 0, 0, 0.35);
-    --color-surface-rgb: 255, 255, 255;
+    --color-surface-rgb: 250, 250, 250;
+    --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.06);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 6px 18px rgba(0, 0, 0, 0.1);
+    --shadow-hero-art: var(--shadow-md);
+    --shadow-hero-art-hover: 0 4px 14px rgba(0, 0, 0, 0.12);
+    --player-background: var(--color-background);
+    --player-border: var(--color-border);
+    --shadow-player: none;
+    --shadow-player-action: none;
+    --shadow-player-action-hover: none;
 }
 
 *,
@@ -751,7 +779,7 @@ svg {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    box-shadow: var(--shadow-lg);
+    box-shadow: var(--shadow-hero-art);
     transition:
         transform var(--transition-transform),
         box-shadow var(--transition-feedback);
@@ -760,9 +788,7 @@ svg {
 
 .hero-art:hover {
     transform: scale(var(--motion-hover-scale));
-    box-shadow:
-        var(--shadow-lg),
-        0 24px 48px rgba(0, 0, 0, 0.35);
+    box-shadow: var(--shadow-hero-art-hover);
 }
 
 .hero-art img {

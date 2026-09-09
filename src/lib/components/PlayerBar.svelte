@@ -633,11 +633,11 @@
         align-items: center;
         gap: var(--spacing-lg);
         padding: var(--spacing-sm) var(--spacing-lg);
-        background: rgba(var(--color-surface-rgb), 0.65);
+        background: var(--player-background);
         backdrop-filter: blur(20px) saturate(1.8);
         -webkit-backdrop-filter: blur(20px) saturate(1.8);
-        border-top: 1px solid rgba(255, 255, 255, 0.08);
-        box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.15);
+        border-top: 1px solid var(--player-border);
+        box-shadow: var(--shadow-player);
     }
 
     .error {
@@ -862,7 +862,7 @@
         border-radius: var(--radius-full);
         background-color: var(--color-accent-fill);
         color: var(--color-on-accent-fill);
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        box-shadow: var(--shadow-player-action);
     }
 
     .play-btn svg {
@@ -874,8 +874,7 @@
         transform: scale(var(--motion-hover-scale));
         background-color: var(--color-accent-fill-hover);
         color: var(--color-on-accent-fill);
-        box-shadow: 0 6px 20px
-            color-mix(in srgb, var(--color-accent-seed) 35%, transparent);
+        box-shadow: var(--shadow-player-action-hover);
     }
 
     .control-btn:active,

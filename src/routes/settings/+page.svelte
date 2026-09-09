@@ -695,7 +695,7 @@
         mode: "dark" | "light",
     ) {
         const background = mode === "dark" ? "#171719" : "#ffffff";
-        const surface = mode === "dark" ? "#242426" : "#e9e9ed";
+        const surface = mode === "dark" ? "#242426" : "#eeeeee";
         const text = mode === "dark" ? "#ffffff" : "#111113";
         const muted = mode === "dark" ? "#b3b3b3" : "#5a5a5a";
         return [
