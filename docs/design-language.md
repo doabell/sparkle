@@ -80,6 +80,12 @@ the hero padding, including on hover. The light player bar is opaque white with
 a thin divider and no cast shadow or play-button glow. Dark mode retains its
 existing surfaces, translucency, and shadows.
 
+Artist, album, and Now Playing artwork backdrops follow the theme too. In light
+mode, cap the image layer at 6% opacity over white and fade the headers through
+white, so even dark artwork cannot obscure metadata. Keep dimming filters and
+dark overlays confined to dark mode. Now Playing also uses the light shadow
+scale, without a dark halo around lyrics.
+
 ## Accent roles
 
 Appearance offers System, Light, and Dark. System is the default and follows
