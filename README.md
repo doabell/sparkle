@@ -1,6 +1,7 @@
 # Sparkle
 
-[![CI](https://github.com/doabell/sparkle/actions/workflows/ci.yml/badge.svg)](https://github.com/doabell/sparkle/actions/workflows/ci.yml)
+[![PR checks](https://github.com/doabell/sparkle/actions/workflows/ci.yml/badge.svg)](https://github.com/doabell/sparkle/actions/workflows/ci.yml)
+[![Coverage](https://github.com/doabell/sparkle/actions/workflows/coverage.yml/badge.svg?branch=main)](https://github.com/doabell/sparkle/actions/workflows/coverage.yml)
 [![MIT License](https://img.shields.io/github/license/doabell/sparkle)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/doabell/sparkle)](https://github.com/doabell/sparkle/releases/latest)
 
