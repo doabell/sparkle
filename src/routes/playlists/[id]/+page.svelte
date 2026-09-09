@@ -615,10 +615,10 @@
         color: var(--color-text-secondary);
         border: 1px solid var(--color-border);
         transition:
-            color var(--transition-fast),
-            background-color var(--transition-fast),
-            border-color var(--transition-fast),
-            transform var(--transition-fast);
+            color var(--transition-feedback),
+            background-color var(--transition-feedback),
+            border-color var(--transition-feedback),
+            transform var(--transition-transform);
     }
 
     .delete-playlist-btn:hover:not(:disabled) {
@@ -690,9 +690,9 @@
         color: var(--color-text-secondary);
         flex-shrink: 0;
         transition:
-            color var(--transition-fast),
-            background-color var(--transition-fast),
-            border-color var(--transition-fast);
+            color var(--transition-feedback),
+            background-color var(--transition-feedback),
+            border-color var(--transition-feedback);
     }
 
     .remove-track:hover:not(:disabled) {

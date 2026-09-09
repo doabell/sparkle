@@ -417,7 +417,7 @@
     .history-clear {
         font-size: var(--font-size-sm);
         color: var(--color-text-muted);
-        transition: color var(--transition-fast);
+        transition: color var(--transition-feedback);
     }
 
     .history-clear:hover {
@@ -441,8 +441,8 @@
         font-size: var(--font-size-sm);
         color: var(--color-text);
         transition:
-            background-color var(--transition-fast),
-            border-color var(--transition-fast);
+            background-color var(--transition-feedback),
+            border-color var(--transition-feedback);
     }
 
     .history-chip:hover {

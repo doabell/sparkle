@@ -633,11 +633,11 @@
         align-items: center;
         gap: var(--spacing-lg);
         padding: var(--spacing-sm) var(--spacing-lg);
-        background: rgba(var(--color-surface-rgb), 0.65);
+        background: var(--player-background);
         backdrop-filter: blur(20px) saturate(1.8);
         -webkit-backdrop-filter: blur(20px) saturate(1.8);
-        border-top: 1px solid rgba(255, 255, 255, 0.08);
-        box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.15);
+        border-top: 1px solid var(--player-border);
+        box-shadow: var(--shadow-player);
     }
 
     .error {
@@ -672,8 +672,8 @@
         justify-content: center;
         cursor: pointer;
         transition:
-            box-shadow var(--transition-fast),
-            transform var(--transition-fast);
+            box-shadow var(--transition-feedback),
+            transform var(--transition-transform);
     }
 
     .art:hover {
@@ -706,7 +706,7 @@
         font-size: var(--font-size-base);
         color: var(--color-text);
         cursor: pointer;
-        transition: color var(--transition-fast);
+        transition: color var(--transition-feedback);
         background: none;
         border: none;
         padding: 0;
@@ -723,12 +723,13 @@
         max-width: 100%;
     }
 
-    .artist a {
+    .artist :global(a) {
         color: inherit;
-        transition: color var(--transition-fast);
+        transition: color var(--transition-feedback);
     }
 
-    .artist a:hover {
+    .artist :global(a:hover),
+    .artist :global(a:focus-visible) {
         color: var(--color-text);
     }
 
@@ -745,10 +746,11 @@
         max-width: 100%;
         text-align: left;
         cursor: pointer;
-        transition: color var(--transition-fast);
+        transition: color var(--transition-feedback);
     }
 
-    .lyric-line:hover {
+    .lyric-line:hover,
+    .lyric-line:focus-visible {
         color: var(--color-text);
     }
 
@@ -773,9 +775,9 @@
         align-items: center;
         justify-content: center;
         transition:
-            transform var(--transition-fast),
-            color var(--transition-fast),
-            background-color var(--transition-fast);
+            transform var(--transition-transform),
+            color var(--transition-feedback),
+            background-color var(--transition-feedback);
     }
 
     .control-btn {
@@ -836,8 +838,8 @@
         height: 1.25rem;
         color: var(--color-text-muted);
         transition:
-            transform var(--transition-fast),
-            color var(--transition-fast);
+            transform var(--transition-transform),
+            color var(--transition-feedback);
     }
 
     .queue-toggle:hover {
@@ -860,7 +862,7 @@
         border-radius: var(--radius-full);
         background-color: var(--color-accent-fill);
         color: var(--color-on-accent-fill);
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        box-shadow: var(--shadow-player-action);
     }
 
     .play-btn svg {
@@ -872,8 +874,7 @@
         transform: scale(var(--motion-hover-scale));
         background-color: var(--color-accent-fill-hover);
         color: var(--color-on-accent-fill);
-        box-shadow: 0 6px 20px
-            color-mix(in srgb, var(--color-accent-seed) 35%, transparent);
+        box-shadow: var(--shadow-player-action-hover);
     }
 
     .control-btn:active,
@@ -926,7 +927,7 @@
         flex-shrink: 0;
         cursor: pointer;
         border-radius: var(--radius-full);
-        transition: color var(--transition-fast);
+        transition: color var(--transition-feedback);
     }
 
     .volume-icon svg {
@@ -941,14 +942,6 @@
     .progress .bar-track,
     .volume .bar-track {
         height: 4px;
-        transition: height var(--transition-fast);
-    }
-
-    .progress .bar-track:hover,
-    .volume .bar-track:hover,
-    .progress .bar-track:focus-visible,
-    .volume .bar-track:focus-visible {
-        height: 6px;
     }
 
     .progress .bar-fill,
@@ -962,20 +955,23 @@
         position: absolute;
         right: 0;
         top: 50%;
-        transform: translate(50%, -50%) scale(0);
+        opacity: 0;
+        transform: translate(50%, -50%) scale(var(--motion-reveal-scale));
         width: 10px;
         height: 10px;
         border-radius: var(--radius-full);
         background-color: var(--color-text);
         transition:
-            transform var(--transition-fast),
-            background-color var(--transition-fast);
+            opacity var(--transition-fast),
+            transform var(--transition-transform),
+            background-color var(--transition-feedback);
     }
 
     .progress .bar-track:hover .bar-fill::after,
     .volume .bar-track:hover .bar-fill::after,
     .progress .bar-track:focus-visible .bar-fill::after,
     .volume .bar-track:focus-visible .bar-fill::after {
+        opacity: 1;
         transform: translate(50%, -50%) scale(1);
     }
 

@@ -651,8 +651,8 @@
             var(--shadow-sm);
         overflow: hidden;
         transition:
-            transform var(--transition-base),
-            box-shadow var(--transition-base);
+            transform var(--transition-transform),
+            box-shadow var(--transition-feedback);
     }
 
     .stat-card:nth-child(1) {
@@ -952,7 +952,7 @@
         border-radius: var(--radius-lg);
         overflow: hidden;
         isolation: isolate;
-        transition: background-color var(--transition-fast);
+        transition: background-color var(--transition-feedback);
     }
 
     .top-row:hover {

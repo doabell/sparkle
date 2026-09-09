@@ -44,7 +44,7 @@ interface Oklch {
 }
 
 const DARK_SURFACES = ["#0b0b0d", "#171719", "#242426", "#303034"];
-const LIGHT_SURFACES = ["#f5f5f7", "#ffffff", "#e9e9ed", "#d8d8de"];
+const LIGHT_SURFACES = ["#ffffff", "#fafafa", "#eeeeee", "#dedede"];
 const TEXT_TARGET = 4.7;
 const GRAPHIC_TARGET = 3.2;
 // Auto favors light content when preserving it needs only a subtle perceptual

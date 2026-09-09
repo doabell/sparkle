@@ -474,8 +474,8 @@
         border: none;
         color: var(--color-text-secondary);
         transition:
-            color var(--transition-fast),
-            background-color var(--transition-fast);
+            color var(--transition-feedback),
+            background-color var(--transition-feedback);
     }
 
     .back-fab:hover {
@@ -488,7 +488,7 @@
         inset: 0.375rem;
         border-radius: var(--radius);
         pointer-events: none;
-        transition: background-color var(--transition-fast);
+        transition: background-color var(--transition-feedback);
     }
 
     .back-fab:hover::before {
@@ -515,7 +515,7 @@
         position: relative;
         width: 1rem;
         height: 1rem;
-        transition: transform var(--transition-fast);
+        transition: transform var(--transition-transform);
     }
 
     @media (max-width: 767px) {

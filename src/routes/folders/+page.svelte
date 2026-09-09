@@ -528,7 +528,7 @@
         justify-content: space-between;
         gap: var(--spacing-md);
         flex-wrap: wrap;
-        transition: background-color var(--transition-fast);
+        transition: background-color var(--transition-feedback);
     }
 
     .folder-item:hover {
@@ -570,9 +570,9 @@
         color: var(--color-text-muted);
         border: 1px solid var(--color-border);
         transition:
-            background-color var(--transition-fast),
-            color var(--transition-fast),
-            border-color var(--transition-fast);
+            background-color var(--transition-feedback),
+            color var(--transition-feedback),
+            border-color var(--transition-feedback);
     }
 
     .remove-btn:hover:not(:disabled) {

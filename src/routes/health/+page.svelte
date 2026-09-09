@@ -472,13 +472,12 @@
         );
         text-align: left;
         transition:
-            transform var(--transition-fast),
-            border-color var(--transition-fast),
-            background-color var(--transition-fast);
+            transform var(--transition-transform),
+            border-color var(--transition-feedback),
+            background-color var(--transition-feedback);
     }
 
     button.sound-card:hover {
-        transform: translateY(-2px);
         background-color: var(--color-surface-elevated);
     }
 
@@ -572,15 +571,14 @@
         text-align: left;
         cursor: pointer;
         transition:
-            border-color var(--transition-fast),
-            background-color var(--transition-fast),
-            transform var(--transition-fast);
+            border-color var(--transition-feedback),
+            background-color var(--transition-feedback),
+            transform var(--transition-transform);
         min-height: 6.5rem;
     }
 
     .issue:hover {
         background: var(--color-surface-raised);
-        transform: translateY(-1px);
     }
 
     .issue.selected {

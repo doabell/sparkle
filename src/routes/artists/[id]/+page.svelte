@@ -1221,7 +1221,7 @@
         display: inline-flex;
         align-items: center;
         gap: var(--spacing-xs);
-        transition: color var(--transition-fast);
+        transition: color var(--transition-feedback);
     }
 
     .info-source.link:hover {
@@ -1249,7 +1249,7 @@
         display: inline-flex;
         align-items: center;
         gap: var(--spacing-xs);
-        transition: color var(--transition-fast);
+        transition: color var(--transition-feedback);
     }
 
     .info-source.link:hover {
@@ -1269,17 +1269,17 @@
         height: 2.25rem;
         border-radius: var(--radius-full);
         border: 1px solid var(--color-border);
-        background-color: rgba(255, 255, 255, 0.08);
+        background-color: var(--color-surface-elevated);
         color: var(--color-text-secondary);
         transition:
-            color var(--transition-fast),
-            border-color var(--transition-fast),
-            background-color var(--transition-fast),
-            transform var(--transition-fast);
+            color var(--transition-feedback),
+            border-color var(--transition-feedback),
+            background-color var(--transition-feedback),
+            transform var(--transition-transform);
     }
 
     .edit-artist-btn:hover {
-        background-color: var(--interactive-hover);
+        background-color: var(--interactive-active);
         color: var(--color-text);
         transform: scale(var(--motion-hover-scale));
     }
@@ -1317,7 +1317,7 @@
         min-width: 0;
         border-radius: var(--radius);
         text-align: center;
-        transition: background-color var(--transition-fast);
+        transition: background-color var(--transition-feedback);
     }
     .candidate:hover:not(:disabled) {
         background: var(--interactive-hover);

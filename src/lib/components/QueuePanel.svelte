@@ -265,8 +265,8 @@
         border-radius: var(--radius-full);
         color: var(--color-text-muted);
         transition:
-            color var(--transition-fast),
-            background-color var(--transition-fast);
+            color var(--transition-feedback),
+            background-color var(--transition-feedback);
     }
 
     .close-btn:hover {
@@ -306,7 +306,7 @@
         border-radius: var(--radius);
         text-align: left;
         transition:
-            background-color var(--transition-fast),
+            background-color var(--transition-feedback),
             opacity var(--transition-fast);
     }
 

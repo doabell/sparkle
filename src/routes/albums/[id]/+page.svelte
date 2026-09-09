@@ -452,7 +452,7 @@
 
     :global(.hero-artist-link) {
         color: inherit;
-        transition: color var(--transition-fast);
+        transition: color var(--transition-feedback);
     }
 
     :global(.hero-artist-link:hover) {
@@ -478,7 +478,7 @@
         opacity: 0;
         transition:
             opacity var(--transition-fast),
-            background-color var(--transition-fast);
+            background-color var(--transition-feedback);
     }
 
     .hero-art:hover .art-edit-btn,

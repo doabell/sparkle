@@ -1,5 +1,6 @@
 <script lang="ts">
     import { tick } from "svelte";
+    import { motionScrollBehavior } from "$lib/utils/motion";
 
     export interface ScrollIndexEntry {
         key: string;
@@ -54,7 +55,7 @@
                     activeButton.offsetTop -
                     nav.clientHeight / 2 +
                     activeButton.offsetHeight / 2,
-                behavior: "smooth",
+                behavior: motionScrollBehavior(),
             });
         }
     }
@@ -114,7 +115,10 @@
         const anchor = await findAnchor(entry);
         const root = anchor?.closest<HTMLElement>(".content");
         if (!anchor || !root) {
-            anchor?.scrollIntoView({ behavior: "smooth", block: "start" });
+            anchor?.scrollIntoView({
+                behavior: motionScrollBehavior(),
+                block: "start",
+            });
             return;
         }
 
@@ -122,7 +126,7 @@
         const anchorOffset = anchor.getBoundingClientRect().top - rootRect.top;
         root.scrollTo({
             top: root.scrollTop + anchorOffset - 16,
-            behavior: "smooth",
+            behavior: motionScrollBehavior(),
         });
     }
 </script>
@@ -191,9 +195,9 @@
         white-space: nowrap;
         width: max-content;
         transition:
-            color var(--transition-fast),
-            background-color var(--transition-fast),
-            transform var(--transition-fast);
+            color var(--transition-feedback),
+            background-color var(--transition-feedback),
+            transform var(--transition-transform);
     }
 
     .scroll-index button:hover,

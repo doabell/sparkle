@@ -15,12 +15,16 @@ the music rather than competing with it.
 
 Use one primary response for each interaction:
 
-- Rows, cards, and contained controls use a background change over their full
-  hit area.
+- Rows, cards, and contained controls use an instant, clearly visible background
+  change over their full hit area. Their position stays fixed on hover.
+  `--interactive-hover` uses the same solid elevated surface as the Songs list;
+  controls already on that surface use the raised `--interactive-active` fill.
+  Avoid faint transparent white overlays for neutral interaction feedback.
 - Text and icon links use a color change. App navigation and metadata links do
   not underline.
-- Prominent contained actions may scale to `--motion-hover-scale`; pressed
-  actions scale to `--motion-press-scale`. Metadata text does not scale on hover.
+- Prominent contained actions and interactive artwork may gradually scale to
+  `--motion-hover-scale`; pressed actions scale to `--motion-press-scale`.
+  Metadata text does not scale on hover. Do not lift or bounce controls.
 - Borders describe structure. They do not brighten on hover. Focus outlines,
   validation borders, and selection indicators are semantic exceptions.
 - Non-interactive surfaces do not lift, glow, or otherwise react to the mouse.
@@ -70,6 +74,18 @@ preview, artwork, a selected option, or an editable input. Supporting text and
 save status remain plain text. A selectable preview has one background state,
 not another enclosing frame.
 
+Light mode uses a white canvas and neutral near-white surfaces, with solid gray
+hover fills. Shadows stay small and soft; home artwork shadows must fit within
+the hero padding, including on hover. The light player bar is opaque white with
+a thin divider and no cast shadow or play-button glow. Dark mode retains its
+existing surfaces, translucency, and shadows.
+
+Artist, album, and Now Playing artwork backdrops follow the theme too. In light
+mode, cap the image layer at 6% opacity over white and fade the headers through
+white, so even dark artwork cannot obscure metadata. Keep dimming filters and
+dark overlays confined to dark mode. Now Playing also uses the light shadow
+scale, without a dark halo around lyrics.
+
 ## Accent roles
 
 Appearance offers System, Light, and Dark. System is the default and follows
@@ -92,17 +108,26 @@ their own semantic colors.
 
 ## Motion
 
-- `--motion-duration-fast` (140 ms): hover, press, icon, and color feedback.
-- `--motion-duration-base` (220 ms): panels and state changes.
+- `--transition-feedback` (0 ms): background, text, border, and shadow feedback.
+- `--transition-transform` (220 ms): gradual zoom and control state transforms.
+- `--motion-duration-fast` (140 ms): opacity feedback.
+- `--motion-duration-base` (220 ms): menus and notification entrances.
 - `--motion-duration-slow` (360 ms): page and section entrance.
 - `--motion-ease-standard`: interactive movement.
 - `--motion-ease-enter`: entrance and reveal movement.
 
-Motion changes opacity or transform and must not create layout shift. The OS
-reduced-motion preference and Sparkle's Reduce motion setting both collapse
-transitions, animation durations, and stagger delays globally. A component must
-remain understandable when all motion is removed. Entrance animations must
-release their transform on completion so they do not override hover states.
+Entrances use opacity or a small zoom, with no vertical translation. Toasts
+dismiss immediately. Entrance animations release their transform on completion
+so they do not override hover states. Progress tracks and scrollbars keep a
+constant size when hovered.
+
+The OS reduced-motion preference and Sparkle's Reduce motion setting both
+disable CSS transitions and animations entirely, including entrances, stagger,
+and spinning loaders. Hover and press scales become 1 so controls do not snap
+between sizes. Navigation scrolling becomes instant. First paint also remains
+still until the saved preference is available. Preserve transforms that position
+controls, indicate a switch's state, crop artwork, or hide the mobile sidebar.
+A component must remain understandable when all motion is removed.
 
 Synchronized lyrics are a timing exception: their CSS duration comes from the
 same `LYRIC_TRANSITION_DURATION_MS` value as their playback anticipation. Lyric
@@ -110,7 +135,8 @@ emphasis uses transforms at a fixed font size. Synced lines keep medium-weight
 glyph metrics; a subtle text stroke gives the active line its bolder appearance
 without changing glyph advances. Focus must never rewrap a line, including with
 custom lyric fonts. Auto-centering scrolls only the lyric panel and respects
-both motion preferences.
+both motion preferences. In reduced motion, lines keep a constant scale and
+use immediate color and weight emphasis at the actual lyric timestamp.
 
 Blank timed LRC cues are deliberately ignored, keeping the current sentence
 visible through instrumental gaps. The first nonempty sentence is shown during

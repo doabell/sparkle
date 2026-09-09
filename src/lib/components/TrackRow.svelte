@@ -449,8 +449,8 @@
         padding: 0;
         cursor: pointer;
         transition:
-            transform var(--transition-fast),
-            color var(--transition-fast);
+            transform var(--transition-transform),
+            color var(--transition-feedback);
     }
 
     .track-row:hover .play-button,
@@ -530,7 +530,7 @@
         font-size: var(--font-size-sm);
         color: var(--color-text);
         font-weight: var(--font-weight-medium);
-        transition: color var(--transition-fast);
+        transition: color var(--transition-feedback);
     }
 
     .track-title.current {
@@ -544,7 +544,7 @@
 
     .track-album-link {
         display: block;
-        transition: color var(--transition-fast);
+        transition: color var(--transition-feedback);
     }
 
     .track-album-link:hover {
@@ -559,7 +559,7 @@
 
     :global(.track-artist a) {
         color: inherit;
-        transition: color var(--transition-fast);
+        transition: color var(--transition-feedback);
     }
 
     :global(.track-artist a:hover) {
@@ -569,7 +569,7 @@
     .track-album {
         font-size: var(--font-size-sm);
         color: var(--color-text-muted);
-        transition: color var(--transition-fast);
+        transition: color var(--transition-feedback);
     }
 
     .track-album:hover {
@@ -612,14 +612,14 @@
         border: none;
         cursor: pointer;
         transition:
-            color var(--transition-fast),
-            background-color var(--transition-fast);
+            color var(--transition-feedback),
+            background-color var(--transition-feedback);
     }
 
     .more-button:hover,
     .more-button:focus-visible {
         color: var(--color-text);
-        background-color: var(--interactive-hover);
+        background-color: var(--interactive-active);
     }
 
     .more-button svg {
@@ -682,7 +682,7 @@
 
     .popover-item:hover,
     .popover-item:focus-visible {
-        background-color: var(--interactive-hover);
+        background-color: var(--interactive-active);
     }
 
     .popover-empty,

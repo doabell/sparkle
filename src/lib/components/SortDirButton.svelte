@@ -44,17 +44,17 @@
         height: 1.875rem;
         border-radius: var(--radius-full);
         border: 1px solid var(--color-border);
-        background-color: rgba(255, 255, 255, 0.08);
+        background-color: var(--color-surface-elevated);
         color: var(--color-text-secondary);
         cursor: pointer;
         transition:
-            background-color var(--transition-fast),
-            border-color var(--transition-fast),
-            color var(--transition-fast);
+            background-color var(--transition-feedback),
+            border-color var(--transition-feedback),
+            color var(--transition-feedback);
     }
 
     .sort-dir:hover {
-        background-color: var(--interactive-hover);
+        background-color: var(--interactive-active);
         color: var(--color-text);
     }
 
@@ -66,7 +66,7 @@
     .sort-dir-icon {
         width: 0.9375rem;
         height: 0.9375rem;
-        transition: transform var(--transition-fast);
+        transition: transform var(--transition-transform);
         transform: rotate(180deg);
     }
 

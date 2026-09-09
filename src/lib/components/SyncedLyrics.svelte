@@ -8,6 +8,7 @@
     import { onMount } from "svelte";
     import type { Action } from "svelte/action";
     import LyricText from "$lib/components/LyricText.svelte";
+    import { prefersReducedMotion } from "$lib/utils/motion";
 
     interface Props {
         fontFamily?: string;
@@ -68,8 +69,7 @@
         );
         const root = document.documentElement;
         const updateReducedMotion = () => {
-            reducedMotion =
-                mediaQuery.matches || root.dataset.motion !== "full";
+            reducedMotion = prefersReducedMotion();
         };
         const motionSettingObserver = new MutationObserver(updateReducedMotion);
 
@@ -259,12 +259,16 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
-        .lyrics-line {
+        .lyrics-line,
+        .lines.synced .lyrics-line.active {
             transition: none;
+            transform: none;
         }
     }
 
-    :global(:root[data-motion="reduced"]) .lyrics-line {
+    :global(:root:not([data-motion="full"])) .lyrics-line,
+    :global(:root:not([data-motion="full"])) .lines.synced .lyrics-line.active {
         transition: none;
+        transform: none;
     }
 </style>

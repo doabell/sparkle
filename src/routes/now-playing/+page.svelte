@@ -1080,13 +1080,14 @@
         inset: 0;
         background-size: cover;
         background-position: center;
-        filter: blur(140px) saturate(1.6) brightness(0.5);
+        filter: blur(140px) saturate(1.6)
+            brightness(var(--artwork-backdrop-brightness, 0.5));
         transform: scale(1.8);
-        opacity: 0.9;
+        opacity: var(--artwork-backdrop-opacity, 0.9);
         transition:
             filter var(--transition-slow),
             opacity var(--transition-slow),
-            transform var(--transition-slow);
+            transform var(--transition-transform);
     }
 
     .np-backdrop::after {
@@ -1120,9 +1121,9 @@
         min-width: 0;
         container-type: inline-size;
         transition:
-            transform var(--transition-slow),
-            background-color var(--transition-slow),
-            border-color var(--transition-slow),
+            transform var(--transition-transform),
+            background-color var(--transition-feedback),
+            border-color var(--transition-feedback),
             border-radius var(--transition-slow),
             padding var(--transition-slow);
     }
@@ -1141,9 +1142,9 @@
         box-shadow: var(--shadow-md);
         align-self: center;
         transition:
-            transform var(--transition-slow),
+            transform var(--transition-transform),
             border-radius var(--transition-slow),
-            box-shadow var(--transition-slow),
+            box-shadow var(--transition-feedback),
             width var(--transition-slow),
             max-width var(--transition-slow);
     }
@@ -1174,7 +1175,7 @@
         padding: var(--spacing-xs);
         text-align: center;
         transition:
-            color var(--transition-slow),
+            color var(--transition-feedback),
             padding var(--transition-slow),
             text-align var(--transition-slow);
     }
@@ -1198,7 +1199,7 @@
     :global(.artist-link),
     .album-link {
         color: inherit;
-        transition: color var(--transition-fast);
+        transition: color var(--transition-feedback);
     }
 
     :global(.artist-link:hover) {
@@ -1223,11 +1224,11 @@
         min-height: 0;
         height: 100%;
         transition:
-            background-color var(--transition-slow),
-            border-color var(--transition-slow),
+            background-color var(--transition-feedback),
+            border-color var(--transition-feedback),
             border-radius var(--transition-slow),
             padding var(--transition-slow),
-            box-shadow var(--transition-slow);
+            box-shadow var(--transition-feedback);
     }
 
     .lyrics-header {
@@ -1286,7 +1287,10 @@
         --np-lyrics-transform-origin: center;
         --np-lyrics-container-padding: 0 var(--spacing-md);
         --np-lyrics-lines-gap: var(--spacing-md);
-        --np-lyrics-active-shadow: 0 2px 16px rgba(0, 0, 0, 0.6);
+        --np-lyrics-active-shadow: var(
+            --shadow-now-playing-lyrics,
+            0 2px 16px rgba(0, 0, 0, 0.6)
+        );
     }
 
     .visual-stage {
@@ -1335,8 +1339,8 @@
 
     .now-playing[data-layout] .album-art {
         transition:
-            transform var(--transition-slow),
-            box-shadow var(--transition-slow),
+            transform var(--transition-transform),
+            box-shadow var(--transition-feedback),
             width var(--transition-slow),
             max-width var(--transition-slow);
     }
@@ -1349,11 +1353,13 @@
 
     .now-playing[data-layout="album"] .album-art {
         max-width: 27.5rem;
-        box-shadow:
+        box-shadow: var(
+            --shadow-now-playing-art,
             0 30px 72px rgba(0, 0, 0, 0.42),
             0 0 0 1px color-mix(in srgb, var(--color-text) 8%, transparent),
             0 0 96px
-                color-mix(in srgb, var(--color-accent-seed) 13%, transparent);
+                color-mix(in srgb, var(--color-accent-seed) 13%, transparent)
+        );
     }
 
     .now-playing[data-layout="album"] .track-info .page-title {
@@ -1367,7 +1373,8 @@
     }
 
     .now-playing[data-layout="artist"] .np-backdrop {
-        filter: blur(125px) saturate(1.25) brightness(0.43);
+        filter: blur(125px) saturate(1.25)
+            brightness(var(--artwork-backdrop-brightness, 0.43));
         transform: scale(1.72);
     }
 
@@ -1380,18 +1387,23 @@
         width: 84%;
         aspect-ratio: 1;
         border: 1px solid color-mix(in srgb, var(--color-text) 13%, transparent);
-        box-shadow:
+        box-shadow: var(
+            --shadow-now-playing-art,
             0 30px 72px rgba(0, 0, 0, 0.42),
             0 0 72px
-                color-mix(in srgb, var(--color-accent-seed) 12%, transparent);
+                color-mix(in srgb, var(--color-accent-seed) 12%, transparent)
+        );
         transition:
-            transform var(--transition-slow),
-            box-shadow var(--transition-slow);
+            transform var(--transition-transform),
+            box-shadow var(--transition-feedback);
     }
 
     .now-playing[data-layout="artist"] a.artist-portrait:hover {
-        transform: translateY(-4px) scale(1.01);
-        box-shadow: 0 38px 82px rgba(0, 0, 0, 0.48);
+        transform: scale(var(--motion-hover-scale));
+        box-shadow: var(
+            --shadow-now-playing-art-hover,
+            0 38px 82px rgba(0, 0, 0, 0.48)
+        );
     }
 
     .now-playing[data-layout="artist"] .album-art {
@@ -1402,9 +1414,11 @@
         width: 34%;
         max-width: none;
         border-radius: var(--radius-lg);
-        box-shadow:
+        box-shadow: var(
+            --shadow-now-playing-art,
             0 18px 44px rgba(0, 0, 0, 0.56),
-            0 0 0 1px color-mix(in srgb, var(--color-text) 14%, transparent);
+            0 0 0 1px color-mix(in srgb, var(--color-text) 14%, transparent)
+        );
     }
 
     .now-playing[data-layout="artist"] .track-info .page-title {
@@ -1437,9 +1451,10 @@
     }
 
     .now-playing[data-layout="lyrics"] .np-backdrop {
-        filter: blur(155px) saturate(0.35) brightness(0.28);
+        filter: blur(155px) saturate(0.35)
+            brightness(var(--artwork-backdrop-brightness, 0.28));
         transform: scale(1.9);
-        opacity: 0.28;
+        opacity: var(--artwork-backdrop-opacity, 0.28);
     }
 
     .now-playing[data-layout="lyrics"] .np-backdrop::after {
@@ -1463,9 +1478,11 @@
         max-width: none;
         align-self: auto;
         border-radius: var(--radius-lg);
-        box-shadow:
+        box-shadow: var(
+            --shadow-now-playing-art,
             0 20px 50px rgba(0, 0, 0, 0.36),
-            0 0 0 1px color-mix(in srgb, var(--color-text) 8%, transparent);
+            0 0 0 1px color-mix(in srgb, var(--color-text) 8%, transparent)
+        );
     }
 
     .now-playing[data-layout="lyrics"] .track-info {
@@ -1529,7 +1546,7 @@
         text-align: left;
         padding: var(--spacing-sm) var(--spacing-md);
         border-radius: var(--radius);
-        transition: background-color var(--transition-fast);
+        transition: background-color var(--transition-feedback);
     }
 
     .lyric-candidate:hover:not(:disabled) {

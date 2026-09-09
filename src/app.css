@@ -25,19 +25,19 @@
     --accent-dark-on-selection: #ffffff;
     --accent-dark-focus: #fa243c;
     --accent-dark-native: #e7002f;
-    --accent-light-content: #ba0024;
-    --accent-light-graphic: #ec0331;
+    --accent-light-content: #bf0025;
+    --accent-light-graphic: #f11234;
     --accent-light-fill: #e7002f;
     --accent-light-fill-hover: #d5002a;
     --accent-light-fill-active: #c50027;
     --accent-light-fill-disabled: #a2625f;
     --accent-light-on-fill: #ffffff;
     --accent-light-on-fill-disabled: #ffffff;
-    --accent-light-subtle: #ebd1d8;
+    --accent-light-subtle: #efd6d9;
     --accent-light-on-subtle: #000000;
-    --accent-light-selection: #f7b6bf;
+    --accent-light-selection: #febdc5;
     --accent-light-on-selection: #000000;
-    --accent-light-focus: #ec0331;
+    --accent-light-focus: #f11234;
     --accent-light-native: #e7002f;
     --color-accent-content: var(--accent-dark-content);
     --color-accent-graphic: var(--accent-dark-graphic);
@@ -104,15 +104,16 @@
     --motion-ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
     --motion-hover-scale: 1.025;
     --motion-press-scale: 0.97;
+    --motion-enter-scale: 0.98;
+    --motion-reveal-scale: 0.9;
+    --transition-transform: var(--motion-duration-base)
+        var(--motion-ease-standard);
+    --transition-feedback: 0ms;
     --transition-fast: var(--motion-duration-fast) var(--motion-ease-standard);
     --transition-base: var(--motion-duration-base) var(--motion-ease-standard);
     --transition-slow: var(--motion-duration-slow) var(--motion-ease-enter);
-    --interactive-hover: color-mix(in srgb, var(--color-text) 9%, transparent);
-    --interactive-active: color-mix(
-        in srgb,
-        var(--color-text) 14%,
-        transparent
-    );
+    --interactive-hover: var(--color-surface-elevated);
+    --interactive-active: var(--color-surface-raised);
     --interactive-selected: var(--color-surface-raised);
     --control-height-sm: 2rem;
     --control-height: 2.5rem;
@@ -120,15 +121,23 @@
     --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.22);
     --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.32);
     --shadow-lg: 0 20px 52px rgba(0, 0, 0, 0.44);
+    --shadow-hero-art: var(--shadow-lg);
+    --shadow-hero-art-hover: var(--shadow-lg), 0 24px 48px rgba(0, 0, 0, 0.35);
+    --player-background: rgba(var(--color-surface-rgb), 0.65);
+    --player-border: rgba(255, 255, 255, 0.08);
+    --shadow-player: 0 -4px 24px rgba(0, 0, 0, 0.15);
+    --shadow-player-action: 0 4px 16px rgba(0, 0, 0, 0.3);
+    --shadow-player-action-hover: 0 6px 20px
+        color-mix(in srgb, var(--color-accent-seed) 35%, transparent);
 }
 
 @media (prefers-color-scheme: light) {
     :root:not([data-theme="dark"]) {
         color-scheme: light;
-        --color-background: #f5f5f7;
-        --color-surface: #ffffff;
-        --color-surface-elevated: #e9e9ed;
-        --color-surface-raised: #d8d8de;
+        --color-background: #ffffff;
+        --color-surface: #fafafa;
+        --color-surface-elevated: #eeeeee;
+        --color-surface-raised: #dedede;
         --color-text: #111113;
         --color-text-secondary: #5a5a5a;
         --color-text-muted: #6a6a6a;
@@ -151,7 +160,24 @@
         --color-border: rgba(0, 0, 0, 0.1);
         --color-overlay: rgba(0, 0, 0, 0.35);
 
-        --color-surface-rgb: 255, 255, 255;
+        --color-surface-rgb: 250, 250, 250;
+        --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.06);
+        --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+        --shadow-lg: 0 6px 18px rgba(0, 0, 0, 0.1);
+        --shadow-hero-art: var(--shadow-md);
+        --shadow-hero-art-hover: 0 4px 14px rgba(0, 0, 0, 0.12);
+        --player-background: var(--color-background);
+        --player-border: var(--color-border);
+        --shadow-player: none;
+        --shadow-player-action: none;
+        --shadow-player-action-hover: none;
+        --hero-shade-start: var(--color-background);
+        --hero-overlay-rgb: 255, 255, 255;
+        --artwork-backdrop-brightness: 1;
+        --artwork-backdrop-opacity: 0.06;
+        --shadow-now-playing-art: var(--shadow-md);
+        --shadow-now-playing-art-hover: var(--shadow-lg);
+        --shadow-now-playing-lyrics: none;
     }
 }
 
@@ -159,10 +185,10 @@
    above and is excluded from the system-light rule. System stays live in CSS. */
 :root[data-theme="light"] {
     color-scheme: light;
-    --color-background: #f5f5f7;
-    --color-surface: #ffffff;
-    --color-surface-elevated: #e9e9ed;
-    --color-surface-raised: #d8d8de;
+    --color-background: #ffffff;
+    --color-surface: #fafafa;
+    --color-surface-elevated: #eeeeee;
+    --color-surface-raised: #dedede;
     --color-text: #111113;
     --color-text-secondary: #5a5a5a;
     --color-text-muted: #6a6a6a;
@@ -184,7 +210,24 @@
     --color-error: #d70015;
     --color-border: rgba(0, 0, 0, 0.1);
     --color-overlay: rgba(0, 0, 0, 0.35);
-    --color-surface-rgb: 255, 255, 255;
+    --color-surface-rgb: 250, 250, 250;
+    --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.06);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 6px 18px rgba(0, 0, 0, 0.1);
+    --shadow-hero-art: var(--shadow-md);
+    --shadow-hero-art-hover: 0 4px 14px rgba(0, 0, 0, 0.12);
+    --player-background: var(--color-background);
+    --player-border: var(--color-border);
+    --shadow-player: none;
+    --shadow-player-action: none;
+    --shadow-player-action-hover: none;
+    --hero-shade-start: var(--color-background);
+    --hero-overlay-rgb: 255, 255, 255;
+    --artwork-backdrop-brightness: 1;
+    --artwork-backdrop-opacity: 0.06;
+    --shadow-now-playing-art: var(--shadow-md);
+    --shadow-now-playing-art-hover: var(--shadow-lg);
+    --shadow-now-playing-lyrics: none;
 }
 
 *,
@@ -283,8 +326,8 @@ select {
     font-size: var(--font-size-sm);
     cursor: pointer;
     transition:
-        background-color var(--transition-fast),
-        border-color var(--transition-fast);
+        background-color var(--transition-feedback),
+        border-color var(--transition-feedback);
 }
 
 select:hover {
@@ -390,10 +433,10 @@ svg {
     font-weight: var(--font-weight-semibold);
     font-size: var(--font-size-sm);
     transition:
-        background-color var(--transition-fast),
-        transform var(--transition-fast),
-        color var(--transition-fast),
-        box-shadow var(--transition-fast);
+        background-color var(--transition-feedback),
+        transform var(--transition-transform),
+        color var(--transition-feedback),
+        box-shadow var(--transition-feedback);
 }
 
 .btn-pill svg {
@@ -441,7 +484,7 @@ svg {
 }
 
 .btn-secondary {
-    background-color: color-mix(in srgb, var(--color-text) 8%, transparent);
+    background-color: var(--color-surface-elevated);
     color: var(--color-text);
     border: 1px solid var(--color-border);
 }
@@ -598,14 +641,14 @@ svg {
     height: 2.25rem;
     flex-shrink: 0;
     border-radius: var(--radius-full);
-    background-color: color-mix(in srgb, var(--color-text) 8%, transparent);
+    background-color: var(--color-surface-elevated);
     border: 1px solid var(--color-border);
     color: var(--color-text-secondary);
     transition:
-        background-color var(--transition-fast),
-        color var(--transition-fast),
-        transform var(--transition-fast),
-        border-color var(--transition-fast);
+        background-color var(--transition-feedback),
+        color var(--transition-feedback),
+        transform var(--transition-transform),
+        border-color var(--transition-feedback);
 }
 
 .icon-btn:hover:not(:disabled) {
@@ -661,7 +704,7 @@ svg {
     isolation: isolate;
     background: linear-gradient(
         to bottom,
-        rgba(0, 0, 0, 0.2) 0%,
+        var(--hero-shade-start, rgba(0, 0, 0, 0.2)) 0%,
         var(--color-background) 80%
     );
 }
@@ -675,7 +718,9 @@ svg {
     background-size: cover;
     background-position: center 20%;
     background-repeat: no-repeat;
-    filter: blur(80px) saturate(1.6) brightness(0.55);
+    filter: blur(80px) saturate(1.6)
+        brightness(var(--artwork-backdrop-brightness, 0.55));
+    opacity: var(--artwork-backdrop-opacity, 1);
     transform: scale(1.3);
 }
 
@@ -686,8 +731,8 @@ svg {
     z-index: -1;
     background: linear-gradient(
         to bottom,
-        rgba(18, 18, 18, 0.2) 0%,
-        rgba(18, 18, 18, 0.7) 60%,
+        rgba(var(--hero-overlay-rgb, 18, 18, 18), 0.2) 0%,
+        rgba(var(--hero-overlay-rgb, 18, 18, 18), 0.7) 60%,
         var(--color-background) 100%
     );
 }
@@ -750,18 +795,16 @@ svg {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    box-shadow: var(--shadow-lg);
+    box-shadow: var(--shadow-hero-art);
     transition:
-        transform var(--transition-slow),
-        box-shadow var(--transition-slow);
+        transform var(--transition-transform),
+        box-shadow var(--transition-feedback);
     cursor: pointer;
 }
 
 .hero-art:hover {
-    transform: scale(1.02) translateY(-4px);
-    box-shadow:
-        var(--shadow-lg),
-        0 24px 48px rgba(0, 0, 0, 0.35);
+    transform: scale(var(--motion-hover-scale));
+    box-shadow: var(--shadow-hero-art-hover);
 }
 
 .hero-art img {
@@ -822,15 +865,11 @@ svg {
 .card-grid-item {
     position: relative;
     border-radius: var(--radius-lg);
-    transition:
-        transform var(--transition-base),
-        box-shadow var(--transition-base);
-    will-change: transform;
 }
 
-.card-grid-item:hover {
-    transform: translateY(-6px);
-    box-shadow: var(--shadow-md);
+.card-grid-item:hover,
+.card-grid-item:focus-within {
+    background-color: var(--interactive-hover);
 }
 
 .card-grid-item a {
@@ -838,11 +877,7 @@ svg {
     padding: var(--spacing-md);
     border-radius: var(--radius-lg);
     color: inherit;
-    transition: background-color var(--transition-fast);
-}
-
-.card-grid-item:hover a {
-    background-color: var(--color-surface);
+    transition: background-color var(--transition-feedback);
 }
 
 /* Cards with separate thumb and text links (albums, artists, playlists) */
@@ -850,18 +885,8 @@ svg {
     padding: var(--spacing-md);
 }
 
-.card-grid-item.split:hover,
-.card-grid-item.split:focus-within {
-    background-color: var(--color-surface);
-}
-
 .card-grid-item.split a {
     padding: 0;
-}
-
-.card-grid-item.split:hover a,
-.card-grid-item.split:focus-within a {
-    background-color: transparent;
 }
 
 .card-grid-thumb {
@@ -947,11 +972,11 @@ svg {
     color: var(--color-on-accent-fill);
     border: none;
     opacity: 0;
-    transform: translateY(8px) scale(0.9);
+    transform: scale(var(--motion-reveal-scale));
     transition:
         opacity var(--transition-fast),
-        transform var(--transition-fast),
-        background-color var(--transition-fast);
+        transform var(--transition-transform),
+        background-color var(--transition-feedback);
     box-shadow: var(--shadow-md);
     z-index: 2;
     cursor: pointer;
@@ -988,7 +1013,7 @@ svg {
 .list-row:hover .list-row-play,
 .list-row:focus-within .list-row-play {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: scale(1);
 }
 
 .card-play-button:hover,
@@ -1002,14 +1027,14 @@ svg {
 .card-grid-item:focus-within .card-play-button:hover,
 .list-row:hover .list-row-play:hover,
 .list-row:focus-within .list-row-play:hover {
-    transform: translateY(0) scale(var(--motion-hover-scale));
+    transform: scale(var(--motion-hover-scale));
 }
 
 .card-grid-item:hover .card-play-button:active,
 .card-grid-item:focus-within .card-play-button:active,
 .list-row:hover .list-row-play:active,
 .list-row:focus-within .list-row-play:active {
-    transform: translateY(0) scale(var(--motion-press-scale));
+    transform: scale(var(--motion-press-scale));
 }
 
 /* Segmented choices: neutral fill for view/state, accent only when meaningful. */
@@ -1034,13 +1059,13 @@ svg {
     color: var(--color-text-secondary);
     background: transparent;
     transition:
-        background-color var(--transition-fast),
-        color var(--transition-fast);
+        background-color var(--transition-feedback),
+        color var(--transition-feedback);
 }
 
 .segmented-control button:hover {
     color: var(--color-text);
-    background: var(--interactive-hover);
+    background: var(--interactive-active);
 }
 
 .segmented-control button.active {
@@ -1085,13 +1110,13 @@ svg {
     font-size: var(--font-size-xs);
     font-weight: var(--font-weight-medium);
     transition:
-        background-color var(--transition-fast),
-        color var(--transition-fast),
-        transform var(--transition-fast);
+        background-color var(--transition-feedback),
+        color var(--transition-feedback),
+        transform var(--transition-transform);
 }
 
 .control-cluster button:hover {
-    background: var(--interactive-hover);
+    background: var(--interactive-active);
     color: var(--color-text);
 }
 
@@ -1129,12 +1154,12 @@ svg {
     gap: var(--spacing-md);
     padding: var(--spacing-sm) var(--spacing-md);
     border-radius: var(--radius);
-    transition: background-color var(--transition-fast);
+    transition: background-color var(--transition-feedback);
 }
 
 .list-row:hover,
 .list-row:focus-within {
-    background-color: var(--color-surface-elevated);
+    background-color: var(--interactive-hover);
 }
 
 .list-row-hit {
@@ -1221,8 +1246,8 @@ svg {
     border: 1px solid var(--color-border);
     cursor: pointer;
     transition:
-        background-color var(--transition-fast),
-        border-color var(--transition-fast);
+        background-color var(--transition-feedback),
+        border-color var(--transition-feedback);
 }
 
 .switch::after {
@@ -1236,8 +1261,8 @@ svg {
     border-radius: 50%;
     background-color: var(--color-text-muted);
     transition:
-        transform var(--transition-fast),
-        background-color var(--transition-fast);
+        transform var(--transition-transform),
+        background-color var(--transition-feedback);
 }
 
 .switch.on {
@@ -1312,17 +1337,17 @@ svg {
     gap: var(--spacing-md);
     padding: var(--spacing-sm) var(--spacing-md);
     border-radius: var(--radius);
-    transition: background-color var(--transition-fast);
+    transition: background-color var(--transition-feedback);
     outline: none;
-}
-
-.track-row:hover,
-.track-row:focus-visible {
-    background-color: var(--color-surface-elevated);
 }
 
 .track-row.current {
     background-color: rgba(var(--color-surface-rgb), 0.5);
+}
+
+.track-row:hover,
+.track-row:focus-visible {
+    background-color: var(--interactive-hover);
 }
 
 /* Empty states — Apple Music empty card */
@@ -1392,7 +1417,7 @@ svg {
     height: 100%;
     background-color: var(--color-text);
     border-radius: var(--radius-full);
-    transition: background-color var(--transition-fast);
+    transition: background-color var(--transition-feedback);
 }
 
 .bar-track:hover .bar-fill,
@@ -1425,11 +1450,11 @@ svg {
 @keyframes card-enter {
     from {
         opacity: 0;
-        transform: translateY(16px);
+        transform: scale(var(--motion-enter-scale));
     }
     to {
         opacity: 1;
-        transform: translateY(0);
+        transform: scale(1);
     }
 }
 
@@ -1438,34 +1463,38 @@ svg {
         backwards;
 }
 
-/* Reduced motion: kill enter animations and transitions globally. Applies
-   both to the OS-level preference and the in-app Reduce motion setting. */
+/* Remove decorative motion, including instantaneous hover-size changes.
+   Keep transforms used to position controls, crop artwork, or hide the sidebar. */
 @media (prefers-reduced-motion: reduce) {
+    :root {
+        --motion-hover-scale: 1;
+        --motion-press-scale: 1;
+        --motion-enter-scale: 1;
+        --motion-reveal-scale: 1;
+    }
+
     *,
     *::before,
     *::after {
-        transition-duration: 0.01ms !important;
-        transition-delay: 0ms !important;
-        animation-duration: 0.01ms !important;
-        animation-delay: 0ms !important;
-        animation-iteration-count: 1 !important;
+        transition: none !important;
+        animation: none !important;
         scroll-behavior: auto !important;
     }
 }
 
-:root[data-motion="reduced"] .page-enter,
-:root[data-motion="reduced"] .card-enter {
-    animation: none;
+/* Until the saved preference is loaded, keep first paint still as well. */
+:root:not([data-motion="full"]) {
+    --motion-hover-scale: 1;
+    --motion-press-scale: 1;
+    --motion-enter-scale: 1;
+    --motion-reveal-scale: 1;
 }
 
-:root[data-motion="reduced"] *,
-:root[data-motion="reduced"] *::before,
-:root[data-motion="reduced"] *::after {
-    transition-duration: 0.01ms !important;
-    transition-delay: 0ms !important;
-    animation-duration: 0.01ms !important;
-    animation-delay: 0ms !important;
-    animation-iteration-count: 1 !important;
+:root:not([data-motion="full"]) *,
+:root:not([data-motion="full"]) *::before,
+:root:not([data-motion="full"]) *::after {
+    transition: none !important;
+    animation: none !important;
     scroll-behavior: auto !important;
 }
 

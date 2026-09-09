@@ -127,7 +127,7 @@
         border-radius: 0;
         background: transparent;
         color: inherit;
-        transition: color var(--transition-fast);
+        transition: color var(--transition-feedback);
     }
 
     /* The visible tile is inset; the invisible rectangular target still
@@ -138,7 +138,7 @@
         inset: 0.375rem;
         border-radius: var(--radius);
         pointer-events: none;
-        transition: background-color var(--transition-fast);
+        transition: background-color var(--transition-feedback);
     }
 
     .window-control:hover {
@@ -196,7 +196,7 @@
         stroke-linecap: round;
         stroke-linejoin: round;
         pointer-events: none;
-        transition: transform var(--transition-fast);
+        transition: transform var(--transition-transform);
     }
 
     @media (prefers-reduced-motion: reduce) {

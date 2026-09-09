@@ -357,8 +357,8 @@
         font-size: var(--font-size-sm);
         cursor: pointer;
         transition:
-            background-color var(--transition-fast),
-            border-color var(--transition-fast);
+            background-color var(--transition-feedback),
+            border-color var(--transition-feedback);
     }
 
     .select-trigger:hover,
@@ -385,7 +385,7 @@
         height: 0.875rem;
         flex-shrink: 0;
         color: var(--color-text-muted);
-        transition: transform var(--transition-fast);
+        transition: transform var(--transition-transform);
     }
 
     .select-trigger.open .select-chevron {
@@ -410,18 +410,18 @@
         border-radius: var(--radius-lg);
         box-shadow: var(--shadow-lg);
         outline: none;
-        animation: select-in var(--motion-duration-fast)
+        animation: select-in var(--motion-duration-base)
             var(--motion-ease-enter);
     }
 
     @keyframes select-in {
         from {
             opacity: 0;
-            transform: translateY(-4px) scale(0.98);
+            transform: scale(var(--motion-enter-scale));
         }
         to {
             opacity: 1;
-            transform: translateY(0) scale(1);
+            transform: scale(1);
         }
     }
 
@@ -438,8 +438,8 @@
         text-align: left;
         cursor: pointer;
         transition:
-            background-color var(--transition-fast),
-            color var(--transition-fast);
+            background-color var(--transition-feedback),
+            color var(--transition-feedback);
         white-space: nowrap;
     }
 

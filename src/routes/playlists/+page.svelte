@@ -549,8 +549,8 @@
         opacity: 0;
         transition:
             opacity var(--transition-fast),
-            background-color var(--transition-fast),
-            color var(--transition-fast);
+            background-color var(--transition-feedback),
+            color var(--transition-feedback);
     }
 
     .card-grid-item:hover .delete-btn,
