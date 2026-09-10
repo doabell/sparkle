@@ -11,6 +11,8 @@ Sparkle uses Velopack 1.2.0 for its Windows x64 setup and in-app updates. Keep t
 
 The setup creates only a Start menu shortcut. WebView2 is bootstrapped when missing. Packages contain the app, required DLLs, `LICENSE`, `THIRD_PARTY_NOTICES.md`, and offline dependency license texts. PR checks verify feed metadata/checksums, shortcut metadata, and packaged notice contents. The release build disables Tauri's MSI bundler.
 
+CI runs on pull requests and pushes to `main`. Its shared Rust cache covers dependency artifacts throughout `src-tauri/target`, including test dependencies and Windows x64 release dependencies used by `package:windows`. Successful PR runs save updated caches for that PR; successful main runs provide the baseline available to future PRs and release tags. Caches are saved only after tests and packaging succeed. The release workflow uses the same shared cache key. Cargo manifest/lockfile, installed Rust toolchains, and build-environment changes participate in cache keys; compatible older dependency caches can still be restored on a lockfile change, and Cargo rebuilds the affected crates. Coverage keeps its separate cache. Cache hits still run the tests, package build, and package verification.
+
 ## Manual upgrade smoke test
 
 Use a disposable Windows user or VM with two consecutive release versions; do not use a real music library for installer testing.
