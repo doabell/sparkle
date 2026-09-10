@@ -18,6 +18,7 @@ const output = join(root, "licenses/dependencies.json");
 const normalize = (text) => text.replace(/\r\n?/g, "\n").trim() + "\n";
 const read = (path) => normalize(readFileSync(path, "utf8"));
 const hash = (text) => createHash("sha256").update(text).digest("hex");
+const upstream = JSON.parse(read(join(root, "licenses/upstream.json")));
 const inputs = [
     "bun.lock",
     "package.json",
@@ -26,6 +27,8 @@ const inputs = [
     "src-tauri/patches/tauri-plugin-media/Cargo.toml",
     "src-tauri/patches/tauri-plugin-media/LICENSE-MIT",
     "licenses/about.toml",
+    "licenses/upstream.json",
+    ...upstream.map((entry) => "licenses/" + entry.file),
     "scripts/generate-licenses.mjs",
     "scripts/lib/frontend-licenses.mjs",
     "vite.config.js",
@@ -104,6 +107,48 @@ rmdirSync(temporary);
 const groups = new Map();
 const rustLicenses = new Map();
 
+function noticeFiles(pkg) {
+    const dir = dirname(pkg.manifest_path);
+    return readdirSync(dir, { withFileTypes: true })
+        .filter(
+            (entry) =>
+                entry.isFile() &&
+                /^(?:LICENSE|LICENCE|COPYING|COPYRIGHT|NOTICE)(?:[._-]|$)/i.test(
+                    entry.name,
+                ),
+        )
+        .map((entry) => join(dir, entry.name))
+        .sort();
+}
+
+function completeText(license, pkg) {
+    // cargo-about can fall back to SPDX's generic MIT template, which has no
+    // actual copyright holder. Preserve the crate's complete file instead.
+    if (license.id !== "MIT" || !license.text.includes("<copyright holders>"))
+        return license.text;
+    const pinned = upstream.find(
+        (entry) =>
+            entry.license === license.id &&
+            entry.packages.includes(pkg.name + "@" + pkg.version),
+    );
+    if (pinned) return read(join(root, "licenses", pinned.file));
+    const local = noticeFiles(pkg)
+        .map(read)
+        .find(
+            (text) =>
+                /Permission is hereby granted/.test(text) &&
+                !text.includes("<copyright holders>"),
+        );
+    if (local) return local;
+    throw new Error(
+        "Missing upstream MIT copyright/license text for " +
+            pkg.name +
+            "@" +
+            pkg.version +
+            ". Add a reviewed version-specific entry to licenses/upstream.json.",
+    );
+}
+
 function add(license, text, component) {
     if (!text?.trim()) throw new Error("Empty license for " + component.name);
     text = normalize(text);
@@ -138,20 +183,32 @@ for (const license of rust.licenses) {
                       "/" +
                       pkg.version,
         };
-        add(license.id, license.text, component);
+        const text = completeText(license, pkg);
+        add(license.id, text, component);
         const key = pkg.name;
         if (!rustLicenses.has(key)) rustLicenses.set(key, []);
-        rustLicenses.get(key).push({ license: license.id, text: license.text });
+        rustLicenses.get(key).push({ license: license.id, text });
     }
 }
 
-// Preserve separate upstream NOTICE files as well as the license text.
+// Preserve complete upstream license, copyright and NOTICE files too. They
+// may contain attribution or additional component terms omitted by scanning.
 for (const { package: pkg } of rust.crates) {
     if (pkg.name === "sparkle") continue;
-    const dir = dirname(pkg.manifest_path);
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        if (entry.isFile() && /^NOTICE(?:[._-]|$)/i.test(entry.name)) {
-            add("Notice", read(join(dir, entry.name)), {
+    for (const file of noticeFiles(pkg)) {
+        const text = read(file);
+        const included = [...groups.values()].some(
+            (group) =>
+                group.text === text &&
+                group.components.some(
+                    (component) =>
+                        component.name === pkg.name &&
+                        component.version === pkg.version &&
+                        component.ecosystem === "Rust",
+                ),
+        );
+        if (!included) {
+            add("Notice", text, {
                 name: pkg.name,
                 version: pkg.version,
                 ecosystem: "Rust",

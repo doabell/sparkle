@@ -1,10 +1,10 @@
-# Include runtime dependencies for the Windows release. Prefer MIT where a
-# dependency explicitly offers a choice; retain other required license terms.
+# Include runtime dependencies for the Windows release. Prefer the Apache/BSD
+# options when offered; retain complete upstream notices alongside the terms.
 accepted = [
-    "MIT",
     "Apache-2.0",
-    "BSD-2-Clause",
     "BSD-3-Clause",
+    "MIT",
+    "BSD-2-Clause",
     "ISC",
     "Zlib",
     "Unicode-3.0",
