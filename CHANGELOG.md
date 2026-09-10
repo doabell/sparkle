@@ -1,11 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 — 2026-09-10
 
 - Replace the Windows MSI with a Velopack setup that creates a Start menu shortcut and no desktop shortcut.
 - Add manual update checks, downloads, and restart-to-install actions in Settings → About.
 - Include complete offline dependency licenses and third-party notices in Settings and Windows packages.
-- Build and verify Windows setup/update artifacts in PR checks and create draft GitHub releases from version tags.
+- Preserve track identities, playlists, custom metadata, and listening history when music files move, change tags, or disappear temporarily.
+- Add lyrics editing and export, and improve synchronized lyrics parsing, offsets, seeking, and refresh after scans.
+- Improve artist credits and artwork search with Deezer and Wikimedia providers.
+- Unify interface motion and hover feedback, respect reduced motion, and improve light-theme contrast and artwork backdrops.
+- Simplify backup, update, and license settings.
+- Optimize release builds with LTO; build and verify Windows setup/update artifacts on main and release tags, with faster PR checks and shared build caches.
 
 ## 0.4.0 — 2026-09-05
 

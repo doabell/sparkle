@@ -5,7 +5,11 @@ use std::collections::HashSet;
 use std::time::Duration;
 
 const SEARCH_URL: &str = "https://api.deezer.com/search/artist";
-const USER_AGENT: &str = "SparkleMusicPlayer/0.4.0 (https://github.com/doabell/sparkle)";
+const USER_AGENT: &str = concat!(
+    "SparkleMusicPlayer/",
+    env!("CARGO_PKG_VERSION"),
+    " (https://github.com/doabell/sparkle)"
+);
 
 #[derive(Deserialize)]
 struct SearchResponse {

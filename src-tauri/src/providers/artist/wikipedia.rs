@@ -4,7 +4,11 @@ use serde::Deserialize;
 use std::time::Duration;
 
 // Wikimedia rejects requests without a descriptive User-Agent with 403.
-const USER_AGENT: &str = "SparkleMusicPlayer/0.4.0 (https://github.com/doabell/sparkle)";
+const USER_AGENT: &str = concat!(
+    "SparkleMusicPlayer/",
+    env!("CARGO_PKG_VERSION"),
+    " (https://github.com/doabell/sparkle)"
+);
 
 #[derive(Deserialize, Debug)]
 struct WikipediaSummary {
