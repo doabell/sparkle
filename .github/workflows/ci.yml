@@ -50,3 +50,22 @@ jobs:
 
             - name: Run Rust tests
               run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+
+            - name: Set up .NET for Velopack
+              uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+              with:
+                  dotnet-version: 8.0.x
+
+            - name: Restore pinned Velopack CLI
+              run: dotnet tool restore
+
+            - name: Build and verify Windows setup and update feed
+              run: bun run package:windows
+
+            - name: Upload Windows packages for testing
+              uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+              with:
+                  name: sparkle-windows-x64
+                  path: .tmp/releases/*
+                  if-no-files-found: error
+                  retention-days: 7

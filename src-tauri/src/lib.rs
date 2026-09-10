@@ -16,6 +16,16 @@ mod playback_commands;
 mod providers;
 mod scanner;
 mod settings;
+mod updates;
+
+/// Handle installer invocations before opening windows, audio, or the library.
+pub fn initialize_updater() {
+    #[cfg(windows)]
+    velopack::VelopackApp::build()
+        .set_auto_apply_on_startup(false)
+        .set_app_user_model_id(updates::APP_ID)
+        .run();
+}
 
 #[cfg(test)]
 #[path = "tests/support.rs"]
@@ -448,6 +458,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_media::init())
+        .manage(updates::UpdateState::default())
         .setup(|app| {
             let (conn, fresh_db) = db::init_db(app.handle()).map_err(|e| e.to_string())?;
             let recovered_listens =
@@ -639,6 +650,10 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            updates::get_update_status,
+            updates::check_for_updates,
+            updates::download_update,
+            updates::install_update,
             get_status,
             enable_media_control_events,
             commands::pick_folder,

@@ -52,7 +52,11 @@ either provider's cached filename or cause a repeat upload.
 
 ## Install
 
-Sparkle targets Windows 10/11 x64 and is distributed as an MSI from [GitHub Releases](https://github.com/doabell/sparkle/releases). This preview is not code-signed, so Windows may show an unknown-publisher warning.
+Sparkle targets Windows 10/11 x64. Download the `Setup.exe` from [GitHub Releases](https://github.com/doabell/sparkle/releases). The Velopack setup creates a Start menu shortcut and no desktop shortcut, and installs WebView2 if needed. This preview is not code-signed, so Windows may show an unknown-publisher warning.
+
+For an existing MSI installation, close Sparkle, uninstall the MSI, then run the new setup. Sparkle keeps the same app-data location, so the library and settings remain available. MSI installations cannot use the new updater directly.
+
+In **Settings → About**, choose **Check for updates**, then **Download update**, then **Restart to install**. Each step is manual. Sparkle does not check on launch or install a downloaded update on a later launch. Only published stable GitHub releases are offered.
 
 Other platforms are not released or tested yet.
 
@@ -78,12 +82,17 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml
 Run `bun run test:coverage` for the TypeScript and Rust coverage gates.
 See [Tests and coverage](docs/testing.md) for setup, scope, thresholds, and reports.
 
-Build the MSI locally with:
+To build the Windows setup and update feed, install .NET SDK 8 and restore the pinned Velopack CLI:
 
 ```sh
-bun run tauri build -- --bundles msi
+dotnet tool restore
+bun run package:windows
 ```
+
+Packages are written to `.tmp/releases`. The `v*` tag workflow verifies that the tag belongs to `main` and matches the app version, then creates a **draft** GitHub release with the setup, full update package, and `releases.win-x64.json` feed. Publish that draft when ready; retain the original asset names. PR checks also build and verify these packages and upload a test artifact. See [Windows releases](docs/windows-releases.md) for release and upgrade testing.
 
 ## License
 
 [MIT](LICENSE)
+
+Complete dependency license texts and third-party attribution notices are available offline in **Settings → About** and included in the installed files. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [licenses/dependencies.json](licenses/dependencies.json).

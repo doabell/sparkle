@@ -33,8 +33,7 @@
         }
     },
     "bundle": {
-        "active": true,
-        "targets": ["msi"],
+        "active": false,
         "publisher": "doabell",
         "category": "Music",
         "homepage": "https://github.com/doabell/sparkle",

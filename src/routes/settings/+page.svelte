@@ -31,6 +31,8 @@
     } from "$lib/api";
     import Loading from "$lib/components/Loading.svelte";
     import Select from "$lib/components/Select.svelte";
+    import UpdateSettings from "$lib/components/UpdateSettings.svelte";
+    import LicenseSettings from "$lib/components/LicenseSettings.svelte";
     import { addToast } from "$lib/stores/toast";
     import { songIndexLanguage } from "$lib/stores/songIndex";
     import {
@@ -111,40 +113,6 @@
         { keys: "\u2191 / \u2193", action: "Volume \u00b15%" },
     ];
 
-    const LICENSES = [
-        { name: "Sparkle", license: "MIT", href: null },
-        {
-            name: "MusicBee-NeteaseLyrics",
-            license: "Apache-2.0",
-            href: "https://github.com/cqjjjzr/MusicBee-NeteaseLyrics",
-        },
-        {
-            name: "MusicBee-QQLyrics",
-            license: "Apache-2.0",
-            href: "https://github.com/mslxl/MusicBee-QQLyrics",
-        },
-        {
-            name: "ZonyLrcToolsX",
-            license: "MIT",
-            href: "https://github.com/real-zony/ZonyLrcToolsX",
-        },
-        {
-            name: "KashiNaviLyricsPlugin",
-            license: "MIT",
-            href: "https://github.com/noriokun4649/mb_KashiNaviLyricsPlugin",
-        },
-        {
-            name: "MusicBeePluginTemplate",
-            license: "MIT",
-            href: "https://github.com/htsign/MusicBeePluginTemplate",
-        },
-        {
-            name: "DiscordBee",
-            license: "Apache-2.0",
-            href: "https://github.com/sll552/DiscordBee",
-        },
-    ] as const;
-
     const SETTINGS_CATEGORIES = [
         {
             id: "appearance",
@@ -174,7 +142,12 @@
         {
             id: "advanced",
             label: "Advanced",
-            description: "Shortcuts, logs, licenses",
+            description: "Shortcuts and logs",
+        },
+        {
+            id: "about",
+            label: "About",
+            description: "Updates and licenses",
         },
     ] as const;
 
@@ -2081,29 +2054,11 @@
                 {/if}
             </div>
 
-            <div
-                class="settings-section"
-                hidden={activeCategory !== "advanced"}
-            >
-                {@render sectionTitle("Licenses")}
-                <ul class="license-list">
-                    {#each LICENSES as item (item.name)}
-                        <li class="license-row">
-                            {#if item.href}
-                                <a
-                                    href={item.href}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                >
-                                    {item.name}
-                                </a>
-                            {:else}
-                                <span>{item.name}</span>
-                            {/if}
-                            <span class="license-type">{item.license}</span>
-                        </li>
-                    {/each}
-                </ul>
+            <div class="settings-section" hidden={activeCategory !== "about"}>
+                <UpdateSettings />
+            </div>
+            <div class="settings-section" hidden={activeCategory !== "about"}>
+                <LicenseSettings />
             </div>
         </div>
     {:else}
@@ -3063,48 +3018,6 @@
     .debug-open svg {
         width: 0.875rem;
         height: 0.875rem;
-    }
-
-    .license-list {
-        display: flex;
-        flex-direction: column;
-        gap: 0;
-    }
-
-    .license-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: var(--spacing-md);
-        min-width: 0;
-        padding: var(--spacing-sm) 0;
-        font-size: var(--font-size-sm);
-    }
-
-    .license-row + .license-row {
-        border-top: 1px solid var(--color-border);
-    }
-
-    .license-row > :first-child {
-        overflow: hidden;
-        color: var(--color-text);
-        font-weight: var(--font-weight-medium);
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .license-row a:hover {
-        color: var(--color-accent-content);
-    }
-
-    .license-type {
-        flex-shrink: 0;
-        padding: 0.15rem var(--spacing-sm);
-        border-radius: var(--radius-full);
-        background: var(--color-surface-raised);
-        color: var(--color-text-muted);
-        font-size: var(--font-size-xs);
-        font-weight: var(--font-weight-semibold);
     }
 
     .field-inline {

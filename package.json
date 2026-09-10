@@ -29,6 +29,9 @@
         "format": "prettier --write .  --cache --list-different && cargo fmt --manifest-path src-tauri/Cargo.toml",
         "format:check": "prettier --check . && cargo fmt --check --manifest-path src-tauri/Cargo.toml",
         "version:check": "bun scripts/check-version.mjs",
+        "licenses:generate": "bun scripts/generate-licenses.mjs",
+        "licenses:check": "bun scripts/generate-licenses.mjs --check",
+        "package:windows": "bun scripts/package-windows.mjs",
         "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
         "tauri": "tauri"
     },
@@ -44,6 +47,7 @@
         "@sveltejs/kit": "^2.70.3",
         "@sveltejs/vite-plugin-svelte": "^7.3.0",
         "@tauri-apps/cli": "^2.11.4",
+        "@types/node": "22",
         "prettier": "^3.9.6",
         "prettier-plugin-svelte": "^4.1.1",
         "svelte": "^5.56.10",
