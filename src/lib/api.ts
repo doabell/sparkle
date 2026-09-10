@@ -11,6 +11,40 @@ export interface AppStatus {
     audio_precision_bits: number;
 }
 
+export interface UpdateStatus {
+    revision: number;
+    current_version: string;
+    phase:
+        | "idle"
+        | "checking"
+        | "up_to_date"
+        | "available"
+        | "downloading"
+        | "ready"
+        | "installing"
+        | "unavailable";
+    release: { version: string; size: number; notes: string } | null;
+    download_percent: number | null;
+    error: string | null;
+}
+
+/** Reads local installation state only; does not contact GitHub. */
+export async function getUpdateStatus(): Promise<UpdateStatus> {
+    return invoke("get_update_status");
+}
+
+export async function checkForUpdates(): Promise<UpdateStatus> {
+    return invoke("check_for_updates");
+}
+
+export async function downloadUpdate(): Promise<UpdateStatus> {
+    return invoke("download_update");
+}
+
+export async function installUpdate(): Promise<UpdateStatus> {
+    return invoke("install_update");
+}
+
 export async function enableMediaControlEvents(): Promise<void> {
     return invoke("enable_media_control_events");
 }

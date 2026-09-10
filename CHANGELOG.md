@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Replace the Windows MSI with a Velopack setup that creates a Start menu shortcut and no desktop shortcut.
+- Add manual update checks, downloads, and restart-to-install actions in Settings → About.
+- Include complete offline dependency licenses and third-party notices in Settings and Windows packages.
+- Build and verify Windows setup/update artifacts in PR checks and create draft GitHub releases from version tags.
+
 ## 0.4.0 — 2026-09-05
 
 - Add alternate now-playing layouts with a unified Apple Music-inspired visual system across the app.

@@ -4,6 +4,15 @@ Sparkle includes or adapts portions of the projects below. Sparkle's own code
 remains available under the MIT License in `LICENSE`; these notices apply to
 the identified third-party portions.
 
+The generated `licenses/dependencies.json` report includes complete license
+texts, copyright notices, separate upstream NOTICE files, and versioned source
+links for the Windows runtime dependencies and bundled frontend code, including
+Velopack. Sparkle modifies `tauri-plugin-media`'s Windows adapter to disable
+automatic media commands and route them through Sparkle's audio engine; the
+modified source is in `src-tauri/patches/tauri-plugin-media` in Sparkle's repository.
+The generated report and the license texts below are included in the Windows distribution and available
+offline in Settings → About.
+
 ## MusicBee-NeteaseLyrics
 
 - Repository: <https://github.com/cqjjjzr/MusicBee-NeteaseLyrics>

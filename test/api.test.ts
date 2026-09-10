@@ -30,6 +30,10 @@ test("read-only bridge commands preserve native results", async () => {
     invoke.mockResolvedValue(result);
     for (const [method, command] of [
         ["getStatus", "get_status"],
+        ["getUpdateStatus", "get_update_status"],
+        ["checkForUpdates", "check_for_updates"],
+        ["downloadUpdate", "download_update"],
+        ["installUpdate", "install_update"],
         ["getCacheStats", "get_cache_stats"],
         ["listFolders", "list_folders"],
         ["pickFolder", "pick_folder"],

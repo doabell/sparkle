@@ -12,7 +12,7 @@ concurrency:
     cancel-in-progress: false
 
 jobs:
-    windows-msi:
+    windows-setup:
         runs-on: windows-latest
         permissions:
             contents: write
@@ -40,6 +40,9 @@ jobs:
               uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
               with:
                   cache-workspaces: ./src-tauri -> target
+                  cache-shared-key: verify
+                  # Published tags reuse main's builds without saving duplicate tag caches.
+                  cache-save-if: false
                   rustflags: ""
 
             - name: Install Bun dependencies
@@ -48,17 +51,27 @@ jobs:
             - name: Check release version
               run: bun run version:check
 
-            - name: Build MSI and create draft release
-              uses: tauri-apps/tauri-action@944946e3e4cac6603d1fe8f514171e9ecd3c78aa # v1
+            - name: Set up .NET for Velopack
+              uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+              with:
+                  dotnet-version: 8.0.x
+
+            - name: Restore pinned Velopack CLI
+              run: dotnet tool restore
+
+            - name: Build and verify Windows setup and update feed
+              run: bun run package:windows
+
+            - name: Create draft GitHub release with setup and update packages
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              with:
-                  tagName: ${{ github.ref_name }}
-                  releaseName: Sparkle v__VERSION__
-                  releaseBody: See CHANGELOG.md for release notes.
-                  releaseDraft: true
-                  prerelease: false
-                  uploadUpdaterJson: false
-                  uploadUpdaterSignatures: false
-                  releaseAssetNamePattern: Sparkle_[version]_[platform]_[arch][ext]
-                  args: --bundles msi
+              shell: pwsh
+              run: >-
+                  dotnet tool run vpk -- upload github
+                  --outputDir .tmp/releases
+                  --channel win-x64
+                  --repoUrl "https://github.com/$env:GITHUB_REPOSITORY"
+                  --token "$env:GITHUB_TOKEN"
+                  --tag "$env:GITHUB_REF_NAME"
+                  --targetCommitish "$env:GITHUB_SHA"
+                  --releaseName "Sparkle $env:GITHUB_REF_NAME"
