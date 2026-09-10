@@ -959,7 +959,6 @@
                     >
                         <div class="backup-panel-heading">
                             <h3 id="create-backup-title">Create backup</h3>
-                            <span>Compressed</span>
                         </div>
                         <div class="backup-options">
                             <label class="backup-option">
@@ -967,22 +966,14 @@
                                     type="checkbox"
                                     bind:checked={exportSections.settings}
                                 />
-                                <span
-                                    ><strong>Settings</strong><small
-                                        >Appearance and providers</small
-                                    ></span
-                                >
+                                <span><strong>Settings</strong></span>
                             </label>
                             <label class="backup-option">
                                 <input
                                     type="checkbox"
                                     bind:checked={exportSections.playlists}
                                 />
-                                <span
-                                    ><strong>Playlists</strong><small
-                                        >Order and descriptions</small
-                                    ></span
-                                >
+                                <span><strong>Playlists</strong></span>
                             </label>
                             <label class="backup-option">
                                 <input
@@ -991,22 +982,14 @@
                                         exportSections.custom_metadata
                                     }
                                 />
-                                <span
-                                    ><strong>Custom metadata</strong><small
-                                        >Lyrics, bios, and artwork</small
-                                    ></span
-                                >
+                                <span><strong>Custom metadata</strong></span>
                             </label>
                             <label class="backup-option">
                                 <input
                                     type="checkbox"
                                     bind:checked={exportSections.history}
                                 />
-                                <span
-                                    ><strong>Listening history</strong><small
-                                        >Playback history</small
-                                    ></span
-                                >
+                                <span><strong>Listening history</strong></span>
                             </label>
                         </div>
                         <button
@@ -1034,7 +1017,6 @@
                     >
                         <div class="backup-panel-heading">
                             <h3 id="restore-backup-title">Restore backup</h3>
-                            <span>Preview first</span>
                         </div>
                         <button
                             class="btn-pill btn-secondary backup-button"
@@ -1171,8 +1153,6 @@
                                     ? "Restoring…"
                                     : "Restore selected"}
                             </button>
-                        {:else}
-                            <p class="backup-empty">Choose a backup file.</p>
                         {/if}
                     </section>
                 </div>
@@ -2201,9 +2181,7 @@
         font-size: var(--font-size-base);
     }
 
-    .backup-panel-heading span,
     .backup-status,
-    .backup-empty,
     .backup-preview small {
         color: var(--color-text-muted);
         font-size: var(--font-size-xs);
@@ -2256,8 +2234,7 @@
         align-self: flex-start;
     }
 
-    .backup-status,
-    .backup-empty {
+    .backup-status {
         margin: 0;
         line-height: 1.45;
     }

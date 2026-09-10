@@ -1,0 +1,3 @@
+# Keep whole-program optimization in release builds; dev/test profiles stay fast.
+[profile.release]
+lto = true

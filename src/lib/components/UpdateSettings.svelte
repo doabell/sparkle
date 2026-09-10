@@ -80,46 +80,44 @@
             rel="noreferrer">GitHub Releases ↗</a
         >
     </div>
-    <p class="hint">
-        Check and download when you choose. Installing an update restarts
-        Sparkle.
-    </p>
-
-    <div class="update-status" role="status" aria-live="polite">
-        {#if !status}
-            <p>
-                {actionError
-                    ? "Update information is unavailable."
-                    : "Loading version…"}
-            </p>
-        {:else if status.phase === "unavailable"}
-            <p>In-app updates are available in the Windows setup version.</p>
-            <p class="hint">
-                Development, portable, and older MSI builds can use GitHub
-                Releases.
-            </p>
-        {:else if status.phase === "checking"}
-            <p>Checking GitHub Releases…</p>
-        {:else if status.phase === "up_to_date"}
-            <p>You’re up to date.</p>
-        {:else if status.phase === "available" && status.release}
-            <p>Sparkle {status.release.version} is available.</p>
-            <p class="hint">
-                Up to {(status.release.size / (1024 * 1024)).toFixed(1)} MB to download
-            </p>
-        {:else if status.phase === "downloading"}
-            <p>Downloading update… {status.download_percent ?? 0}%</p>
-        {:else if status.phase === "ready" && status.release}
-            <p>Sparkle {status.release.version} is ready to install.</p>
-            <p class="hint">
-                It will wait until you choose Restart to install.
-            </p>
-        {:else if status.phase === "installing"}
-            <p>Closing Sparkle to install the update…</p>
-        {:else}
-            <p>No update check has been made this session.</p>
-        {/if}
-    </div>
+    {#if !status || status.phase !== "idle"}
+        <div class="update-status" role="status" aria-live="polite">
+            {#if !status}
+                <p>
+                    {actionError
+                        ? "Update information is unavailable."
+                        : "Loading version…"}
+                </p>
+            {:else if status.phase === "unavailable"}
+                <p>
+                    In-app updates are available in the Windows setup version.
+                </p>
+                <p class="hint">
+                    Development, portable, and older MSI builds can use GitHub
+                    Releases.
+                </p>
+            {:else if status.phase === "checking"}
+                <p>Checking GitHub Releases…</p>
+            {:else if status.phase === "up_to_date"}
+                <p>You’re up to date.</p>
+            {:else if status.phase === "available" && status.release}
+                <p>Sparkle {status.release.version} is available.</p>
+                <p class="hint">
+                    Up to {(status.release.size / (1024 * 1024)).toFixed(1)} MB to
+                    download
+                </p>
+            {:else if status.phase === "downloading"}
+                <p>Downloading update… {status.download_percent ?? 0}%</p>
+            {:else if status.phase === "ready" && status.release}
+                <p>Sparkle {status.release.version} is ready to install.</p>
+                <p class="hint">
+                    It will wait until you choose Restart to install.
+                </p>
+            {:else if status.phase === "installing"}
+                <p>Closing Sparkle to install the update…</p>
+            {/if}
+        </div>
+    {/if}
 
     {#if status?.phase === "downloading"}
         <progress

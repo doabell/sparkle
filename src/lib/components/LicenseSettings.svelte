@@ -22,10 +22,6 @@
 
 <div class="license-settings">
     <h3>Licenses &amp; third-party notices</h3>
-    <p class="hint">
-        Sparkle is open source. License texts and attribution notices are
-        included here and are available offline.
-    </p>
     <details>
         <summary>Sparkle <span class="badge">MIT</span></summary>
         <a
@@ -53,10 +49,6 @@
 
     <div class="dependency-heading">
         <h4>Dependencies</h4>
-        <p class="hint">
-            Each source link identifies the corresponding upstream package.
-            Libraries offered under multiple licenses use the terms shown below.
-        </p>
         <label for="license-search">Find a library or license</label>
         <input
             id="license-search"

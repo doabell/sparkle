@@ -33,7 +33,7 @@ jobs:
                   cache-workspaces: ./src-tauri -> target
                   # Preserve existing verify caches; main warms the baseline for PRs and tags.
                   cache-shared-key: verify
-                  # Save only after both tests and packaging finish successfully.
+                  # Main saves test and release dependencies; PRs save test dependencies.
                   cache-on-failure: false
                   rustflags: ""
 
@@ -55,21 +55,28 @@ jobs:
             - name: Build frontend
               run: bun run build
 
+            - name: Check dependency licenses
+              run: bun run licenses:check --built
+
             - name: Run Rust tests
               run: cargo test --lib --locked --manifest-path src-tauri/Cargo.toml
 
             - name: Set up .NET for Velopack
+              if: github.event_name == 'push'
               uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
               with:
                   dotnet-version: 8.0.x
 
             - name: Restore pinned Velopack CLI
+              if: github.event_name == 'push'
               run: dotnet tool restore
 
             - name: Build and verify Windows setup and update feed
+              if: github.event_name == 'push'
               run: bun run package:windows
 
             - name: Upload Windows packages for testing
+              if: github.event_name == 'push'
               uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
               with:
                   name: sparkle-windows-x64
