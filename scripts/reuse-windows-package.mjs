@@ -10,6 +10,17 @@ import { dirname, join, resolve } from "node:path";
 
 const artifactName = "sparkle-windows-x64";
 
+/**
+ * @typedef {{id: number, path: string, event: string, head_branch: string,
+ * head_sha: string, status: string, conclusion: string,
+ * repository?: {full_name?: string}, head_repository?: {full_name?: string}}} WorkflowRun
+ * @typedef {{name: string, expired: boolean, expires_at: string,
+ * workflow_run?: {id: number, head_branch: string, head_sha: string}}} Artifact
+ * @typedef {{workflow_runs?: WorkflowRun[], artifacts?: Artifact[]}} ApiResponse
+ * @typedef {(endpoint: string) => Promise<ApiResponse>} GitHubApi
+ * @typedef {{run: WorkflowRun, artifact: Artifact}} PackageMatch
+ * @param {{repository: string, sha: string, api: GitHubApi, now?: number}} options
+ */
 export async function findWindowsPackage({
     repository,
     sha,
@@ -19,6 +30,7 @@ export async function findWindowsPackage({
     if (!/^[\w.-]+\/[\w.-]+$/.test(repository) || !/^[a-f0-9]{40}$/.test(sha)) {
         throw new Error("A repository and exact commit SHA are required.");
     }
+    /** @param {{full_name?: string} | undefined} repo */
     const sameRepository = (repo) =>
         repo?.full_name?.toLowerCase() === repository.toLowerCase();
     const query = new URLSearchParams({
@@ -28,7 +40,7 @@ export async function findWindowsPackage({
         head_sha: sha,
         per_page: "100",
     });
-    const { workflow_runs: runs } = await api(
+    const { workflow_runs: runs = [] } = await api(
         `repos/${repository}/actions/workflows/ci.yml/runs?${query}`,
     );
     for (const run of runs) {
@@ -47,7 +59,7 @@ export async function findWindowsPackage({
         ) {
             continue;
         }
-        const { artifacts } = await api(
+        const { artifacts = [] } = await api(
             `repos/${repository}/actions/runs/${run.id}/artifacts?per_page=100`,
         );
         const artifact = artifacts.find(
@@ -64,6 +76,10 @@ export async function findWindowsPackage({
     return null;
 }
 
+/**
+ * @param {{repository: string, sha: string, api: GitHubApi, directory: string,
+ * download: (match: PackageMatch, directory: string) => Promise<unknown>}} options
+ */
 export async function restoreWindowsPackage({
     repository,
     sha,
@@ -94,6 +110,7 @@ export async function restoreWindowsPackage({
     return match;
 }
 
+/** @param {string[]} args */
 function gh(args) {
     const result = spawnSync("gh", args, {
         encoding: "utf8",
@@ -107,11 +124,21 @@ function gh(args) {
     return result.stdout;
 }
 
+/** @param {string} name */
+function requiredEnv(name) {
+    const value = process.env[name];
+    if (!value) throw new Error(`${name} is required.`);
+    return value;
+}
+
 if (import.meta.main) {
-    const repository = process.env.GITHUB_REPOSITORY;
+    const repository = requiredEnv("GITHUB_REPOSITORY");
+    const sha = requiredEnv("GITHUB_SHA");
+    const output = requiredEnv("GITHUB_OUTPUT");
+    const summary = requiredEnv("GITHUB_STEP_SUMMARY");
     const match = await restoreWindowsPackage({
         repository,
-        sha: process.env.GITHUB_SHA,
+        sha,
         api: async (endpoint) => JSON.parse(gh(["api", endpoint])),
         download: async ({ run }, directory) =>
             gh([
@@ -128,9 +155,9 @@ if (import.meta.main) {
         directory: resolve(".tmp/releases"),
     });
     const message = match
-        ? `Reusing Windows package from successful main CI run ${match.run.id} (${process.env.GITHUB_SHA}).`
+        ? `Reusing Windows package from successful main CI run ${match.run.id} (${sha}).`
         : "No reusable Windows package; building this release from source.";
     console.log(message);
-    appendFileSync(process.env.GITHUB_OUTPUT, `reused=${Boolean(match)}\n`);
-    appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${message}\n`);
+    appendFileSync(output, `reused=${Boolean(match)}\n`);
+    appendFileSync(summary, `${message}\n`);
 }

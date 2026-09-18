@@ -8,7 +8,10 @@ const frontendConfig = new Set([
     "tsconfig.json",
 ]);
 
-// Only known inputs may skip work. New configuration/build paths run everything.
+/**
+ * Only known inputs may skip work. New configuration/build paths run everything.
+ * @param {string[] | null} paths
+ */
 export function classifyChanges(paths) {
     if (paths === null) return allChecks();
     const checks = { frontend: false, rust: false, package: false };
@@ -47,6 +50,14 @@ export function classifyChanges(paths) {
     return checks;
 }
 
+/**
+ * @typedef {{path?: string, event?: string, head_branch?: string, head_sha?: string,
+ * status?: string, conclusion?: string, repository?: {full_name?: string},
+ * head_repository?: {full_name?: string}}} WorkflowRun
+ * @param {{eventName?: string, event: {pull_request?: {base?: {sha?: string}}},
+ * repository?: string, workflow?: string,
+ * api: (endpoint: string) => Promise<{workflow_runs: WorkflowRun[]}>}} options
+ */
 export async function comparisonBase({
     eventName,
     event,
@@ -58,6 +69,8 @@ export async function comparisonBase({
         return event.pull_request?.base?.sha ?? null;
     if (
         eventName !== "push" ||
+        !repository ||
+        !workflow ||
         !/^[\w.-]+\/[\w.-]+$/.test(repository) ||
         !["ci.yml", "coverage.yml"].includes(workflow)
     ) {
@@ -83,14 +96,14 @@ export async function comparisonBase({
     return baseline?.head_sha ?? null;
 }
 
+/** @param {{base?: string | null, sha?: string, cwd?: string}} options */
 export function changedPaths({ base, sha, cwd = process.cwd() }) {
     // New branches, missing history and unknown baselines must never skip checks.
     if (
+        typeof base !== "string" ||
+        typeof sha !== "string" ||
         ![base, sha].every(
-            (value) =>
-                typeof value === "string" &&
-                /^[a-f0-9]{40}$/i.test(value) &&
-                !/^0+$/.test(value),
+            (value) => /^[a-f0-9]{40}$/i.test(value) && !/^0+$/.test(value),
         )
     ) {
         return null;
@@ -116,13 +129,15 @@ export function changedPaths({ base, sha, cwd = process.cwd() }) {
 }
 
 if (import.meta.main) {
+    const output = process.env.GITHUB_OUTPUT;
+    if (!output) throw new Error("GITHUB_OUTPUT is required.");
     let paths = null;
     try {
+        const eventPath = process.env.GITHUB_EVENT_PATH;
+        if (!eventPath) throw new Error("GITHUB_EVENT_PATH is required.");
         const base = await comparisonBase({
             eventName: process.env.GITHUB_EVENT_NAME,
-            event: JSON.parse(
-                readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"),
-            ),
+            event: JSON.parse(readFileSync(eventPath, "utf8")),
             repository: process.env.GITHUB_REPOSITORY,
             workflow: process.env.CI_WORKFLOW_FILE,
             api: async (endpoint) => {
@@ -144,7 +159,7 @@ if (import.meta.main) {
     const checks = classifyChanges(paths);
     console.log("Checks for this change:", checks);
     appendFileSync(
-        process.env.GITHUB_OUTPUT,
+        output,
         Object.entries(checks)
             .map(([name, enabled]) => `${name}=${enabled}\n`)
             .join(""),
