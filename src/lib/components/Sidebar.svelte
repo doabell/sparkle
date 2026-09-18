@@ -1,5 +1,6 @@
 <script lang="ts">
     import { page } from "$app/stores";
+    import { libraryScan } from "$lib/stores/libraryScan";
 
     const items = [
         {
@@ -156,6 +157,28 @@
             </li>
         {/each}
     </ul>
+    {#if $libraryScan.running || $libraryScan.starting}
+        <a class="scan-status" href="/folders" onclick={close}>
+            <span class="scan-label">
+                {$libraryScan.progress?.phase === "cleaning"
+                    ? "Finishing scan…"
+                    : "Scanning library…"}
+            </span>
+            {#if $libraryScan.progress && $libraryScan.progress.total > 0}
+                <span class="scan-count">
+                    {$libraryScan.progress.scanned} / {$libraryScan.progress
+                        .total}
+                </span>
+            {/if}
+            <progress
+                aria-label="Library scan progress"
+                max={$libraryScan.progress?.total || 1}
+                value={$libraryScan.progress?.total
+                    ? $libraryScan.progress.scanned
+                    : undefined}
+            ></progress>
+        </a>
+    {/if}
 </nav>
 
 {#if open}
@@ -278,6 +301,29 @@
     .label {
         font-size: var(--font-size-sm);
         font-weight: var(--font-weight-medium);
+    }
+
+    .scan-status {
+        margin-top: auto;
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--spacing-xs);
+        font-size: var(--font-size-sm);
+    }
+
+    .scan-label {
+        font-weight: var(--font-weight-medium);
+    }
+
+    .scan-count {
+        color: var(--color-text-muted);
+        font-variant-numeric: tabular-nums;
+    }
+
+    progress {
+        width: 100%;
+        height: 0.35rem;
+        accent-color: var(--color-accent-graphic);
     }
 
     .menu-toggle,

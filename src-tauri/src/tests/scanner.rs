@@ -4,6 +4,102 @@ use lofty::config::WriteOptions;
 use lofty::tag::TagExt;
 
 #[test]
+fn full_rescan_refreshes_tags_without_rehashing_unchanged_audio() {
+    let root = TestDir::new();
+    root.audio("tone.flac");
+    let mut conn = monitored_library(root.path());
+    scan_library(&mut conn, &Settings::default(), false, &root.join("cache")).unwrap();
+    let original: (String, Option<String>) = conn
+        .query_row("SELECT title,embedded_lyrics FROM tracks", [], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })
+        .unwrap();
+    // A distinct cached value makes an unnecessary audio read observable
+    // without timing assertions or depending on filesystem cache behavior.
+    let cached_identity = format!(
+        "{}{}",
+        crate::audio_identity::FINGERPRINT_PREFIX,
+        "0".repeat(64)
+    );
+    conn.execute(
+        "UPDATE tracks SET title='Stale title', embedded_lyrics='Stale lyrics', audio_fingerprint=?",
+        [&cached_identity],
+    ).unwrap();
+    let result = scan_library(&mut conn, &Settings::default(), true, &root.join("cache")).unwrap();
+    assert_eq!((result.scanned, result.updated, result.errors), (1, 1, 0));
+    let restored: (String, Option<String>, String) = conn
+        .query_row(
+            "SELECT title,embedded_lyrics,audio_fingerprint FROM tracks",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(restored, (original.0, original.1, cached_identity));
+}
+
+#[test]
+fn full_rescan_rebuilds_missing_outdated_and_changed_file_fingerprints() {
+    let root = TestDir::new();
+    let path = root.audio("tone.flac");
+    let expected = file_fingerprint(path.to_str().unwrap()).unwrap();
+    let mut conn = monitored_library(root.path());
+    scan_library(&mut conn, &Settings::default(), false, &root.join("cache")).unwrap();
+    let cached_identity = format!(
+        "{}{}",
+        crate::audio_identity::FINGERPRINT_PREFIX,
+        "0".repeat(64)
+    );
+    for (case, change) in [
+        (
+            "mtime changed",
+            "UPDATE tracks SET file_mtime_ns=file_mtime_ns-1",
+        ),
+        (
+            "size changed",
+            "UPDATE tracks SET file_size_bytes=file_size_bytes+1",
+        ),
+        ("unknown mtime", "UPDATE tracks SET file_mtime_ns=NULL"),
+        ("unknown size", "UPDATE tracks SET file_size_bytes=NULL"),
+        (
+            "missing fingerprint",
+            "UPDATE tracks SET audio_fingerprint=NULL",
+        ),
+        (
+            "outdated fingerprint",
+            "UPDATE tracks SET audio_fingerprint='audio-v0:old'",
+        ),
+    ] {
+        conn.execute("UPDATE tracks SET audio_fingerprint=?", [&cached_identity])
+            .unwrap();
+        conn.execute(change, []).unwrap();
+        let result =
+            scan_library(&mut conn, &Settings::default(), true, &root.join("cache")).unwrap();
+        assert_eq!((result.updated, result.errors), (1, 0), "{case}");
+        let fingerprint: String = conn
+            .query_row("SELECT audio_fingerprint FROM tracks", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(fingerprint, expected, "{case}");
+    }
+    let mut file = Probe::open(&path).unwrap().read().unwrap();
+    file.primary_tag_mut()
+        .unwrap()
+        .set_title("Changed tags still refresh".into());
+    file.primary_tag()
+        .unwrap()
+        .save_to_path(&path, WriteOptions::default())
+        .unwrap();
+    conn.execute("UPDATE tracks SET audio_fingerprint=?", [&cached_identity])
+        .unwrap();
+    scan_library(&mut conn, &Settings::default(), true, &root.join("cache")).unwrap();
+    let row: (String, String) = conn
+        .query_row("SELECT title,audio_fingerprint FROM tracks", [], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })
+        .unwrap();
+    assert_eq!(row, ("Changed tags still refresh".into(), expected));
+}
+
+#[test]
 fn id3v24_nul_separated_frames_supply_all_artists_in_order() {
     use lofty::id3::v2::Id3v2Tag;
     let mut id3 = Id3v2Tag::default();

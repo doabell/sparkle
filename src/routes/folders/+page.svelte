@@ -4,22 +4,19 @@
         pickFolder,
         addFolder,
         removeFolder,
-        scanLibrary,
         setFolderEnabled,
         type Folder,
-        type ScanResult,
-        type ScanProgress,
     } from "$lib/api";
     import Loading from "$lib/components/Loading.svelte";
     import { addToast } from "$lib/stores/toast";
+    import { libraryScan } from "$lib/stores/libraryScan";
     import { onMount } from "svelte";
-    import { listen } from "@tauri-apps/api/event";
 
     let folders = $state<Folder[]>([]);
     let loading = $state(true);
-    let scanning = $state(false);
-    let scanResult = $state<ScanResult | null>(null);
-    let scanProgress = $state<ScanProgress | null>(null);
+    let scanning = $derived($libraryScan.running || $libraryScan.starting);
+    let scanResult = $derived($libraryScan.result);
+    let scanProgress = $derived($libraryScan.progress);
 
     async function load() {
         loading = true;
@@ -34,11 +31,12 @@
 
     onMount(() => {
         load();
-        let unlisten: (() => void) | undefined;
-        void listen<ScanProgress>("scan-progress", (event) => {
-            scanProgress = event.payload;
-        }).then((cleanup) => (unlisten = cleanup));
-        return () => unlisten?.();
+        let revision = $libraryScan.revision;
+        return libraryScan.subscribe((status) => {
+            if (status.revision === revision) return;
+            revision = status.revision;
+            if (!status.running) void load();
+        });
     });
 
     async function handleAdd() {
@@ -48,10 +46,9 @@
         try {
             await addFolder(path);
             addToast("Folder added", "success");
-            scanResult = null;
             await load();
             if (firstFolder) {
-                await handleScan(false);
+                await libraryScan.start(false);
             }
         } catch (e) {
             addToast(String(e), "error");
@@ -62,34 +59,9 @@
         try {
             await removeFolder(id);
             addToast("Folder removed", "success");
-            scanResult = null;
             await load();
         } catch (e) {
             addToast(String(e), "error");
-        }
-    }
-
-    async function handleScan(force = false) {
-        scanning = true;
-        scanResult = null;
-        scanProgress = null;
-        try {
-            const result = await scanLibrary(force);
-            scanResult = result;
-            if (result.errors > 0) {
-                addToast(
-                    `Scan complete with ${result.errors} error${result.errors === 1 ? "" : "s"}`,
-                    "error",
-                );
-            } else {
-                addToast("Scan complete", "success");
-            }
-            await load();
-        } catch (e) {
-            addToast(String(e), "error");
-        } finally {
-            scanning = false;
-            scanProgress = null;
         }
     }
 
@@ -110,7 +82,7 @@
             <button
                 class="btn-pill btn-secondary"
                 onclick={handleAdd}
-                disabled={loading || scanning}
+                disabled={loading || scanning || !$libraryScan.ready}
             >
                 <svg
                     viewBox="0 0 24 24"
@@ -128,8 +100,8 @@
             </button>
             <button
                 class="btn-pill btn-primary"
-                onclick={() => handleScan(false)}
-                disabled={loading || scanning}
+                onclick={() => libraryScan.start(false)}
+                disabled={loading || scanning || !$libraryScan.ready}
             >
                 <svg
                     viewBox="0 0 24 24"
@@ -149,8 +121,8 @@
             </button>
             <button
                 class="btn-pill btn-secondary"
-                onclick={() => handleScan(true)}
-                disabled={loading || scanning}
+                onclick={() => libraryScan.start(true)}
+                disabled={loading || scanning || !$libraryScan.ready}
             >
                 <svg
                     viewBox="0 0 24 24"
@@ -218,6 +190,10 @@
         </div>
     {/if}
 
+    {#if $libraryScan.error}
+        <p class="scan-warning" role="alert">{$libraryScan.error}</p>
+    {/if}
+
     {#if scanResult}
         <div class="scan-summary" class:has-errors={scanResult.errors > 0}>
             <div class="scan-title">Scan results</div>
@@ -275,7 +251,10 @@
             <p class="empty-text">
                 Add a folder to start building your library.
             </p>
-            <button class="btn-pill btn-primary" onclick={handleAdd}
+            <button
+                class="btn-pill btn-primary"
+                onclick={handleAdd}
+                disabled={scanning || !$libraryScan.ready}
                 >Add your first folder</button
             >
         </div>
@@ -324,6 +303,7 @@
                             ? "Enabled — included in scans"
                             : "Disabled — skipped by scans"}
                         onclick={() => handleToggleEnabled(folder)}
+                        disabled={scanning || !$libraryScan.ready}
                     >
                         <span class="switch-thumb" aria-hidden="true"></span>
                     </button>
@@ -331,7 +311,7 @@
                         class="remove-btn"
                         aria-label="Remove folder"
                         onclick={() => handleRemove(folder.id)}
-                        disabled={scanning}
+                        disabled={scanning || !$libraryScan.ready}
                     >
                         <svg
                             viewBox="0 0 24 24"
