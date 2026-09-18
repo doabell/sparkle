@@ -7,7 +7,7 @@
 use crate::artwork_store::S3ArtworkStore;
 use crate::cache;
 use crate::models::{PlaybackState, Track};
-use crate::settings;
+use crate::settings::{self, DiscordLayout};
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use discord_rich_presence::activity::{
@@ -25,7 +25,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[cfg(windows)]
 #[path = "discord/gdiplus.rs"]
@@ -36,6 +36,9 @@ const CATBOX_URL_PREFIX: &str = "https://files.catbox.moe/";
 const ARTWORK_MAX_DIMENSION: u32 = 256;
 const JPEG_QUALITY: u8 = 85;
 const RETRY_INTERVAL: Duration = Duration::from_secs(10);
+// Presence is a coarse status surface, not a karaoke display. Coalesce lyric
+// changes to the current line instead of queueing every intervening sentence.
+const LYRIC_UPDATE_INTERVAL: Duration = Duration::from_secs(15);
 const TEST_ARTWORK_CACHE_KEY: &str = "sparkle-artwork-test";
 
 /// A small, asynchronous bridge from the audio thread to Discord's local IPC.
@@ -54,9 +57,10 @@ impl DiscordPresence {
     }
 
     pub fn update(&self, playback: &PlaybackState) {
-        let _ = self
-            .tx
-            .send(DiscordCommand::Playback(Box::new(playback.clone())));
+        let _ = self.tx.send(DiscordCommand::Playback(PlaybackSnapshot {
+            playback: Box::new(playback.clone()),
+            received_at: Instant::now(),
+        }));
     }
 
     /// Re-evaluate the most recent playback state after Settings changes.
@@ -66,13 +70,45 @@ impl DiscordPresence {
 }
 
 enum DiscordCommand {
-    Playback(Box<PlaybackState>),
+    Playback(PlaybackSnapshot),
     Refresh,
 }
 
 struct ConnectedDiscordClient {
     app_id: String,
+    activity_name: String,
     client: DiscordIpcClient,
+    fields: Option<PresenceFields>,
+    last_update: Instant,
+}
+
+struct PlaybackSnapshot {
+    playback: Box<PlaybackState>,
+    received_at: Instant,
+}
+
+impl PlaybackSnapshot {
+    fn current(&self, now: Instant) -> PlaybackState {
+        let mut playback = (*self.playback).clone();
+        if playback.is_playing {
+            let elapsed = now
+                .saturating_duration_since(self.received_at)
+                .as_millis()
+                .min(i64::MAX as u128) as i64;
+            playback.position_ms = playback.position_ms.max(0).saturating_add(elapsed);
+            let duration = playback.duration_ms.max(
+                playback
+                    .current_track
+                    .as_ref()
+                    .and_then(|track| track.duration_ms)
+                    .unwrap_or(0),
+            );
+            if duration > 0 {
+                playback.position_ms = playback.position_ms.min(duration);
+            }
+        }
+        playback
+    }
 }
 
 struct ArtworkPayload {
@@ -89,7 +125,11 @@ impl ArtworkPayload {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct PresenceFields {
+    name: String,
+    status_display: String,
+    show_artwork: bool,
     title: String,
     artist: String,
     album: String,
@@ -383,22 +423,15 @@ fn worker(rx: Receiver<DiscordCommand>, db_path: PathBuf, image_cache_dir: PathB
         "event=worker_started store={}",
         artwork_store.kind.name()
     );
-    let mut latest_playback = None;
+    let mut latest_playback: Option<PlaybackSnapshot> = None;
+    let mut last_attempt = Instant::now();
 
     loop {
-        match rx.recv_timeout(RETRY_INTERVAL) {
+        let mut apply = false;
+        match rx.recv_timeout(Duration::from_secs(1)) {
             Ok(DiscordCommand::Playback(playback)) => {
                 latest_playback = Some(playback);
-                if let Some(playback) = latest_playback.as_deref() {
-                    apply_playback(
-                        &conn,
-                        &image_cache_dir,
-                        &mut artwork_cache,
-                        &mut artwork_store,
-                        &mut client,
-                        playback,
-                    );
-                }
+                apply = true;
             }
             Ok(DiscordCommand::Refresh) => {
                 artwork_store = load_artwork_store(&conn);
@@ -409,38 +442,29 @@ fn worker(rx: Receiver<DiscordCommand>, db_path: PathBuf, image_cache_dir: PathB
                         "event=cache_reload_failed error={err}"
                     ),
                 }
-                if let Some(playback) = latest_playback.as_deref() {
-                    apply_playback(
-                        &conn,
-                        &image_cache_dir,
-                        &mut artwork_cache,
-                        &mut artwork_store,
-                        &mut client,
-                        playback,
-                    );
-                }
+                apply = true;
             }
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                // Discord may start after Sparkle. Retry only while an active
-                // presence has not connected. A paused track has no presence
-                // to restore and must not produce periodic clear attempts.
-                if client.is_none() {
-                    if let Some(playback) = latest_playback
-                        .as_deref()
-                        .filter(|playback| playback.is_playing && playback.current_track.is_some())
-                    {
-                        apply_playback(
-                            &conn,
-                            &image_cache_dir,
-                            &mut artwork_cache,
-                            &mut artwork_store,
-                            &mut client,
-                            playback,
-                        );
-                    }
-                }
-            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+        let Some(snapshot) = latest_playback.as_ref() else {
+            continue;
+        };
+        let playback = snapshot.current(Instant::now());
+        let active = playback.is_playing && playback.current_track.is_some();
+        // Retry if Discord starts later. Paused sessions must stay cleared.
+        if apply || (active && client.is_none() && last_attempt.elapsed() >= RETRY_INTERVAL) {
+            last_attempt = Instant::now();
+            apply_playback(
+                &conn,
+                &image_cache_dir,
+                &mut artwork_cache,
+                &mut artwork_store,
+                &mut client,
+                snapshot,
+            );
+        } else if active {
+            update_live_lyrics(&conn, &mut client, &playback);
         }
     }
 
@@ -453,8 +477,9 @@ fn apply_playback(
     artwork_cache: &mut ArtworkCache,
     artwork_store: &mut ArtworkStoreState,
     client: &mut Option<ConnectedDiscordClient>,
-    playback: &PlaybackState,
+    snapshot: &PlaybackSnapshot,
 ) {
+    let playback = snapshot.current(Instant::now());
     let settings = match settings::load_settings(conn) {
         Ok(settings) => settings,
         Err(err) => {
@@ -491,12 +516,14 @@ fn apply_playback(
 
     // Upload artwork only after Discord is connected, so an offline session
     // cannot turn every cache miss into a remote upload.
-    let Some(discord) = ensure_client(client, app_id) else {
+    let Some(discord) = ensure_client(client, app_id, &settings.discord_layout.name) else {
         return;
     };
 
     let store_name = artwork_store.kind.name();
-    let artwork_url = if artwork_store.kind == ArtworkStoreKind::Disabled {
+    let artwork_url = if !settings.discord_layout.show_artwork
+        || artwork_store.kind == ArtworkStoreKind::Disabled
+    {
         log::debug!(
             target: "sparkle::discord::artwork",
             "event=artwork_disabled store=disabled"
@@ -623,22 +650,115 @@ fn apply_playback(
         }
     };
 
-    let fields = presence_fields(playback, track, artwork_url);
-    if let Err(err) = discord.set_activity(build_activity(fields)) {
-        log::debug!(target: "sparkle::discord::presence", "event=activity_update_failed error={err}");
+    // Artwork storage can take seconds; use the clock again after it finishes.
+    let playback = snapshot.current(Instant::now());
+    let lyric = current_lyric(conn, &playback, &settings.discord_layout);
+    let fields = presence_fields(
+        &playback,
+        track,
+        artwork_url,
+        &settings.discord_layout,
+        lyric.as_deref(),
+    );
+    if !publish_fields(discord, fields) {
         close_client(client);
-    } else {
-        log::debug!(target: "sparkle::discord::presence", "event=activity_updated");
     }
+}
+
+fn publish_fields(discord: &mut ConnectedDiscordClient, fields: PresenceFields) -> bool {
+    if let Err(err) = discord.client.set_activity(build_activity(fields.clone())) {
+        log::debug!(target: "sparkle::discord::presence", "event=activity_update_failed error={err}");
+        false
+    } else {
+        discord.fields = Some(fields);
+        discord.last_update = Instant::now();
+        log::debug!(target: "sparkle::discord::presence", "event=activity_updated");
+        true
+    }
+}
+
+fn update_live_lyrics(
+    conn: &Connection,
+    client: &mut Option<ConnectedDiscordClient>,
+    playback: &PlaybackState,
+) {
+    let Some(discord) = client.as_mut() else {
+        return;
+    };
+    if discord.last_update.elapsed() < LYRIC_UPDATE_INTERVAL {
+        return;
+    }
+    discord.last_update = Instant::now();
+    let Ok(settings) = settings::load_settings(conn) else {
+        return;
+    };
+    if !settings.discord_enabled || !settings.discord_layout.uses_lyrics() {
+        return;
+    }
+    let Some(track) = playback.current_track.as_ref() else {
+        return;
+    };
+    let Some(previous) = discord.fields.as_ref() else {
+        return;
+    };
+    let lyric = current_lyric(conn, playback, &settings.discord_layout);
+    // Reuse the artwork and timestamps: no encoding, upload, or moving time bar
+    // on lyric updates. Always render the newest line after a seek or delay.
+    let mut fields = presence_fields(
+        playback,
+        track,
+        previous.artwork_url.clone(),
+        &settings.discord_layout,
+        lyric.as_deref(),
+    );
+    fields.timestamp_start = previous.timestamp_start;
+    fields.timestamp_end = previous.timestamp_end;
+    let changed = fields != *previous;
+    if changed && !publish_fields(discord, fields) {
+        close_client(client);
+    }
+}
+
+fn current_lyric(
+    conn: &Connection,
+    playback: &PlaybackState,
+    layout: &DiscordLayout,
+) -> Option<String> {
+    if !layout.uses_lyrics() {
+        return None;
+    }
+    let track = playback.current_track.as_ref()?;
+    let text = crate::providers::lyrics::known_lyrics(conn, track)
+        .ok()??
+        .synced_text?;
+    // Read the saved offset so edits take effect even without a playback event.
+    let offset: i64 = conn
+        .query_row(
+            "SELECT lrc_offset_ms FROM tracks WHERE id = ?",
+            [track.id],
+            |row| row.get(0),
+        )
+        .unwrap_or(track.lrc_offset_ms);
+    lyric_at_position(&text, playback.position_ms.saturating_sub(offset))
+}
+
+fn lyric_at_position(text: &str, position_ms: i64) -> Option<String> {
+    crate::providers::lyrics::parse_lrc(text)
+        .into_iter()
+        .take_while(|line| line.time_ms <= position_ms)
+        .last()
+        .map(|line| line.text)
 }
 
 fn ensure_client<'a>(
     client: &'a mut Option<ConnectedDiscordClient>,
     app_id: &str,
-) -> Option<&'a mut DiscordIpcClient> {
+    activity_name: &str,
+) -> Option<&'a mut ConnectedDiscordClient> {
+    let activity_name = normalized_activity_name(activity_name);
     let needs_connection = client
         .as_ref()
-        .map(|existing| existing.app_id != app_id)
+        .map(|existing| existing.app_id != app_id || existing.activity_name != activity_name)
         .unwrap_or(true);
     if needs_connection {
         close_client(client);
@@ -649,17 +769,23 @@ fn ensure_client<'a>(
         }
         *client = Some(ConnectedDiscordClient {
             app_id: app_id.to_string(),
+            activity_name,
             client: new_client,
+            fields: None,
+            last_update: Instant::now(),
         });
-        log::info!(target: "sparkle::discord::presence", "event=ipc_connected");
+        log::info!(target: "sparkle::discord::presence", "event=ipc_connected application_id={app_id}");
     }
-    client.as_mut().map(|connected| &mut connected.client)
+    client.as_mut()
 }
 
 fn clear_presence(client: &mut Option<ConnectedDiscordClient>) {
     let failed = client
         .as_mut()
-        .map(|connected| connected.client.clear_activity().is_err())
+        .map(|connected| {
+            connected.fields = None;
+            connected.client.clear_activity().is_err()
+        })
         .unwrap_or(false);
     if failed {
         log::debug!(target: "sparkle::discord::presence", "event=presence_clear_failed");
@@ -894,6 +1020,8 @@ fn presence_fields(
     playback: &PlaybackState,
     track: &Track,
     artwork_url: Option<String>,
+    layout: &DiscordLayout,
+    lyric: Option<&str>,
 ) -> PresenceFields {
     let title = track
         .title
@@ -918,7 +1046,7 @@ fn presence_fields(
         .unwrap_or("Unknown album")
         .to_string();
     let duration_ms = playback.duration_ms.max(track.duration_ms.unwrap_or(0));
-    let (timestamp_start, timestamp_end) = if duration_ms > 0 {
+    let (timestamp_start, timestamp_end) = if layout.show_progress && duration_ms > 0 {
         let now = unix_time_millis();
         let start = now.saturating_sub(playback.position_ms.max(0));
         (Some(start), Some(start.saturating_add(duration_ms)))
@@ -927,9 +1055,12 @@ fn presence_fields(
     };
 
     PresenceFields {
-        title: discord_text(&title, 128),
-        artist: discord_text(&artist, 128),
-        album: discord_text(&album, 128),
+        name: normalized_activity_name(&layout.name),
+        status_display: layout.status_display.clone(),
+        show_artwork: layout.show_artwork,
+        title: render_template(&layout.details, &title, &artist, &album, lyric),
+        artist: render_template(&layout.state, &title, &artist, &album, lyric),
+        album: render_template(&layout.image_text, &title, &artist, &album, lyric),
         artwork_url,
         timestamp_start,
         timestamp_end,
@@ -937,18 +1068,78 @@ fn presence_fields(
 }
 
 fn build_activity(fields: PresenceFields) -> Activity<'static> {
-    let artwork = fields.artwork_url.unwrap_or_else(|| "logo".to_string());
-    let assets = Assets::new().large_image(artwork).large_text(fields.album);
+    let status_display = match fields.status_display.as_str() {
+        "state" if !fields.artist.is_empty() => StatusDisplayType::State,
+        "details" if !fields.title.is_empty() => StatusDisplayType::Details,
+        _ => StatusDisplayType::Name,
+    };
     let mut activity = Activity::new()
+        .name(fields.name)
         .activity_type(ActivityType::Listening)
-        .status_display_type(StatusDisplayType::State)
-        .state(fields.artist)
-        .details(fields.title)
-        .assets(assets);
+        .status_display_type(status_display);
+    if !fields.artist.is_empty() {
+        activity = activity.state(fields.artist);
+    }
+    if !fields.title.is_empty() {
+        activity = activity.details(fields.title);
+    }
+    if fields.show_artwork {
+        let artwork = fields.artwork_url.unwrap_or_else(|| "logo".to_string());
+        let mut assets = Assets::new().large_image(artwork);
+        if !fields.album.is_empty() {
+            assets = assets.large_text(fields.album);
+        }
+        activity = activity.assets(assets);
+    }
     if let (Some(start), Some(end)) = (fields.timestamp_start, fields.timestamp_end) {
         activity = activity.timestamps(Timestamps::new().start(start).end(end));
     }
     activity
+}
+
+fn normalized_activity_name(value: &str) -> String {
+    discord_text(
+        if value.trim().is_empty() {
+            "Sparkle"
+        } else {
+            value
+        },
+        128,
+    )
+}
+
+fn render_template(
+    template: &str,
+    title: &str,
+    artist: &str,
+    album: &str,
+    lyric: Option<&str>,
+) -> String {
+    let mut rendered = String::new();
+    let mut rest = template;
+    while let Some(start) = rest.find('{') {
+        rendered.push_str(&rest[..start]);
+        rest = &rest[start..];
+        let Some(end) = rest.find('}') else { break };
+        let token = &rest[..=end];
+        rendered.push_str(match token {
+            "{title}" => title,
+            "{artist}" => artist,
+            "{album}" => album,
+            "{lyrics}" => lyric
+                .filter(|line| !line.trim().is_empty())
+                .unwrap_or(album),
+            _ => token,
+        });
+        rest = &rest[end + 1..];
+    }
+    rendered.push_str(rest);
+    let rendered = rendered.split_whitespace().collect::<Vec<_>>().join(" ");
+    if rendered.is_empty() {
+        String::new()
+    } else {
+        discord_text(&rendered, 128)
+    }
 }
 
 fn discord_text(value: &str, max_bytes: usize) -> String {

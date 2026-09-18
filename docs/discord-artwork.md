@@ -1,6 +1,6 @@
 # Discord artwork storage
 
-Configure Artwork storage in **Settings → Discord Rich Presence**: Disabled, Catbox, or S3-compatible storage.
+Configure Artwork storage in **Settings → Sharing → Discord**: Disabled, Catbox, or S3-compatible storage. See [Discord presence](discord-presence.md) for text customization and live lyrics.
 
 For S3, the endpoint and bucket are required. Set a public URL when serving objects through a CDN or custom domain. Authenticated stores can use an access key, secret key, and optional session token. Region defaults to `us-east-1`, and the object prefix defaults to `sparkle/`. Credentials stay local and are excluded from backups.
 

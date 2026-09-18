@@ -231,6 +231,8 @@ pub struct OnlineSettings {
     #[serde(default)]
     pub discord_app_id: String,
     #[serde(default)]
+    pub discord_layout: crate::settings::DiscordLayout,
+    #[serde(default)]
     pub discord_catbox_user_hash: String,
     #[serde(default)]
     pub discord_artwork_store: String,

@@ -201,6 +201,16 @@ export interface ImageSearchResults {
 
 export type AccentForegroundPreference = "auto" | "light" | "dark";
 
+export interface DiscordLayout {
+    name: string;
+    details: string;
+    state: string;
+    image_text: string;
+    status_display: string;
+    show_artwork: boolean;
+    show_progress: boolean;
+}
+
 export interface OnlineSettings {
     scan_on_startup: boolean;
     sound_check_enabled: boolean;
@@ -217,6 +227,7 @@ export interface OnlineSettings {
     accent_foreground_preference: AccentForegroundPreference;
     discord_enabled: boolean;
     discord_app_id: string;
+    discord_layout: DiscordLayout;
     discord_catbox_user_hash: string;
     discord_artwork_store: string;
     discord_artwork_s3_endpoint: string;

@@ -33,6 +33,8 @@
     import Select from "$lib/components/Select.svelte";
     import UpdateSettings from "$lib/components/UpdateSettings.svelte";
     import LicenseSettings from "$lib/components/LicenseSettings.svelte";
+    import DiscordLayoutSettings from "$lib/components/DiscordLayoutSettings.svelte";
+    import { defaultDiscordLayout } from "$lib/utils/discord";
     import { addToast } from "$lib/stores/toast";
     import { songIndexLanguage } from "$lib/stores/songIndex";
     import {
@@ -511,6 +513,10 @@
             if (typeof loaded.discord_app_id !== "string") {
                 loaded.discord_app_id = "";
             }
+            loaded.discord_layout = {
+                ...defaultDiscordLayout(),
+                ...loaded.discord_layout,
+            };
             if (!loaded.discord_catbox_user_hash) {
                 loaded.discord_catbox_user_hash = "";
             }
@@ -1604,7 +1610,14 @@
                             spellcheck="false"
                             autocomplete="off"
                         />
+                        {@render hint(
+                            "Use the Application ID from your Sparkle app in the Discord Developer Portal.",
+                        )}
                     </div>
+
+                    <DiscordLayoutSettings
+                        bind:layout={settings.discord_layout}
+                    />
 
                     <div class="field">
                         {@render fieldLabel(

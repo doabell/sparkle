@@ -8,8 +8,8 @@ use crate::db_writer::DbWriter;
 use crate::discord::DiscordPresence;
 use crate::loudness::{GainAvailability, LoudnessController, NEXT_UP_COUNT};
 use crate::models::{CachedImage, PlaybackState, QueueView, RepeatMode, Track};
-use crate::providers::lyrics::{self, TrackMetadata};
-use crate::settings::{load_album_art_sources, load_lyrics_sources, load_session, SessionSnapshot};
+use crate::providers::lyrics;
+use crate::settings::{load_album_art_sources, load_session, SessionSnapshot};
 use rodio::{Decoder, DeviceSinkBuilder, Float, MixerDeviceSink, Player};
 use serde::Serialize;
 use std::fs::File;
@@ -2656,47 +2656,10 @@ fn known_first_lyric_line(
     track: &Track,
 ) -> Result<Option<String>, String> {
     let conn = lock_db(db);
-    let override_source: Option<String> = conn
-        .query_row(
-            "SELECT NULLIF(lyrics_source, '') FROM tracks WHERE id = ?",
-            [track.id],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    let sources = match override_source {
-        Some(source) => vec![source],
-        None => load_lyrics_sources(&conn)?,
-    };
-
-    let custom = cache::get_lyrics_from_source(&conn, track.id, "custom")?;
-    let cached = cache::get_non_custom_lyrics(&conn, track.id)?;
-    drop(conn);
-    let metadata = TrackMetadata {
-        file_path: Some(track.file_path.clone()),
-        embedded_lyrics: track.embedded_lyrics.clone(),
-        ..TrackMetadata::default()
-    };
-    // Resolve in the same order as get_lyrics. A remote cache miss is unknown
-    // here; the layout hint must not jump ahead to a lower-priority source.
-    for source in sources {
-        let result = match source.as_str() {
-            "none" => return Ok(None),
-            "custom" => custom.clone(),
-            "embedded" => lyrics::embedded::fetch(&metadata).ok().flatten(),
-            "lrc" => lyrics::lrc::fetch(&metadata).ok().flatten(),
-            _ => match cached.iter().find(|lyrics| lyrics.source == source) {
-                Some(lyrics) => Some(lyrics.clone()),
-                None => return Ok(None),
-            },
-        };
-        if let Some(lyrics) = result {
-            return Ok(lyrics
-                .synced_text
-                .as_deref()
-                .and_then(lyrics::first_synced_line));
-        }
-    }
-    Ok(None)
+    Ok(lyrics::known_lyrics(&conn, track)?
+        .and_then(|lyrics| lyrics.synced_text)
+        .as_deref()
+        .and_then(lyrics::first_synced_line))
 }
 
 fn known_album_art(

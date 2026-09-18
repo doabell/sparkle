@@ -2,6 +2,212 @@ use super::*;
 use rusqlite::Connection;
 use std::fs;
 
+fn example_playback() -> PlaybackState {
+    PlaybackState {
+        is_playing: true,
+        current_track: Some(Track {
+            id: 1,
+            file_path: "song.flac".into(),
+            title: Some("Song".into()),
+            artist_names: vec!["Artist".into()],
+            album_title: Some("Album".into()),
+            album_id: None,
+            artist_ids: vec![],
+            track_number: None,
+            disc_number: None,
+            duration_ms: Some(180_000),
+            year: None,
+            genre: None,
+            embedded_lyrics: None,
+            lrc_offset_ms: 0,
+            lyrics_source: None,
+        }),
+        first_lyric_line: None,
+        album_art: None,
+        position_ms: 1_000,
+        duration_ms: 180_000,
+        volume: 1.0,
+        shuffle: false,
+        repeat_mode: crate::models::RepeatMode::Off,
+    }
+}
+
+#[test]
+fn activity_explicitly_names_sparkle_and_defaults_to_app_status() {
+    let playback = example_playback();
+    let fields = presence_fields(
+        &playback,
+        playback.current_track.as_ref().unwrap(),
+        None,
+        &DiscordLayout::default(),
+        None,
+    );
+    let payload = serde_json::to_value(build_activity(fields)).unwrap();
+    assert_eq!(payload["name"], "Sparkle");
+    assert_eq!(payload["type"], 2);
+    assert_eq!(payload["status_display_type"], 0);
+    assert_eq!(payload["details"], "Song");
+    assert_eq!(payload["state"], "Artist");
+    assert_eq!(payload["assets"]["large_text"], "Album");
+    assert_eq!(
+        payload["timestamps"]["end"].as_i64().unwrap()
+            - payload["timestamps"]["start"].as_i64().unwrap(),
+        180_000
+    );
+}
+
+#[test]
+fn templates_support_lyrics_fallback_hidden_fields_and_unicode_limits() {
+    let playback = example_playback();
+    let track = playback.current_track.as_ref().unwrap();
+    let mut layout = DiscordLayout {
+        name: " ".into(),
+        details: "{title} — {artist}".into(),
+        state: "{lyrics}".into(),
+        image_text: "{lyrics}".into(),
+        status_display: "state".into(),
+        show_artwork: false,
+        show_progress: false,
+    };
+    let fields = presence_fields(
+        &playback,
+        track,
+        Some("https://example.test/cover.jpg".into()),
+        &layout,
+        Some("Current line"),
+    );
+    let payload = serde_json::to_value(build_activity(fields)).unwrap();
+    assert_eq!(payload["name"], "Sparkle");
+    assert_eq!(payload["details"], "Song — Artist");
+    assert_eq!(payload["state"], "Current line");
+    assert_eq!(payload["status_display_type"], 1);
+    assert!(payload.get("assets").is_none());
+    assert!(payload.get("timestamps").is_none());
+    assert_eq!(
+        presence_fields(&playback, track, None, &layout, None).artist,
+        "Album"
+    );
+    layout.state.clear();
+    layout.details = "  ".into();
+    let payload = serde_json::to_value(build_activity(presence_fields(
+        &playback, track, None, &layout, None,
+    )))
+    .unwrap();
+    assert!(payload.get("state").is_none());
+    assert!(payload.get("details").is_none());
+    assert_eq!(payload["status_display_type"], 0);
+    assert_eq!(
+        render_template("{title} {unknown}", "{lyrics}", "", "", Some("Line")),
+        "{lyrics} {unknown}"
+    );
+    assert_eq!(
+        render_template("unfinished {", "", "", "", None),
+        "unfinished {"
+    );
+    assert_eq!(
+        render_template("{lyrics}", "", "", "Album", Some("  ")),
+        "Album"
+    );
+    assert_eq!(
+        render_template("{lyrics}", "", "", "", Some(&"🎵".repeat(40))),
+        "🎵".repeat(32)
+    );
+    assert_eq!(render_template("{title}", "A", "", "", None), "A\u{180e}");
+}
+
+#[test]
+fn lyric_lookup_tracks_source_changes_offsets_and_missing_sync() {
+    let conn = crate::db::test_connection();
+    conn.execute("INSERT INTO tracks (id, file_path, lyrics_source, lrc_offset_ms) VALUES (1, 'song.flac', 'custom', 500)", []).unwrap();
+    cache::set_lyrics(
+        &conn,
+        1,
+        "custom",
+        Some("[offset:100]\n[00:01]First\n[00:02]Second"),
+        None,
+    )
+    .unwrap();
+    let mut playback = example_playback();
+    let layout = DiscordLayout {
+        state: "{lyrics}".into(),
+        ..Default::default()
+    };
+    playback.position_ms = 1399;
+    assert_eq!(current_lyric(&conn, &playback, &layout), None);
+    playback.position_ms = 1400;
+    assert_eq!(
+        current_lyric(&conn, &playback, &layout).as_deref(),
+        Some("First")
+    );
+    playback.position_ms = 2400;
+    assert_eq!(
+        current_lyric(&conn, &playback, &layout).as_deref(),
+        Some("Second")
+    );
+    // A backwards seek selects the current line, never a queued lyric.
+    playback.position_ms = 1400;
+    assert_eq!(
+        current_lyric(&conn, &playback, &layout).as_deref(),
+        Some("First")
+    );
+    conn.execute("UPDATE tracks SET lrc_offset_ms=0 WHERE id=1", [])
+        .unwrap();
+    playback.position_ms = 1900;
+    assert_eq!(
+        current_lyric(&conn, &playback, &layout).as_deref(),
+        Some("Second")
+    );
+    conn.execute("UPDATE tracks SET lyrics_source='none' WHERE id=1", [])
+        .unwrap();
+    assert_eq!(current_lyric(&conn, &playback, &layout), None);
+    conn.execute("UPDATE tracks SET lyrics_source='qq' WHERE id=1", [])
+        .unwrap();
+    assert_eq!(current_lyric(&conn, &playback, &layout), None);
+    cache::set_lyrics(&conn, 1, "qq", None, Some("Plain lyrics")).unwrap();
+    assert_eq!(current_lyric(&conn, &playback, &layout), None);
+    cache::set_lyrics(&conn, 1, "qq", Some("[00:00]New source"), None).unwrap();
+    assert_eq!(
+        current_lyric(&conn, &playback, &layout).as_deref(),
+        Some("New source")
+    );
+    assert_eq!(
+        current_lyric(&conn, &playback, &DiscordLayout::default()),
+        None
+    );
+    playback.current_track.as_mut().unwrap().id = 2;
+    assert_eq!(current_lyric(&conn, &playback, &layout), None);
+}
+
+#[test]
+fn playback_clock_advances_only_while_playing_and_clamps_at_track_end() {
+    let now = Instant::now();
+    let mut snapshot = PlaybackSnapshot {
+        playback: Box::new(example_playback()),
+        received_at: now,
+    };
+    assert_eq!(
+        snapshot.current(now + Duration::from_secs(15)).position_ms,
+        16_000
+    );
+    assert_eq!(
+        snapshot.current(now + Duration::from_secs(200)).position_ms,
+        180_000
+    );
+    snapshot.playback.is_playing = false;
+    assert_eq!(
+        snapshot.current(now + Duration::from_secs(15)).position_ms,
+        1_000
+    );
+    // A new event anchors both forward and backward seeks to its position.
+    snapshot.playback.is_playing = true;
+    snapshot.playback.position_ms = 60_000;
+    snapshot.received_at = now + Duration::from_secs(15);
+    assert_eq!(
+        snapshot.current(now + Duration::from_secs(16)).position_ms,
+        61_000
+    );
+}
+
 #[test]
 fn preserves_md5_base64_cache_key() {
     let keys = unique_cache_keys([md5_hex(b""), md5_hex(b""), md5_hex(b"")]);

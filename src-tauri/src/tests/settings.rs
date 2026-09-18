@@ -68,6 +68,15 @@ fn settings_roundtrip() {
     settings.discord_artwork_s3_access_key = "access".to_string();
     settings.discord_artwork_s3_secret_key = "secret".to_string();
     settings.discord_artwork_store = "s3".to_string();
+    settings.discord_layout = DiscordLayout {
+        name: "My Sparkle".into(),
+        details: "{title} — {artist}".into(),
+        state: "{lyrics}".into(),
+        image_text: "{lyrics}".into(),
+        status_display: "details".into(),
+        show_artwork: false,
+        show_progress: false,
+    };
     save_settings(&conn, &settings).unwrap();
     let loaded = load_settings(&conn).unwrap();
     assert_eq!(loaded.monitored_folders, settings.monitored_folders);
@@ -85,6 +94,7 @@ fn settings_roundtrip() {
     );
     assert_eq!(loaded.discord_enabled, settings.discord_enabled);
     assert_eq!(loaded.discord_app_id, settings.discord_app_id);
+    assert_eq!(loaded.discord_layout, settings.discord_layout);
     assert_eq!(
         loaded.discord_catbox_user_hash,
         settings.discord_catbox_user_hash
