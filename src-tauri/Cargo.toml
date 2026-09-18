@@ -17,7 +17,8 @@ readme = "../README.md"
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "sparkle_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# The Windows executable links this Rust library; mobile library outputs are unused.
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2.6.3", features = [] }

@@ -10,7 +10,10 @@ bun run test:coverage
 
 Or run one language with `bun run test:coverage:ts` or `bun run test:coverage:rs`.
 For fast tests without instrumentation, use `bun test` and
-`cargo test --locked --manifest-path src-tauri/Cargo.toml`.
+`cargo test --lib --locked --manifest-path src-tauri/Cargo.toml`.
+Routine coding validation uses relevant tests; local frontend, application, and
+installer builds are not required. Run those separately when explicitly testing
+the build or packaging process.
 
 Rust coverage is verified on Windows, matching the native CI job. The first
 instrumented build compiles into `src-tauri/target/llvm-cov-target`; later runs
@@ -116,9 +119,12 @@ error closures, so its function gate is separate from its line gate.
 ## Reports and review
 
 LCOV reports are written to `coverage/typescript/lcov.info` and
-`coverage/rust/lcov.info`. CI runs both gates and uploads the `coverage` artifact,
-including available reports on failure. Reports and instrumented builds are not
-committed.
+`coverage/rust/lcov.info`. On `main`, CI runs the gates affected by changed paths
+and uploads the `coverage` artifact, including available reports on failure.
+Frontend changes skip Rust coverage; native changes skip TypeScript coverage.
+Shared test fixtures run both gates, as do shared dependency, workflow, script, and
+unknown configuration changes. Documentation-only changes skip both. Reports
+and instrumented builds are not committed.
 
 When adding behavior, test outcomes and failure paths rather than calling a
 function solely to raise its percentage. Keep new Rust tests in a `tests/`

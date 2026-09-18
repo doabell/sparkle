@@ -16,6 +16,7 @@ jobs:
         runs-on: windows-latest
         permissions:
             contents: write
+            actions: read
         steps:
             - name: Check out repository
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -36,7 +37,17 @@ jobs:
               with:
                   bun-version: 1.3.14
 
+            - name: Check release version
+              run: bun run version:check
+
+            - name: Restore verified package from matching main CI
+              id: packages
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: bun scripts/reuse-windows-package.mjs
+
             - name: Set up Rust and cache builds
+              if: steps.packages.outputs.reused != 'true'
               uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
               with:
                   cache-workspaces: ./src-tauri -> target
@@ -46,10 +57,8 @@ jobs:
                   rustflags: ""
 
             - name: Install Bun dependencies
+              if: steps.packages.outputs.reused != 'true'
               run: bun install --frozen-lockfile
-
-            - name: Check release version
-              run: bun run version:check
 
             - name: Set up .NET for Velopack
               uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
@@ -60,7 +69,13 @@ jobs:
               run: dotnet tool restore
 
             - name: Build and verify Windows setup and update feed
+              if: steps.packages.outputs.reused != 'true'
               run: bun run package:windows
+
+            - name: Verify restored Windows package
+              if: steps.packages.outputs.reused == 'true'
+              shell: pwsh
+              run: ./scripts/verify-windows-package.ps1
 
             - name: Create draft GitHub release with setup and update packages
               env:
