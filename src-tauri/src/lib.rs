@@ -8,6 +8,7 @@ mod commands;
 mod db;
 mod db_writer;
 mod discord;
+mod library_scan;
 mod loudness;
 mod models;
 mod normalizer;
@@ -17,6 +18,7 @@ mod providers;
 mod scanner;
 mod settings;
 mod updates;
+mod window_icon;
 
 /// Handle installer invocations before opening windows, audio, or the library.
 pub fn initialize_updater() {
@@ -459,6 +461,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_media::init())
         .manage(updates::UpdateState::default())
+        .manage(library_scan::LibraryScan::default())
         .setup(|app| {
             let (conn, fresh_db) = db::init_db(app.handle()).map_err(|e| e.to_string())?;
             let recovered_listens =
@@ -492,6 +495,7 @@ pub fn run() {
                 }
             };
             set_debug_logging_enabled(startup_settings.debug_logging_enabled);
+            window_icon::apply_accent(app.handle(), &startup_settings.accent_color);
             let app_data_dir = db::data_dir(app.handle());
             let cache_dir = app_data_dir.join("cache");
             // The cache is never wiped automatically — not on startup, not on
@@ -533,11 +537,25 @@ pub fn run() {
                 cache_dir: cache_dir.clone(),
             });
 
-            // Optional background scan at startup. Runs on its own connection
-            // (WAL mode) so it never blocks library reads from the UI.
+            // Claim the startup scan before the UI can request another one.
+            // Startup and manual scans share progress and completion state.
+            let startup_scan = if startup_settings.scan_on_startup {
+                Some(commands::begin_library_scan(app.handle())?)
+            } else {
+                None
+            };
             let app_handle = app.handle().clone();
             let scan_loudness = loudness.clone();
             std::thread::spawn(move || {
+                if let Some(run) = startup_scan {
+                    log::debug!(target: "sparkle::scanner", "event=startup_scan_started");
+                    match commands::run_library_scan(&app_handle, run, false) {
+                        Ok(_) => log::info!(target: "sparkle::scanner", "event=startup_scan_completed"),
+                        Err(e) => log::warn!(target: "sparkle::scanner", "event=startup_scan_failed error={e}"),
+                    }
+                } else {
+                    log::debug!(target: "sparkle::scanner", "event=startup_scan_skipped reason=disabled");
+                }
                 let path = db::db_path(&app_handle);
                 let mut scan_conn = match db::open_connection(&path) {
                     Ok(c) => c,
@@ -549,39 +567,6 @@ pub fn run() {
                         return;
                     }
                 };
-                let settings = match settings::load_settings(&scan_conn) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        log::warn!(
-                            target: "sparkle::scanner",
-                            "event=startup_scan_settings_load_failed error={e}"
-                        );
-                        return;
-                    }
-                };
-                if settings.scan_on_startup {
-                    log::debug!(target: "sparkle::scanner", "event=startup_scan_started");
-                    if let Err(e) =
-                        scanner::scan_library(&mut scan_conn, &settings, false, &cache_dir)
-                    {
-                        log::warn!(
-                            target: "sparkle::scanner",
-                            "event=startup_scan_failed error={e}"
-                        );
-                    } else {
-                        log::info!(target: "sparkle::scanner", "event=startup_scan_completed");
-                        let state = app_handle.state::<AppState>();
-                        if let Ok(playback) = state.audio.get_playback_state() {
-                            if let Some(track) = playback.current_track {
-                                let _ = state.audio.refresh_track_lyrics(track.id);
-                            }
-                        }
-                        use tauri::Emitter;
-                        let _ = app_handle.emit("library-scanned", ());
-                    }
-                } else {
-                    log::debug!(target: "sparkle::scanner", "event=startup_scan_skipped reason=disabled");
-                }
                 if let Err(e) = commands::refresh_live_mix_playlists_with_connection(&mut scan_conn)
                 {
                     log::warn!(
@@ -666,6 +651,7 @@ pub fn run() {
             commands::reveal_in_explorer,
             commands::list_folders,
             commands::scan_library,
+            commands::get_library_scan_status,
             commands::get_loudness_status,
             commands::scan_loudness,
             commands::rescan_loudness,

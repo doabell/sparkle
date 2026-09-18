@@ -22,7 +22,7 @@ pub fn fetch(metadata: &TrackMetadata) -> Result<Option<Lyrics>, String> {
     if plain.is_empty() {
         return Ok(None);
     }
-    let synced_text = Some(text.clone());
+    let synced_text = (!super::parse_lrc(&text).is_empty()).then_some(text);
     let plain_text = Some(plain);
 
     Ok(Some(Lyrics {

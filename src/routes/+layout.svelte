@@ -29,6 +29,7 @@
     } from "$lib/utils/theme";
     import { createContentScrollRestorer } from "$lib/utils/scrollRestore";
     import { windowPageTitle } from "$lib/stores/windowPageTitle";
+    import { libraryScan } from "$lib/stores/libraryScan";
     import { getRouteTitle, getWindowTitle } from "$lib/utils/windowTitle";
     import {
         readScrollbackFromHistory,
@@ -313,6 +314,7 @@
 
     onMount(() => {
         loadUiSettings();
+        const disconnectScan = libraryScan.connect();
 
         const unlisteners: (() => void)[] = [];
 
@@ -354,6 +356,7 @@
         initMediaKeyListeners();
 
         return () => {
+            disconnectScan();
             unlisteners.forEach((unlisten) => unlisten());
         };
     });

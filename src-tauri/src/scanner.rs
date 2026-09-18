@@ -19,9 +19,11 @@ struct FileResult {
 }
 
 /// Scans all enabled folders. With `force`, every file is re-parsed even if
-/// its mtime is unchanged, rebuilding the derived metadata. Missing files are
-/// hidden from browsing, while their IDs, lyrics, playlists and history remain
-/// available to reconnect when the audio is found again.
+/// its mtime is unchanged, rebuilding the derived metadata. Audio fingerprints
+/// are reused while the file's nanosecond mtime and size are unchanged. Missing
+/// files are hidden from browsing, while their IDs, lyrics, playlists and
+/// history remain available to reconnect when the audio is found again.
+#[cfg(test)]
 pub fn scan_library(
     conn: &mut Connection,
     settings: &Settings,
@@ -425,6 +427,7 @@ struct ExistingFile {
     complete: bool,
     scan_version: i64,
     missing: bool,
+    fingerprint: Option<String>,
 }
 
 fn process_file(
@@ -458,7 +461,7 @@ fn process_file(
             "SELECT id, file_path, file_mtime_ns, file_size_bytes, \
                     audio_format IS NOT NULL AND sample_rate_hz IS NOT NULL \
                     AND channels IS NOT NULL AND file_size_bytes IS NOT NULL, \
-                    scan_version, missing_since IS NOT NULL \
+                    scan_version, missing_since IS NOT NULL, audio_fingerprint \
              FROM tracks WHERE id = ?1 OR file_path = ?2",
             rusqlite::params![matched_id, path],
             |row| {
@@ -470,20 +473,21 @@ fn process_file(
                     complete: row.get(4)?,
                     scan_version: row.get(5)?,
                     missing: row.get(6)?,
+                    fingerprint: row.get(7)?,
                 })
             },
         )
         .optional()
         .map_err(|e| e.to_string())?;
 
+    let same_file_revision = file_mtime_ns.is_some()
+        && file_size_bytes.is_some()
+        && existing
+            .as_ref()
+            .is_some_and(|file| file.mtime_ns == file_mtime_ns && file.size == file_size_bytes);
     if !force {
         if let Some(ref existing) = existing {
-            if existing.mtime_ns == file_mtime_ns
-                && file_mtime_ns.is_some()
-                && existing.size == file_size_bytes
-                && existing.complete
-                && existing.scan_version == SCAN_VERSION
-            {
+            if same_file_revision && existing.complete && existing.scan_version == SCAN_VERSION {
                 let updated = existing.path != path || existing.missing;
                 if updated {
                     tx.execute("UPDATE tracks SET file_path = ?, missing_since = NULL, lyrics_revision = lyrics_revision + 1 WHERE id = ?",
@@ -529,9 +533,19 @@ fn process_file(
     let track_artist_names = collect_artists(tag, ItemKey::TrackArtist, ItemKey::TrackArtists);
     let album_artist_names = collect_artists(tag, ItemKey::AlbumArtist, ItemKey::AlbumArtists);
 
-    let fingerprint = fingerprint
-        .cloned()
-        .unwrap_or_else(|| file_fingerprint(path));
+    // A full metadata refresh still reads every tag, but must not stream and
+    // hash gigabytes of unchanged audio again. Incoming/moved files already
+    // have a freshly computed fingerprint from identity matching. Otherwise
+    // reuse only an identity for this exact file revision and algorithm.
+    let fingerprint = fingerprint.cloned().unwrap_or_else(|| {
+        existing
+            .as_ref()
+            .filter(|_| same_file_revision)
+            .and_then(|file| file.fingerprint.as_ref())
+            .filter(|value| value.starts_with(crate::audio_identity::FINGERPRINT_PREFIX))
+            .cloned()
+            .or_else(|| file_fingerprint(path))
+    });
     let existing_id = existing.map(|file| file.id);
     let added = existing_id.is_none();
     let updated = existing_id.is_some();

@@ -1240,6 +1240,8 @@ pub fn set_online_settings(
     let mut full = settings::load_settings(&conn)?;
     let debug_logging_changed = full.debug_logging_enabled != settings.debug_logging_enabled;
     let sound_check_changed = full.sound_check_enabled != settings.sound_check_enabled;
+    let accent_changed =
+        full.accent_color != settings::normalize_accent_color(&settings.accent_color);
     full.scan_on_startup = settings.scan_on_startup;
     full.sound_check_enabled = settings.sound_check_enabled;
     full.lyrics_sources = settings.lyrics_sources;
@@ -1269,6 +1271,9 @@ pub fn set_online_settings(
     settings::save_settings(&conn, &full)?;
     drop(conn);
     crate::set_debug_logging_enabled(settings.debug_logging_enabled);
+    if accent_changed {
+        crate::window_icon::apply_accent(&app, &full.accent_color);
+    }
     if debug_logging_changed {
         log::info!(
             target: "sparkle::settings",

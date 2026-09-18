@@ -9,6 +9,8 @@ use symphonia::core::errors::Error;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::probe::Hint;
 
+pub const FINGERPRINT_PREFIX: &str = "audio-v1:";
+
 pub fn fingerprint(path: &Path) -> Result<String, String> {
     let file = File::open(path).map_err(|e| e.to_string())?;
     let stream = MediaSourceStream::new(Box::new(file), Default::default());
@@ -40,5 +42,5 @@ pub fn fingerprint(path: &Path) -> Result<String, String> {
     if packets == 0 {
         return Err("no audio packets".into());
     }
-    Ok(format!("audio-v1:{:x}", digest.finalize()))
+    Ok(format!("{FINGERPRINT_PREFIX}{:x}", digest.finalize()))
 }

@@ -46,6 +46,7 @@ test("read-only bridge commands preserve native results", async () => {
         ["getLibraryHealth", "get_library_health"],
         ["getOnlineSettings", "get_online_settings"],
         ["getLoudnessStatus", "get_loudness_status"],
+        ["getLibraryScanStatus", "get_library_scan_status"],
         ["getPlaylists", "get_playlists"],
         ["testArtworkStorage", "test_artwork_storage"],
     ]) {

@@ -147,6 +147,7 @@ pub fn inspect_library_backup(path: String) -> Result<crate::backup::BackupManif
 #[tauri::command]
 pub fn import_library_backup(
     state: State<'_, AppState>,
+    app: tauri::AppHandle,
     path: String,
     sections: crate::backup::BackupSections,
 ) -> Result<crate::backup::BackupImportSummary, String> {
@@ -157,15 +158,18 @@ pub fn import_library_backup(
         std::path::Path::new(&path),
         sections,
     )?;
-    let restored_sound_check = if sections.settings {
-        Some(settings::load_settings(&conn)?.sound_check_enabled)
+    let restored_settings = if sections.settings {
+        Some(settings::load_settings(&conn)?)
     } else {
         None
     };
     drop(conn);
-    if let Some(enabled) = restored_sound_check {
-        state.audio.set_sound_check_enabled(enabled)?;
-        state.loudness.set_enabled(enabled);
+    if let Some(settings) = restored_settings {
+        crate::window_icon::apply_accent(&app, &settings.accent_color);
+        state
+            .audio
+            .set_sound_check_enabled(settings.sound_check_enabled)?;
+        state.loudness.set_enabled(settings.sound_check_enabled);
     }
     Ok(summary)
 }
@@ -295,37 +299,64 @@ pub fn list_folders(state: State<'_, AppState>) -> Result<Vec<Folder>, String> {
 }
 
 #[tauri::command]
-pub fn scan_library(
-    state: State<'_, AppState>,
+pub async fn scan_library(
     app: tauri::AppHandle,
     force: Option<bool>,
 ) -> Result<ScanResult, String> {
-    // Scan on a dedicated connection (WAL mode) so library reads from the UI
-    // are not blocked for the duration of the scan.
-    let settings = {
-        let conn = state.db.lock().map_err(|e| e.to_string())?;
-        settings::load_settings(&conn)?
-    };
-    let path = crate::db::db_path(&app);
-    let mut scan_conn = crate::db::open_connection(&path).map_err(|e| e.to_string())?;
-    let progress_app = app.clone();
-    let result = scanner::scan_library_with_progress(
-        &mut scan_conn,
-        &settings,
-        force.unwrap_or(false),
-        &state.cache_dir,
-        move |progress| {
-            use tauri::Emitter;
-            let _ = progress_app.emit("scan-progress", progress);
-        },
-    )?;
-    state.loudness.refresh_library();
-    if let Some(track) = state.audio.get_playback_state()?.current_track {
-        state.audio.refresh_track_lyrics(track.id)?;
-    }
-    use tauri::Emitter;
-    let _ = app.emit("library-scanned", ());
-    Ok(result)
+    let run = begin_library_scan(&app)?;
+    // File walking, metadata decoding and SQLite are blocking work. Keep the
+    // entire operation off both the window event loop and async executor.
+    tauri::async_runtime::spawn_blocking(move || {
+        run_library_scan(&app, run, force.unwrap_or(false))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn get_library_scan_status(
+    scan: State<'_, crate::library_scan::LibraryScan>,
+) -> crate::library_scan::ScanStatus {
+    scan.status()
+}
+
+pub(crate) fn begin_library_scan(app: &AppHandle) -> Result<crate::library_scan::ScanRun, String> {
+    use tauri::{Emitter, Manager};
+    let events = app.clone();
+    app.state::<crate::library_scan::LibraryScan>()
+        .begin(move |status| {
+            let _ = events.emit("library-scan-status", status);
+        })
+}
+
+pub(crate) fn run_library_scan(
+    app: &AppHandle,
+    mut run: crate::library_scan::ScanRun,
+    force: bool,
+) -> Result<ScanResult, String> {
+    let result = (|| {
+        use tauri::{Emitter, Manager};
+        let state = app.state::<AppState>();
+        // A dedicated WAL connection also keeps the UI's database mutex free.
+        let path = crate::db::db_path(app);
+        let mut scan_conn = crate::db::open_connection(&path).map_err(|e| e.to_string())?;
+        let settings = settings::load_settings(&scan_conn)?;
+        let result = scanner::scan_library_with_progress(
+            &mut scan_conn,
+            &settings,
+            force,
+            &state.cache_dir,
+            |progress| run.progress(progress),
+        )?;
+        state.loudness.refresh_library();
+        if let Some(track) = state.audio.get_playback_state()?.current_track {
+            state.audio.refresh_track_lyrics(track.id)?;
+        }
+        let _ = app.emit("library-scanned", ());
+        Ok(result)
+    })();
+    run.finish(&result);
+    result
 }
 
 #[tauri::command]

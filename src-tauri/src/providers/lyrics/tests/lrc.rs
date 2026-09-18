@@ -18,6 +18,10 @@ fn sidecar_lyrics_handle_missing_empty_valid_and_unreadable_content() {
     assert_eq!(lyrics.source, "lrc");
     assert_eq!(lyrics.plain_text.as_deref(), Some("Hello\nWorld"));
     assert!(lyrics.synced_text.unwrap().contains("[00:01.00]"));
+    fs::write(&lrc, "[ar:Artist]\r\nHello\r\nWorld").unwrap();
+    let lyrics = fetch(&metadata).unwrap().unwrap();
+    assert!(lyrics.synced_text.is_none());
+    assert_eq!(lyrics.plain_text.as_deref(), Some("Hello\nWorld"));
     fs::write(&lrc, [0xff, 0xfe]).unwrap();
     assert!(fetch(&metadata).is_err());
     fs::remove_dir_all(&root).unwrap();

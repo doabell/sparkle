@@ -381,3 +381,24 @@ fn only_explicit_adjustment_bakes_timing_and_save_and_export_preserve_written_ti
         saved.synced_text
     );
 }
+
+#[test]
+fn replacing_timed_lyrics_with_plain_text_returns_the_saved_custom_lyrics() {
+    let conn = lyric_library(&["embedded", "lrclib"]);
+    save_edited_lyrics(&conn, 1, "[00:01]Wrong timed lyrics", false).unwrap();
+    let snapshot = lyrics_snapshot(&conn, 1).unwrap();
+    let saved = save_edited_lyrics(&conn, 1, "Corrected first line\nSecond line", false).unwrap();
+    assert!(!snapshot_is_current(&conn, 1, &snapshot).unwrap());
+    assert!(saved.synced_text.is_none());
+    assert_eq!(
+        saved.plain_text.as_deref(),
+        Some("Corrected first line\nSecond line")
+    );
+    let loaded = lookup_track_lyrics(&Arc::new(Mutex::new(conn)), 1).unwrap();
+    assert_eq!(loaded.source, "custom");
+    assert!(loaded.synced_text.is_none());
+    assert_eq!(loaded.plain_text, saved.plain_text);
+    let payload = serde_json::to_value(loaded).unwrap();
+    assert!(payload["synced_text"].is_null());
+    assert_eq!(payload["plain_text"], "Corrected first line\nSecond line");
+}

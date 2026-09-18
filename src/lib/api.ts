@@ -141,7 +141,7 @@ export interface ScanResult {
 
 export interface ScanProgress {
     phase: "scanning" | "cleaning";
-    current_path?: string;
+    current_path?: string | null;
     scanned: number;
     total: number;
     added: number;
@@ -150,10 +150,18 @@ export interface ScanProgress {
     errors: number;
 }
 
+export interface LibraryScanStatus {
+    revision: number;
+    running: boolean;
+    progress: ScanProgress | null;
+    result: ScanResult | null;
+    error: string | null;
+}
+
 export interface Lyrics {
     source: string;
-    synced_text?: string;
-    plain_text?: string;
+    synced_text?: string | null;
+    plain_text?: string | null;
 }
 
 export interface Genre {
@@ -420,6 +428,10 @@ export async function setArtistImageData(
 
 export async function scanLibrary(force = false): Promise<ScanResult> {
     return invoke("scan_library", { force });
+}
+
+export async function getLibraryScanStatus(): Promise<LibraryScanStatus> {
+    return invoke("get_library_scan_status");
 }
 
 export async function getArtists(): Promise<Artist[]> {
@@ -856,8 +868,8 @@ export async function clearTrackCustomLyrics(trackId: number): Promise<void> {
 
 export interface LyricCandidate {
     source: string;
-    synced_text?: string;
-    plain_text?: string;
+    synced_text?: string | null;
+    plain_text?: string | null;
     preview: string;
 }
 
@@ -877,7 +889,11 @@ export async function searchLyricsOnline(
 
 export async function setTrackLyricsChoice(
     trackId: number,
-    choice: { source: string; syncedText?: string; plainText?: string },
+    choice: {
+        source: string;
+        syncedText?: string | null;
+        plainText?: string | null;
+    },
 ): Promise<void> {
     await editLyrics(trackId, () =>
         invoke("set_track_lyrics_choice", {

@@ -78,6 +78,21 @@ fn lyric_metadata_uses_main_artist_and_preserves_missing_tags() {
 }
 
 #[test]
+fn embedded_plain_lyrics_are_not_marked_as_synchronized() {
+    let lyrics = embedded::fetch(&TrackMetadata {
+        embedded_lyrics: Some("[ti:Song]\nFirst line\nSecond line".into()),
+        ..Default::default()
+    })
+    .unwrap()
+    .unwrap();
+    assert!(lyrics.synced_text.is_none());
+    assert_eq!(
+        lyrics.plain_text.as_deref(),
+        Some("First line\nSecond line")
+    );
+}
+
+#[test]
 fn translations_expand_repeated_timestamps_and_leave_unmatched_lines_alone() {
     assert_eq!(
         inject_translation(

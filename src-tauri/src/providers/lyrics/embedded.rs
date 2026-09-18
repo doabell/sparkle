@@ -8,7 +8,7 @@ pub fn fetch(metadata: &TrackMetadata) -> Result<Option<Lyrics>, String> {
             if plain.is_empty() {
                 return Ok(None);
             }
-            let synced_text = Some(text.to_string());
+            let synced_text = (!super::parse_lrc(text).is_empty()).then(|| text.to_string());
             let plain_text = Some(plain);
             Ok(Some(Lyrics {
                 source: "embedded".to_string(),

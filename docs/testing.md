@@ -14,8 +14,9 @@ For fast tests without instrumentation, use `bun test` and
 
 Rust coverage is verified on Windows, matching the native CI job. The first
 instrumented build compiles into `src-tauri/target/llvm-cov-target`; later runs
-reuse it. No app window, browser, headless browser, real audio output, or live
-provider credentials are needed.
+reuse it. No player window, browser, headless browser, real audio output, or live
+provider credentials are needed. The Windows taskbar-icon test uses an isolated
+hidden native window.
 
 ## Gates
 
@@ -42,10 +43,14 @@ the app's API and stores execute normally.
 
 Playback recovery tests cover failed load/seek commands, successful retries,
 native-state reconciliation, and rejection of progress events from old tracks.
+Scan-state tests cover navigation during a scan, retained results, startup
+status recovery, delayed snapshots, duplicate requests, and listener cleanup.
 
 Svelte component scripts, markup, CSS, and the static pre-paint JavaScript are
 not part of this metric. Some existing tests inspect their contracts, but those
-assertions are not component-rendering or visual coverage.
+assertions are not component-rendering or visual coverage. The lyric component
+also has server-rendering regressions for native null fields, plain text, and
+timed lyrics; these do not exercise browser interaction or visual layout.
 
 ### Rust scope
 
@@ -64,9 +69,15 @@ storage adapters.
 
 Scanner tests ingest a tiny, tagged synthetic FLAC through Lofty and SQLite,
 then exercise rescans, ordered NUL-separated and repeated artist tags, corrupt
-files, disabled folders, and metadata updates. Audio-packet fingerprints preserve
+files, disabled folders, and metadata updates. Full rescans reread tags while
+reusing audio fingerprints only when file timestamps, sizes, and the fingerprint
+version still match; changed files and missing identities are fingerprinted again.
+Audio-packet fingerprints preserve
 track IDs across renames and retagging; tests also cover reconnecting missing
 files, retaining lyrics/playlists/history, and refusing ambiguous copy matches.
+Scan-controller tests verify that startup and manual requests share one worker,
+progress remains queryable, fast updates are coalesced without delaying completion,
+and failures release the worker for an explicit retry.
 Album grouping remains title/year, with deterministic album-artist credits.
 The shared `test/fixtures/lrc.json` contract checks frontend/native parsing,
 file offsets, word cues, and timing application. Separate regressions cover

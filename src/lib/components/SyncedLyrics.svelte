@@ -4,6 +4,7 @@
         anticipatedLineIndex,
         LYRIC_TRANSITION_DURATION_MS,
         parseLrc,
+        lrcPlainText,
     } from "$lib/utils/lrc";
     import { onMount } from "svelte";
     import type { Action } from "svelte/action";
@@ -12,8 +13,8 @@
 
     interface Props {
         fontFamily?: string;
-        syncedText?: string;
-        plainText?: string;
+        syncedText?: string | null;
+        plainText?: string | null;
         currentTimeMs: number;
         offsetMs?: number;
         onSeek?: (timeMs: number) => void;
@@ -28,8 +29,11 @@
         onSeek,
     }: Props = $props();
 
-    let parsedLines = $derived(parseLrc(syncedText));
+    let parsedLines = $derived(parseLrc(syncedText ?? ""));
     let hasTimestamps = $derived(parsedLines.length > 0);
+    let displayPlainText = $derived(
+        plainText?.trim() || lrcPlainText(syncedText ?? ""),
+    );
     // Stay conservative until the client preference is known. This prevents a
     // reduced-motion user from seeing the upcoming line change early on mount.
     let reducedMotion = $state(true);
@@ -145,7 +149,7 @@
                     use:scrollIntoCenter={{
                         active: index === activeIndex,
                         animate: !reducedMotion,
-                        source: syncedText,
+                        source: syncedText ?? "",
                     }}
                     onclick={() => handleLineClick(line.timeMs)}
                     disabled={!onSeek}
@@ -154,9 +158,9 @@
                 </button>
             {/each}
         </div>
-    {:else if plainText}
+    {:else if displayPlainText}
         <div class="lines plain">
-            {#each plainText.split(/\r?\n/) as line, index (index)}
+            {#each displayPlainText.split(/\r\n?|\n/) as line, index (index)}
                 <p class="lyrics-line plain"><LyricText text={line} /></p>
             {/each}
         </div>
