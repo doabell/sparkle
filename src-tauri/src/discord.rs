@@ -659,6 +659,7 @@ fn apply_playback(
         artwork_url,
         &settings.discord_layout,
         lyric.as_deref(),
+        &load_presence_metadata(conn, track),
     );
     if !publish_fields(discord, fields) {
         close_client(client);
@@ -710,6 +711,7 @@ fn update_live_lyrics(
         previous.artwork_url.clone(),
         &settings.discord_layout,
         lyric.as_deref(),
+        &load_presence_metadata(conn, track),
     );
     fields.timestamp_start = previous.timestamp_start;
     fields.timestamp_end = previous.timestamp_end;
@@ -1016,12 +1018,88 @@ fn upload_to_catbox(jpeg: Vec<u8>, cache_key: &str, user_hash: &str) -> Result<S
     Ok(url)
 }
 
+/// Read existing scan data on the Discord worker, never on the audio thread.
+#[derive(Default)]
+struct PresenceMetadata {
+    album_artist: String,
+    format: Option<String>,
+    bitrate: Option<i64>,
+    sample_rate: Option<i64>,
+    bit_depth: Option<i64>,
+    channels: Option<i64>,
+}
+
+fn load_presence_metadata(conn: &Connection, track: &Track) -> PresenceMetadata {
+    let mut metadata = conn
+        .query_row(
+            "SELECT audio_format, audio_bitrate_kbps, sample_rate_hz, bit_depth, channels \
+             FROM tracks WHERE id = ?1",
+            [track.id],
+            |row| {
+                Ok(PresenceMetadata {
+                    format: row.get(0)?,
+                    bitrate: row.get(1)?,
+                    sample_rate: row.get(2)?,
+                    bit_depth: row.get(3)?,
+                    channels: row.get(4)?,
+                    ..Default::default()
+                })
+            },
+        )
+        .unwrap_or_default();
+    // Prefer this track's explicit credits over the album's combined credits.
+    let artists = (|| -> rusqlite::Result<Vec<String>> {
+        let mut statement = conn.prepare(
+            "SELECT name FROM (\
+                 SELECT a.name, ta.position, a.id FROM track_album_artists ta \
+                 JOIN artists a ON a.id = ta.artist_id WHERE ta.track_id = ?1 \
+                 UNION ALL \
+                 SELECT a.name, aa.position, a.id FROM album_artists aa \
+                 JOIN artists a ON a.id = aa.artist_id \
+                 WHERE aa.album_id = ?2 AND NOT EXISTS \
+                     (SELECT 1 FROM track_album_artists WHERE track_id = ?1)\
+             ) ORDER BY position, id",
+        )?;
+        let rows = statement.query_map(rusqlite::params![track.id, track.album_id], |row| {
+            row.get(0)
+        })?;
+        rows.collect()
+    })();
+    metadata.album_artist = artists.unwrap_or_default().join(", ");
+    metadata
+}
+
+fn positive_number(value: Option<i64>) -> String {
+    value
+        .filter(|value| *value > 0)
+        .map(|value| value.to_string())
+        .unwrap_or_default()
+}
+
+fn duration_text(duration_ms: i64) -> String {
+    if duration_ms <= 0 {
+        return String::new();
+    }
+    let seconds = duration_ms / 1000;
+    if seconds >= 3600 {
+        format!(
+            "{}:{:02}:{:02}",
+            seconds / 3600,
+            seconds / 60 % 60,
+            seconds % 60
+        )
+    } else {
+        format!("{}:{:02}", seconds / 60, seconds % 60)
+    }
+}
+
 fn presence_fields(
     playback: &PlaybackState,
     track: &Track,
     artwork_url: Option<String>,
     layout: &DiscordLayout,
     lyric: Option<&str>,
+    metadata: &PresenceMetadata,
 ) -> PresenceFields {
     let title = track
         .title
@@ -1054,13 +1132,63 @@ fn presence_fields(
         (None, None)
     };
 
+    let with_unit = |value: Option<i64>, unit: &str| {
+        value
+            .filter(|value| *value > 0)
+            .map(|value| format!("{value}{unit}"))
+            .unwrap_or_default()
+    };
+    let values = HashMap::from([
+        ("{title}", title),
+        ("{artist}", artist),
+        (
+            "{lyrics}",
+            lyric
+                .filter(|line| !line.trim().is_empty())
+                .unwrap_or(&album)
+                .to_string(),
+        ),
+        ("{album}", album),
+        ("{album_artist}", metadata.album_artist.clone()),
+        ("{year}", positive_number(track.year)),
+        ("{genre}", track.genre.clone().unwrap_or_default()),
+        ("{track}", positive_number(track.track_number)),
+        ("{disc}", positive_number(track.disc_number)),
+        ("{duration}", duration_text(duration_ms)),
+        (
+            "{format}",
+            metadata
+                .format
+                .as_deref()
+                .unwrap_or_default()
+                .to_uppercase(),
+        ),
+        ("{bitrate}", with_unit(metadata.bitrate, " kbps")),
+        (
+            "{sample_rate}",
+            metadata
+                .sample_rate
+                .filter(|value| *value > 0)
+                .map(|value| format!("{} kHz", value as f64 / 1000.0))
+                .unwrap_or_default(),
+        ),
+        ("{bit_depth}", with_unit(metadata.bit_depth, "-bit")),
+        (
+            "{channels}",
+            match metadata.channels {
+                Some(1) => "Mono".to_string(),
+                Some(2) => "Stereo".to_string(),
+                _ => with_unit(metadata.channels, " channels"),
+            },
+        ),
+    ]);
     PresenceFields {
         name: normalized_activity_name(&layout.name),
         status_display: layout.status_display.clone(),
         show_artwork: layout.show_artwork,
-        title: render_template(&layout.details, &title, &artist, &album, lyric),
-        artist: render_template(&layout.state, &title, &artist, &album, lyric),
-        album: render_template(&layout.image_text, &title, &artist, &album, lyric),
+        title: render_template(&layout.details, &values),
+        artist: render_template(&layout.state, &values),
+        album: render_template(&layout.image_text, &values),
         artwork_url,
         timestamp_start,
         timestamp_end,
@@ -1108,13 +1236,7 @@ fn normalized_activity_name(value: &str) -> String {
     )
 }
 
-fn render_template(
-    template: &str,
-    title: &str,
-    artist: &str,
-    album: &str,
-    lyric: Option<&str>,
-) -> String {
+fn render_template(template: &str, values: &HashMap<&str, String>) -> String {
     let mut rendered = String::new();
     let mut rest = template;
     while let Some(start) = rest.find('{') {
@@ -1122,15 +1244,7 @@ fn render_template(
         rest = &rest[start..];
         let Some(end) = rest.find('}') else { break };
         let token = &rest[..=end];
-        rendered.push_str(match token {
-            "{title}" => title,
-            "{artist}" => artist,
-            "{album}" => album,
-            "{lyrics}" => lyric
-                .filter(|line| !line.trim().is_empty())
-                .unwrap_or(album),
-            _ => token,
-        });
+        rendered.push_str(values.get(token).map(String::as_str).unwrap_or(token));
         rest = &rest[end + 1..];
     }
     rendered.push_str(rest);

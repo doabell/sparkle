@@ -2,6 +2,7 @@
 import { describe, expect, test } from "bun:test";
 import {
     defaultDiscordLayout,
+    discordTemplateFields,
     renderDiscordTemplate,
 } from "../src/lib/utils/discord";
 
@@ -46,5 +47,28 @@ describe("Discord layout preview", () => {
         edited.name = "Other";
         expect(defaultDiscordLayout().name).toBe("Sparkle");
         expect(defaultDiscordLayout().status_display).toBe("name");
+    });
+    test("renders every metadata button and omits missing values", () => {
+        const values = {
+            ...track,
+            album_artist: "Ensemble",
+            year: "2024",
+            genre: "Pop",
+            track: "3",
+            disc: "1",
+            duration: "3:35",
+            format: "FLAC",
+            bitrate: "921 kbps",
+            sample_rate: "44.1 kHz",
+            bit_depth: "16-bit",
+            channels: "Stereo",
+        };
+        for (const { key } of discordTemplateFields) {
+            expect(renderDiscordTemplate(`{${key}}`, values)).toBe(values[key]);
+            expect(renderDiscordTemplate(`{${key}}`, {})).toBe("");
+        }
+        expect(
+            renderDiscordTemplate("{album_artist} / {bitrate}", values),
+        ).toBe("Ensemble / 921 kbps");
     });
 });

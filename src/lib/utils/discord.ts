@@ -1,5 +1,27 @@
 import type { DiscordLayout } from "$lib/api";
 
+export const discordTemplateFields = [
+    { key: "title", label: "Title" },
+    { key: "artist", label: "Artist" },
+    { key: "album", label: "Album" },
+    { key: "album_artist", label: "Album artist" },
+    { key: "lyrics", label: "Lyrics" },
+    { key: "year", label: "Year" },
+    { key: "genre", label: "Genre" },
+    { key: "track", label: "Track" },
+    { key: "disc", label: "Disc" },
+    { key: "duration", label: "Duration" },
+    { key: "format", label: "Format" },
+    { key: "bitrate", label: "Bitrate" },
+    { key: "sample_rate", label: "Sample rate" },
+    { key: "bit_depth", label: "Bit depth" },
+    { key: "channels", label: "Channels" },
+] as const;
+
+export type DiscordTemplateValues = Partial<
+    Record<(typeof discordTemplateFields)[number]["key"], string>
+>;
+
 export function defaultDiscordLayout(): DiscordLayout {
     return {
         name: "Sparkle",
@@ -15,22 +37,20 @@ export function defaultDiscordLayout(): DiscordLayout {
 /** Match the backend's single-pass substitution and UTF-8 field limit. */
 export function renderDiscordTemplate(
     template: string,
-    values: { title: string; artist: string; album: string; lyrics?: string },
+    values: DiscordTemplateValues,
 ): string {
     const rendered = template
         .replace(/\{[^}]*\}/g, (token) => {
-            switch (token) {
-                case "{title}":
-                    return values.title;
-                case "{artist}":
-                    return values.artist;
-                case "{album}":
-                    return values.album;
-                case "{lyrics}":
-                    return values.lyrics?.trim() ? values.lyrics : values.album;
-                default:
-                    return token;
+            const field = discordTemplateFields.find(
+                ({ key }) => token === `{${key}}`,
+            );
+            if (!field) return token;
+            if (field.key === "lyrics") {
+                return values.lyrics?.trim()
+                    ? values.lyrics
+                    : (values.album ?? "");
             }
+            return values[field.key] ?? "";
         })
         .replace(/\s+/gu, " ")
         .trim();

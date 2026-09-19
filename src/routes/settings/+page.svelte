@@ -1610,9 +1610,7 @@
                             spellcheck="false"
                             autocomplete="off"
                         />
-                        {@render hint(
-                            "Use the Application ID from your Sparkle app in the Discord Developer Portal.",
-                        )}
+                        {@render hint("From Discord Developer Portal.")}
                     </div>
 
                     <DiscordLayoutSettings

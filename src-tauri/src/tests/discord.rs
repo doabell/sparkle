@@ -41,6 +41,7 @@ fn activity_explicitly_names_sparkle_and_defaults_to_app_status() {
         None,
         &DiscordLayout::default(),
         None,
+        &PresenceMetadata::default(),
     );
     let payload = serde_json::to_value(build_activity(fields)).unwrap();
     assert_eq!(payload["name"], "Sparkle");
@@ -75,6 +76,7 @@ fn templates_support_lyrics_fallback_hidden_fields_and_unicode_limits() {
         Some("https://example.test/cover.jpg".into()),
         &layout,
         Some("Current line"),
+        &PresenceMetadata::default(),
     );
     let payload = serde_json::to_value(build_activity(fields)).unwrap();
     assert_eq!(payload["name"], "Sparkle");
@@ -84,35 +86,171 @@ fn templates_support_lyrics_fallback_hidden_fields_and_unicode_limits() {
     assert!(payload.get("assets").is_none());
     assert!(payload.get("timestamps").is_none());
     assert_eq!(
-        presence_fields(&playback, track, None, &layout, None).artist,
+        presence_fields(
+            &playback,
+            track,
+            None,
+            &layout,
+            None,
+            &PresenceMetadata::default()
+        )
+        .artist,
         "Album"
     );
     layout.state.clear();
     layout.details = "  ".into();
     let payload = serde_json::to_value(build_activity(presence_fields(
-        &playback, track, None, &layout, None,
+        &playback,
+        track,
+        None,
+        &layout,
+        None,
+        &PresenceMetadata::default(),
     )))
     .unwrap();
     assert!(payload.get("state").is_none());
     assert!(payload.get("details").is_none());
     assert_eq!(payload["status_display_type"], 0);
+    let render = |template: &str, title: &str, album: &str, lyric: Option<&str>| {
+        render_template(
+            template,
+            &HashMap::from([
+                ("{title}", title.to_string()),
+                (
+                    "{lyrics}",
+                    lyric
+                        .filter(|line| !line.trim().is_empty())
+                        .unwrap_or(album)
+                        .to_string(),
+                ),
+            ]),
+        )
+    };
     assert_eq!(
-        render_template("{title} {unknown}", "{lyrics}", "", "", Some("Line")),
+        render("{title} {unknown}", "{lyrics}", "", Some("Line")),
         "{lyrics} {unknown}"
     );
+    assert_eq!(render("unfinished {", "", "", None), "unfinished {");
+    assert_eq!(render("{lyrics}", "", "Album", Some("  ")), "Album");
     assert_eq!(
-        render_template("unfinished {", "", "", "", None),
-        "unfinished {"
-    );
-    assert_eq!(
-        render_template("{lyrics}", "", "", "Album", Some("  ")),
-        "Album"
-    );
-    assert_eq!(
-        render_template("{lyrics}", "", "", "", Some(&"🎵".repeat(40))),
+        render("{lyrics}", "", "", Some(&"🎵".repeat(40))),
         "🎵".repeat(32)
     );
-    assert_eq!(render_template("{title}", "A", "", "", None), "A\u{180e}");
+    assert_eq!(render("{title}", "A", "", None), "A\u{180e}");
+}
+
+#[test]
+fn templates_use_existing_library_metadata_and_ordered_album_credits() {
+    let conn = crate::db::test_connection();
+    conn.execute_batch(
+        "INSERT INTO artists (id, name) VALUES (1, 'Guest'), (2, 'Ensemble'), (3, 'Album credit');
+         INSERT INTO albums (id, title) VALUES (1, 'Album');
+         INSERT INTO tracks (id, file_path, album_id, audio_format, audio_bitrate_kbps,
+             sample_rate_hz, bit_depth, channels)
+             VALUES (1, 'song.flac', 1, 'flac', 921, 44100, 16, 2);
+         INSERT INTO track_album_artists (track_id, artist_id, position) VALUES (1, 1, 1), (1, 2, 0);
+         INSERT INTO album_artists (album_id, artist_id, position) VALUES (1, 3, 0);"
+    ).unwrap();
+    let mut playback = example_playback();
+    let track = playback.current_track.as_mut().unwrap();
+    track.album_id = Some(1);
+    track.year = Some(2024);
+    track.genre = Some("Pop".into());
+    track.track_number = Some(3);
+    track.disc_number = Some(1);
+    let track = playback.current_track.as_ref().unwrap();
+    let metadata = load_presence_metadata(&conn, track);
+    let layout = DiscordLayout {
+        details: "{title} / {album_artist} / {year} / {genre}".into(),
+        state: "{format} / {bitrate} / {sample_rate} / {bit_depth} / {channels}".into(),
+        image_text: "{track} / {disc} / {duration}".into(),
+        ..Default::default()
+    };
+    let payload = serde_json::to_value(build_activity(presence_fields(
+        &playback, track, None, &layout, None, &metadata,
+    )))
+    .unwrap();
+    assert_eq!(payload["details"], "Song / Ensemble, Guest / 2024 / Pop");
+    assert_eq!(
+        payload["state"],
+        "FLAC / 921 kbps / 44.1 kHz / 16-bit / Stereo"
+    );
+    assert_eq!(payload["assets"]["large_text"], "3 / 1 / 3:00");
+    conn.execute("DELETE FROM track_album_artists", []).unwrap();
+    assert_eq!(
+        load_presence_metadata(&conn, track).album_artist,
+        "Album credit"
+    );
+    conn.execute("DELETE FROM album_artists", []).unwrap();
+    assert!(load_presence_metadata(&conn, track).album_artist.is_empty());
+}
+
+#[test]
+fn missing_or_invalid_optional_metadata_is_omitted() {
+    let conn = crate::db::test_connection();
+    conn.execute(
+        "INSERT INTO tracks (id, file_path) VALUES (1, 'song.flac')",
+        [],
+    )
+    .unwrap();
+    let mut playback = example_playback();
+    playback.duration_ms = 0;
+    playback.current_track.as_mut().unwrap().duration_ms = None;
+    let track = playback.current_track.as_ref().unwrap();
+    let layout = DiscordLayout {
+        details: "{album_artist} {year} {genre} {track} {disc} {duration}".into(),
+        state: "{format} {bitrate} {sample_rate} {bit_depth} {channels}".into(),
+        ..Default::default()
+    };
+    let fields = presence_fields(
+        &playback,
+        track,
+        None,
+        &layout,
+        None,
+        &load_presence_metadata(&conn, track),
+    );
+    assert!(fields.title.is_empty());
+    assert!(fields.artist.is_empty());
+    let invalid = PresenceMetadata {
+        bitrate: Some(0),
+        sample_rate: Some(-1),
+        bit_depth: Some(0),
+        channels: Some(-1),
+        ..Default::default()
+    };
+    assert!(
+        presence_fields(&playback, track, None, &layout, None, &invalid)
+            .artist
+            .is_empty()
+    );
+    conn.execute("DELETE FROM tracks", []).unwrap();
+    assert!(load_presence_metadata(&conn, track).format.is_none());
+}
+
+#[test]
+fn audio_metadata_formats_units_and_long_durations() {
+    let mut playback = example_playback();
+    playback.duration_ms = 3_661_000;
+    let track = playback.current_track.as_ref().unwrap();
+    let mut metadata = PresenceMetadata {
+        sample_rate: Some(48000),
+        channels: Some(1),
+        ..Default::default()
+    };
+    let layout = DiscordLayout {
+        details: "{duration} / {sample_rate} / {channels}".into(),
+        ..Default::default()
+    };
+    assert_eq!(
+        presence_fields(&playback, track, None, &layout, None, &metadata).title,
+        "1:01:01 / 48 kHz / Mono"
+    );
+    metadata.channels = Some(6);
+    assert_eq!(
+        presence_fields(&playback, track, None, &layout, None, &metadata).title,
+        "1:01:01 / 48 kHz / 6 channels"
+    );
 }
 
 #[test]
