@@ -19,6 +19,7 @@ const ACCENT_COLOR_KEY: &str = "accent_color";
 const ACCENT_FOREGROUND_PREFERENCE_KEY: &str = "accent_foreground_preference";
 const DISCORD_ENABLED_KEY: &str = "discord_enabled";
 const DISCORD_APP_ID_KEY: &str = "discord_app_id";
+const DISCORD_LAYOUT_KEY: &str = "discord_layout";
 const DISCORD_CATBOX_USER_HASH_KEY: &str = "discord_catbox_user_hash";
 const DISCORD_ARTWORK_STORE_KEY: &str = "discord_artwork_store";
 const DISCORD_ARTWORK_S3_ENDPOINT_KEY: &str = "discord_artwork_s3_endpoint";
@@ -175,6 +176,42 @@ fn default_album_art_sources() -> Vec<String> {
     ]
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(default)]
+pub struct DiscordLayout {
+    pub name: String,
+    pub details: String,
+    pub state: String,
+    pub image_text: String,
+    pub status_display: String,
+    pub show_artwork: bool,
+    pub show_progress: bool,
+}
+
+impl Default for DiscordLayout {
+    fn default() -> Self {
+        Self {
+            name: "Sparkle".into(),
+            details: "{title}".into(),
+            state: "{artist}".into(),
+            image_text: "{album}".into(),
+            // Match the original player: artist under the avatar, app on the card.
+            status_display: "state".into(),
+            show_artwork: true,
+            show_progress: true,
+        }
+    }
+}
+
+impl DiscordLayout {
+    pub fn uses_lyrics(&self) -> bool {
+        [&self.details, &self.state]
+            .into_iter()
+            .chain(self.show_artwork.then_some(&self.image_text))
+            .any(|template| template.contains("{lyrics}"))
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Settings {
     #[serde(default = "default_monitored_folders")]
@@ -201,6 +238,8 @@ pub struct Settings {
     pub discord_enabled: bool,
     #[serde(default = "default_discord_app_id")]
     pub discord_app_id: String,
+    #[serde(default)]
+    pub discord_layout: DiscordLayout,
     #[serde(default = "default_discord_catbox_user_hash")]
     pub discord_catbox_user_hash: String,
     #[serde(default = "default_discord_artwork_store")]
@@ -248,6 +287,7 @@ impl Default for Settings {
             accent_foreground_preference: AccentForegroundPreference::Auto,
             discord_enabled: default_discord_enabled(),
             discord_app_id: default_discord_app_id(),
+            discord_layout: DiscordLayout::default(),
             discord_catbox_user_hash: default_discord_catbox_user_hash(),
             discord_artwork_store: default_discord_artwork_store(),
             discord_artwork_s3_endpoint: String::new(),
@@ -340,6 +380,7 @@ pub fn load_settings(conn: &Connection) -> Result<Settings, String> {
         )?,
         discord_enabled: load_json(conn, DISCORD_ENABLED_KEY, default_discord_enabled())?,
         discord_app_id: load_json(conn, DISCORD_APP_ID_KEY, default_discord_app_id())?,
+        discord_layout: load_json(conn, DISCORD_LAYOUT_KEY, DiscordLayout::default())?,
         discord_catbox_user_hash: load_json(
             conn,
             DISCORD_CATBOX_USER_HASH_KEY,
@@ -420,6 +461,7 @@ pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<(), Strin
     )?;
     save_json(conn, DISCORD_ENABLED_KEY, &settings.discord_enabled)?;
     save_json(conn, DISCORD_APP_ID_KEY, &settings.discord_app_id)?;
+    save_json(conn, DISCORD_LAYOUT_KEY, &settings.discord_layout)?;
     save_json(
         conn,
         DISCORD_CATBOX_USER_HASH_KEY,

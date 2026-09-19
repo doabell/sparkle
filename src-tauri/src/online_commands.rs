@@ -1215,6 +1215,7 @@ pub fn get_online_settings(state: State<'_, AppState>) -> Result<OnlineSettings,
         accent_foreground_preference: settings.accent_foreground_preference,
         discord_enabled: settings.discord_enabled,
         discord_app_id: settings.discord_app_id,
+        discord_layout: settings.discord_layout,
         discord_catbox_user_hash: settings.discord_catbox_user_hash,
         discord_artwork_store: settings.discord_artwork_store,
         discord_artwork_s3_endpoint: settings.discord_artwork_s3_endpoint,
@@ -1257,6 +1258,7 @@ pub fn set_online_settings(
     full.accent_foreground_preference = settings.accent_foreground_preference;
     full.discord_enabled = settings.discord_enabled;
     full.discord_app_id = settings.discord_app_id;
+    full.discord_layout = settings.discord_layout;
     full.discord_catbox_user_hash = settings.discord_catbox_user_hash;
     full.discord_artwork_store = settings.discord_artwork_store;
     full.discord_artwork_s3_endpoint = settings.discord_artwork_s3_endpoint;

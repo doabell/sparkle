@@ -2,6 +2,467 @@ use super::*;
 use rusqlite::Connection;
 use std::fs;
 
+fn example_playback() -> PlaybackState {
+    PlaybackState {
+        is_playing: true,
+        current_track: Some(Track {
+            id: 1,
+            file_path: "song.flac".into(),
+            title: Some("Song".into()),
+            artist_names: vec!["Artist".into()],
+            album_title: Some("Album".into()),
+            album_id: None,
+            artist_ids: vec![],
+            track_number: None,
+            disc_number: None,
+            duration_ms: Some(180_000),
+            year: None,
+            genre: None,
+            embedded_lyrics: None,
+            lrc_offset_ms: 0,
+            lyrics_source: None,
+        }),
+        first_lyric_line: None,
+        album_art: None,
+        position_ms: 1_000,
+        duration_ms: 180_000,
+        volume: 1.0,
+        shuffle: false,
+        repeat_mode: crate::models::RepeatMode::Off,
+    }
+}
+
+#[test]
+fn activity_defaults_to_artist_status_with_sparkle_card_name() {
+    let playback = example_playback();
+    let fields = presence_fields(
+        &playback,
+        playback.current_track.as_ref().unwrap(),
+        None,
+        &DiscordLayout::default(),
+        None,
+        &PresenceMetadata::default(),
+    );
+    let payload = serde_json::to_value(build_activity(fields)).unwrap();
+    assert_eq!(payload["name"], "Sparkle");
+    assert_eq!(payload["type"], 2);
+    assert_eq!(payload["status_display_type"], 1);
+    assert_eq!(payload["details"], "Song");
+    assert_eq!(payload["state"], "Artist");
+    assert_eq!(payload["assets"]["large_text"], "Album");
+    assert_eq!(payload["assets"]["large_image"], "logo");
+    assert_eq!(
+        payload["timestamps"]["end"].as_i64().unwrap()
+            - payload["timestamps"]["start"].as_i64().unwrap(),
+        180_000
+    );
+}
+
+#[test]
+fn preview_uses_current_metadata_and_cached_lyrics_without_publishing() {
+    let conn = crate::db::test_connection();
+    conn.execute("INSERT INTO tracks (id, file_path, lyrics_source, audio_bitrate_kbps) VALUES (1, 'song.flac', 'custom', 921)", []).unwrap();
+    cache::set_lyrics(
+        &conn,
+        1,
+        "custom",
+        Some("[00:00]Current lyric\n[00:02]Next lyric"),
+        None,
+    )
+    .unwrap();
+    let mut playback = example_playback();
+    let root = Path::new("unused-preview-cache");
+    let preview = preview_for_playback(&conn, root, &playback, 1).unwrap();
+    assert_eq!(preview.track_id, 1);
+    assert_eq!(preview.values["title"], "Song");
+    assert_eq!(preview.values["artist"], "Artist");
+    assert_eq!(preview.values["lyrics"], "Current lyric");
+    assert_eq!(preview.values["bitrate"], "921 kbps");
+    assert!(preview.values["album_artist"].is_empty());
+    assert!(preview.artwork.is_none());
+    playback.position_ms = 2500;
+    assert_eq!(
+        preview_for_playback(&conn, root, &playback, 1)
+            .unwrap()
+            .values["lyrics"],
+        "Next lyric"
+    );
+    playback.is_playing = false;
+    assert!(preview_for_playback(&conn, root, &playback, 1).is_some());
+    assert!(preview_for_playback(&conn, root, &playback, 2).is_none());
+    playback.current_track = None;
+    assert!(preview_for_playback(&conn, root, &playback, 1).is_none());
+}
+
+#[test]
+fn preview_reuses_cached_album_art_and_handles_missing_art() {
+    let conn = crate::db::test_connection();
+    conn.execute("INSERT INTO albums (id, title) VALUES (1, 'Album')", [])
+        .unwrap();
+    conn.execute(
+        "INSERT INTO tracks (id, file_path, album_id) VALUES (1, 'song.flac', 1)",
+        [],
+    )
+    .unwrap();
+    let mut playback = example_playback();
+    playback.current_track.as_mut().unwrap().album_id = Some(1);
+    let root = std::env::temp_dir().join(format!(
+        "sparkle-discord-preview-{}-{}",
+        std::process::id(),
+        unix_time_millis()
+    ));
+    let image = cache::set_image(
+        &conn,
+        &root,
+        "album",
+        1,
+        "custom",
+        None,
+        Some(&test_artwork_jpeg().unwrap()),
+    )
+    .unwrap();
+    let preview = preview_for_playback(&conn, &root, &playback, 1).unwrap();
+    assert_eq!(preview.artwork.unwrap().file_path, image.file_path);
+    fs::remove_file(image.file_path.unwrap()).unwrap();
+    assert!(preview_for_playback(&conn, &root, &playback, 1)
+        .unwrap()
+        .artwork
+        .and_then(|art| art.file_path)
+        .is_none());
+    fs::remove_dir(root.join("images/album")).unwrap();
+    fs::remove_dir(root.join("images")).unwrap();
+    fs::remove_dir(root).unwrap();
+}
+
+#[test]
+fn card_name_and_avatar_status_are_separate_unless_name_is_selected() {
+    let playback = example_playback();
+    let mut layout = DiscordLayout {
+        name: "John".into(),
+        ..Default::default()
+    };
+    let payload = |layout: &DiscordLayout| {
+        serde_json::to_value(build_activity(presence_fields(
+            &playback,
+            playback.current_track.as_ref().unwrap(),
+            None,
+            layout,
+            None,
+            &PresenceMetadata::default(),
+        )))
+        .unwrap()
+    };
+    let activity = payload(&layout);
+    assert_eq!(activity["name"], "John");
+    assert_eq!(activity["state"], "Artist");
+    assert_eq!(activity["status_display_type"], 1);
+
+    layout.name = "Sparkle".into();
+    layout.state = "Custom subtitle".into();
+    let activity = payload(&layout);
+    assert_eq!(activity["name"], "Sparkle");
+    assert_eq!(activity["state"], "Custom subtitle");
+    assert_eq!(activity["status_display_type"], 1);
+
+    layout.status_display = "details".into();
+    let activity = payload(&layout);
+    assert_eq!(activity["name"], "Sparkle");
+    assert_eq!(activity["details"], "Song");
+    assert_eq!(activity["status_display_type"], 2);
+
+    layout.status_display = "name".into();
+    assert_eq!(payload(&layout)["status_display_type"], 0);
+}
+
+#[test]
+fn templates_support_lyrics_fallback_hidden_fields_and_unicode_limits() {
+    let playback = example_playback();
+    let track = playback.current_track.as_ref().unwrap();
+    let mut layout = DiscordLayout {
+        name: " ".into(),
+        details: "{title} — {artist}".into(),
+        state: "{lyrics}".into(),
+        image_text: "{lyrics}".into(),
+        status_display: "state".into(),
+        show_artwork: false,
+        show_progress: false,
+    };
+    let fields = presence_fields(
+        &playback,
+        track,
+        Some("https://example.test/cover.jpg".into()),
+        &layout,
+        Some("Current line"),
+        &PresenceMetadata::default(),
+    );
+    let payload = serde_json::to_value(build_activity(fields)).unwrap();
+    assert_eq!(payload["name"], "Sparkle");
+    assert_eq!(payload["details"], "Song — Artist");
+    assert_eq!(payload["state"], "Current line");
+    assert_eq!(payload["status_display_type"], 1);
+    assert!(payload.get("assets").is_none());
+    assert!(payload.get("timestamps").is_none());
+    assert_eq!(
+        presence_fields(
+            &playback,
+            track,
+            None,
+            &layout,
+            None,
+            &PresenceMetadata::default()
+        )
+        .artist,
+        "Album"
+    );
+    layout.state.clear();
+    layout.details = "  ".into();
+    let payload = serde_json::to_value(build_activity(presence_fields(
+        &playback,
+        track,
+        None,
+        &layout,
+        None,
+        &PresenceMetadata::default(),
+    )))
+    .unwrap();
+    assert!(payload.get("state").is_none());
+    assert!(payload.get("details").is_none());
+    assert_eq!(payload["status_display_type"], 0);
+    let render = |template: &str, title: &str, album: &str, lyric: Option<&str>| {
+        render_template(
+            template,
+            &HashMap::from([
+                ("{title}", title.to_string()),
+                (
+                    "{lyrics}",
+                    lyric
+                        .filter(|line| !line.trim().is_empty())
+                        .unwrap_or(album)
+                        .to_string(),
+                ),
+            ]),
+        )
+    };
+    assert_eq!(
+        render("{title} {unknown}", "{lyrics}", "", Some("Line")),
+        "{lyrics} {unknown}"
+    );
+    assert_eq!(render("unfinished {", "", "", None), "unfinished {");
+    assert_eq!(render("{lyrics}", "", "Album", Some("  ")), "Album");
+    assert_eq!(
+        render("{lyrics}", "", "", Some(&"🎵".repeat(40))),
+        "🎵".repeat(32)
+    );
+    assert_eq!(render("{title}", "A", "", None), "A\u{180e}");
+}
+
+#[test]
+fn templates_use_existing_library_metadata_and_ordered_album_credits() {
+    let conn = crate::db::test_connection();
+    conn.execute_batch(
+        "INSERT INTO artists (id, name) VALUES (1, 'Guest'), (2, 'Ensemble'), (3, 'Album credit');
+         INSERT INTO albums (id, title) VALUES (1, 'Album');
+         INSERT INTO tracks (id, file_path, album_id, audio_format, audio_bitrate_kbps,
+             sample_rate_hz, bit_depth, channels)
+             VALUES (1, 'song.flac', 1, 'flac', 921, 44100, 16, 2);
+         INSERT INTO track_album_artists (track_id, artist_id, position) VALUES (1, 1, 1), (1, 2, 0);
+         INSERT INTO album_artists (album_id, artist_id, position) VALUES (1, 3, 0);"
+    ).unwrap();
+    let mut playback = example_playback();
+    let track = playback.current_track.as_mut().unwrap();
+    track.album_id = Some(1);
+    track.year = Some(2024);
+    track.genre = Some("Pop".into());
+    track.track_number = Some(3);
+    track.disc_number = Some(1);
+    let track = playback.current_track.as_ref().unwrap();
+    let metadata = load_presence_metadata(&conn, track);
+    let layout = DiscordLayout {
+        details: "{title} / {album_artist} / {year} / {genre}".into(),
+        state: "{format} / {bitrate} / {sample_rate} / {bit_depth} / {channels}".into(),
+        image_text: "{track} / {disc} / {duration}".into(),
+        ..Default::default()
+    };
+    let payload = serde_json::to_value(build_activity(presence_fields(
+        &playback, track, None, &layout, None, &metadata,
+    )))
+    .unwrap();
+    assert_eq!(payload["details"], "Song / Ensemble, Guest / 2024 / Pop");
+    assert_eq!(
+        payload["state"],
+        "FLAC / 921 kbps / 44.1 kHz / 16-bit / Stereo"
+    );
+    assert_eq!(payload["assets"]["large_text"], "3 / 1 / 3:00");
+    conn.execute("DELETE FROM track_album_artists", []).unwrap();
+    assert_eq!(
+        load_presence_metadata(&conn, track).album_artist,
+        "Album credit"
+    );
+    conn.execute("DELETE FROM album_artists", []).unwrap();
+    assert!(load_presence_metadata(&conn, track).album_artist.is_empty());
+}
+
+#[test]
+fn missing_or_invalid_optional_metadata_is_omitted() {
+    let conn = crate::db::test_connection();
+    conn.execute(
+        "INSERT INTO tracks (id, file_path) VALUES (1, 'song.flac')",
+        [],
+    )
+    .unwrap();
+    let mut playback = example_playback();
+    playback.duration_ms = 0;
+    playback.current_track.as_mut().unwrap().duration_ms = None;
+    let track = playback.current_track.as_ref().unwrap();
+    let layout = DiscordLayout {
+        details: "{album_artist} {year} {genre} {track} {disc} {duration}".into(),
+        state: "{format} {bitrate} {sample_rate} {bit_depth} {channels}".into(),
+        ..Default::default()
+    };
+    let fields = presence_fields(
+        &playback,
+        track,
+        None,
+        &layout,
+        None,
+        &load_presence_metadata(&conn, track),
+    );
+    assert!(fields.title.is_empty());
+    assert!(fields.artist.is_empty());
+    let invalid = PresenceMetadata {
+        bitrate: Some(0),
+        sample_rate: Some(-1),
+        bit_depth: Some(0),
+        channels: Some(-1),
+        ..Default::default()
+    };
+    assert!(
+        presence_fields(&playback, track, None, &layout, None, &invalid)
+            .artist
+            .is_empty()
+    );
+    conn.execute("DELETE FROM tracks", []).unwrap();
+    assert!(load_presence_metadata(&conn, track).format.is_none());
+}
+
+#[test]
+fn audio_metadata_formats_units_and_long_durations() {
+    let mut playback = example_playback();
+    playback.duration_ms = 3_661_000;
+    let track = playback.current_track.as_ref().unwrap();
+    let mut metadata = PresenceMetadata {
+        sample_rate: Some(48000),
+        channels: Some(1),
+        ..Default::default()
+    };
+    let layout = DiscordLayout {
+        details: "{duration} / {sample_rate} / {channels}".into(),
+        ..Default::default()
+    };
+    assert_eq!(
+        presence_fields(&playback, track, None, &layout, None, &metadata).title,
+        "1:01:01 / 48 kHz / Mono"
+    );
+    metadata.channels = Some(6);
+    assert_eq!(
+        presence_fields(&playback, track, None, &layout, None, &metadata).title,
+        "1:01:01 / 48 kHz / 6 channels"
+    );
+}
+
+#[test]
+fn lyric_lookup_tracks_source_changes_offsets_and_missing_sync() {
+    let conn = crate::db::test_connection();
+    conn.execute("INSERT INTO tracks (id, file_path, lyrics_source, lrc_offset_ms) VALUES (1, 'song.flac', 'custom', 500)", []).unwrap();
+    cache::set_lyrics(
+        &conn,
+        1,
+        "custom",
+        Some("[offset:100]\n[00:01]First\n[00:02]Second"),
+        None,
+    )
+    .unwrap();
+    let mut playback = example_playback();
+    let layout = DiscordLayout {
+        state: "{lyrics}".into(),
+        ..Default::default()
+    };
+    playback.position_ms = 1399;
+    assert_eq!(current_lyric(&conn, &playback, &layout), None);
+    playback.position_ms = 1400;
+    assert_eq!(
+        current_lyric(&conn, &playback, &layout).as_deref(),
+        Some("First")
+    );
+    playback.position_ms = 2400;
+    assert_eq!(
+        current_lyric(&conn, &playback, &layout).as_deref(),
+        Some("Second")
+    );
+    // A backwards seek selects the current line, never a queued lyric.
+    playback.position_ms = 1400;
+    assert_eq!(
+        current_lyric(&conn, &playback, &layout).as_deref(),
+        Some("First")
+    );
+    conn.execute("UPDATE tracks SET lrc_offset_ms=0 WHERE id=1", [])
+        .unwrap();
+    playback.position_ms = 1900;
+    assert_eq!(
+        current_lyric(&conn, &playback, &layout).as_deref(),
+        Some("Second")
+    );
+    conn.execute("UPDATE tracks SET lyrics_source='none' WHERE id=1", [])
+        .unwrap();
+    assert_eq!(current_lyric(&conn, &playback, &layout), None);
+    conn.execute("UPDATE tracks SET lyrics_source='qq' WHERE id=1", [])
+        .unwrap();
+    assert_eq!(current_lyric(&conn, &playback, &layout), None);
+    cache::set_lyrics(&conn, 1, "qq", None, Some("Plain lyrics")).unwrap();
+    assert_eq!(current_lyric(&conn, &playback, &layout), None);
+    cache::set_lyrics(&conn, 1, "qq", Some("[00:00]New source"), None).unwrap();
+    assert_eq!(
+        current_lyric(&conn, &playback, &layout).as_deref(),
+        Some("New source")
+    );
+    assert_eq!(
+        current_lyric(&conn, &playback, &DiscordLayout::default()),
+        None
+    );
+    playback.current_track.as_mut().unwrap().id = 2;
+    assert_eq!(current_lyric(&conn, &playback, &layout), None);
+}
+
+#[test]
+fn playback_clock_advances_only_while_playing_and_clamps_at_track_end() {
+    let now = Instant::now();
+    let mut snapshot = PlaybackSnapshot {
+        playback: Box::new(example_playback()),
+        received_at: now,
+    };
+    assert_eq!(
+        snapshot.current(now + Duration::from_secs(15)).position_ms,
+        16_000
+    );
+    assert_eq!(
+        snapshot.current(now + Duration::from_secs(200)).position_ms,
+        180_000
+    );
+    snapshot.playback.is_playing = false;
+    assert_eq!(
+        snapshot.current(now + Duration::from_secs(15)).position_ms,
+        1_000
+    );
+    // A new event anchors both forward and backward seeks to its position.
+    snapshot.playback.is_playing = true;
+    snapshot.playback.position_ms = 60_000;
+    snapshot.received_at = now + Duration::from_secs(15);
+    assert_eq!(
+        snapshot.current(now + Duration::from_secs(16)).position_ms,
+        61_000
+    );
+}
+
 #[test]
 fn preserves_md5_base64_cache_key() {
     let keys = unique_cache_keys([md5_hex(b""), md5_hex(b""), md5_hex(b"")]);
