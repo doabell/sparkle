@@ -1,5 +1,5 @@
 {
-  "fingerprint": "ce63a000c4c0a67b0cbe5b7b181474a914d35390e199a6a823ae2fc01ad7d389",
+  "fingerprint": "8bfd54f546fc8b0243101e40b03814c2949cfdbfddd62727749dbae0f35ec463",
   "licenses": [
     {
       "key": "06c92da1ff4a9f369dc53a7055f2283ab8ed95e8b6a52f2c5b995c3ae8f6c3b8",
@@ -1599,12 +1599,6 @@
       "components": [
         {
           "name": "windows",
-          "version": "0.58.0",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows/0.58.0"
-        },
-        {
-          "name": "windows",
           "version": "0.61.3",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/windows/0.61.3"
@@ -1626,12 +1620,6 @@
           "version": "0.3.2",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/windows-collections/0.3.2"
-        },
-        {
-          "name": "windows-core",
-          "version": "0.58.0",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-core/0.58.0"
         },
         {
           "name": "windows-core",
@@ -1659,21 +1647,9 @@
         },
         {
           "name": "windows-implement",
-          "version": "0.58.0",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-implement/0.58.0"
-        },
-        {
-          "name": "windows-implement",
           "version": "0.60.2",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/windows-implement/0.60.2"
-        },
-        {
-          "name": "windows-interface",
-          "version": "0.58.0",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-interface/0.58.0"
         },
         {
           "name": "windows-interface",
@@ -1713,12 +1689,6 @@
         },
         {
           "name": "windows-result",
-          "version": "0.2.0",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-result/0.2.0"
-        },
-        {
-          "name": "windows-result",
           "version": "0.3.4",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/windows-result/0.3.4"
@@ -1728,12 +1698,6 @@
           "version": "0.4.1",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/windows-result/0.4.1"
-        },
-        {
-          "name": "windows-strings",
-          "version": "0.1.0",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-strings/0.1.0"
         },
         {
           "name": "windows-strings",
@@ -5872,12 +5836,6 @@
       "components": [
         {
           "name": "windows",
-          "version": "0.58.0",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows/0.58.0"
-        },
-        {
-          "name": "windows",
           "version": "0.61.3",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/windows/0.61.3"
@@ -5899,12 +5857,6 @@
           "version": "0.3.2",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/windows-collections/0.3.2"
-        },
-        {
-          "name": "windows-core",
-          "version": "0.58.0",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-core/0.58.0"
         },
         {
           "name": "windows-core",
@@ -5932,21 +5884,9 @@
         },
         {
           "name": "windows-implement",
-          "version": "0.58.0",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-implement/0.58.0"
-        },
-        {
-          "name": "windows-implement",
           "version": "0.60.2",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/windows-implement/0.60.2"
-        },
-        {
-          "name": "windows-interface",
-          "version": "0.58.0",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-interface/0.58.0"
         },
         {
           "name": "windows-interface",
@@ -5986,12 +5926,6 @@
         },
         {
           "name": "windows-result",
-          "version": "0.2.0",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-result/0.2.0"
-        },
-        {
-          "name": "windows-result",
           "version": "0.3.4",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/windows-result/0.3.4"
@@ -6001,12 +5935,6 @@
           "version": "0.4.1",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/windows-result/0.4.1"
-        },
-        {
-          "name": "windows-strings",
-          "version": "0.1.0",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-strings/0.1.0"
         },
         {
           "name": "windows-strings",

@@ -1,3 +1,7 @@
-# Keep cross-crate optimization with less link work; dev/test profiles are unchanged.
+# Keep full debug information for Sparkle while reducing dependency compile/link work.
+[profile.dev.package."*"]
+debug = 0
+
+# Keep cross-crate optimization with less link work.
 [profile.release]
 lto = "thin"

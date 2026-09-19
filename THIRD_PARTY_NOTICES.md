@@ -10,6 +10,7 @@ links for the Windows runtime dependencies and bundled frontend code, including
 Velopack. Sparkle modifies `tauri-plugin-media`'s Windows adapter to disable
 automatic media commands and route them through Sparkle's audio engine; the
 modified source is in `src-tauri/patches/tauri-plugin-media` in Sparkle's repository.
+The adapter shares Tauri's Windows bindings to avoid a duplicate dependency stack.
 The generated report and the license texts below are included in the Windows distribution and available
 offline in Settings → About.
 

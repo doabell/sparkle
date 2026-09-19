@@ -20,8 +20,15 @@ name = "sparkle_lib"
 # The Windows executable links this Rust library; mobile library outputs are unused.
 crate-type = ["rlib"]
 
+# All native unit tests live in the library; the executable only starts the app.
+[[bin]]
+name = "sparkle"
+path = "src/main.rs"
+test = false
+bench = false
+
 [build-dependencies]
-tauri-build = { version = "2.6.3", features = [] }
+tauri-build = { version = "2.6.3", features = ["codegen"] }
 
 [dependencies]
 tauri = { version = "2.11.5", features = ["protocol-asset"] }

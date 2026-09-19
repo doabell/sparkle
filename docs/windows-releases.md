@@ -15,6 +15,9 @@ updates use app ID `com.doabell.sparkle` and feed channel `win-x64`.
 3. To test packaging locally, install the Tauri prerequisites and .NET SDK 8,
    run `dotnet tool restore`, then `bun run package:windows`. Use a fresh
    `.tmp/releases` output directory. `VPK` and `CARGO_ABOUT` can select local tools.
+   `VPK` also accepts the pinned CLI's DLL when using an installed .NET runtime.
+   Add `--test` to compile the app and native library tests together, then run the
+   tests before creating the installer.
 4. Merge and wait for main CI, then tag that commit `vX.Y.Z` and push the tag.
    Actions creates a draft release. Review and publish its setup, full `.nupkg`,
    and channel feed together, preserving asset names. Stable updates exclude
@@ -23,22 +26,6 @@ updates use app ID `com.doabell.sparkle` and feed channel `win-x64`.
 Packages include the app, required DLLs, license notices, and offline dependency
 license texts. Setup creates a Start menu shortcut and installs WebView2 if
 needed. Workflows verify feed checksums, shortcut metadata, and packaged notices.
-
-## Build behavior
-
-Release builds use ThinLTO from `.cargo/config.toml`; dev/test and coverage do
-not. The executable links an `rlib`, and Tauri's MSI bundler is disabled.
-Frontend builds stage assets and preserve unchanged files and timestamps in
-`build/`. SvelteKit uses the app version as its build version. Added, changed,
-and deleted assets invalidate the native build; unchanged builds can reuse it.
-Tauri-generated compressed assets can require an additional warm-up rebuild.
-
-To inspect native compilation timing after building the frontend:
-
-```sh
-bun run build
-cargo build --locked --manifest-path src-tauri/Cargo.toml --timings
-```
 
 ## CI and artifact reuse
 
@@ -50,12 +37,19 @@ cargo build --locked --manifest-path src-tauri/Cargo.toml --timings
   configuration, scripts, workflows, or missing history select all checks.
 - Main builds the installer for changes to app code, embedded frontend, release
   notes, or packaged licenses. Test-only and docs-only changes skip packaging
-  when no earlier work is outstanding. `sparkle-windows-x64` artifacts last 30 days.
+  when no earlier work is outstanding. Packaging builds the frontend once;
+  standalone native unit tests and coverage do not require frontend assets.
+  `sparkle-windows-x64` artifacts last 30 days, and `rust-build-timings` reports
+  last 14 days.
 - Tags reuse only a successful main CI artifact from the exact tagged commit in
   this repository, then verify it against the tagged source. Missing or expired
   artifacts trigger a source build; invalid packages fail verification.
-- Test and release builds share a dependency cache; coverage has a separate
-  instrumented cache. Caches save after successful runs and never skip checks.
+- Main packaging uses `--test` when native tests are required, including a check
+  of embedded frontend assets. PRs and test-only changes use the dev profile.
+  Release, dev, and coverage caches are separate and save after successful runs.
+- CI and releases reuse an installed .NET SDK 8, installing it only when missing.
+  Coverage downloads the pinned, checksum-verified `cargo-llvm-cov` Windows binary
+  when its tool cache is empty.
 
 ## Upgrade smoke test
 

@@ -4,11 +4,17 @@ Run checks from the repository root after `bun install --frozen-lockfile`:
 
 ```sh
 bun run check
-bun test
+bun run test
 cargo test --lib --locked --manifest-path src-tauri/Cargo.toml
 bun run format:check
 bun run version:check
 ```
+
+The test scripts run `svelte-kit sync` first so `$lib` aliases resolve on a
+fresh checkout. Use `bun run test -- <file>` to select a test file.
+
+Dev/test builds retain Sparkle's debug symbols and omit dependency symbols.
+To debug dependency code, pass `--config 'profile.dev.package."*".debug=2'` to Cargo.
 
 Use the relevant tests during development. Frontend, app, and installer builds
 are needed when validating build or packaging behavior; they are not required

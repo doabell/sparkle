@@ -34,6 +34,10 @@ pub fn initialize_updater() {
 #[path = "tests/support.rs"]
 mod test_support;
 
+#[cfg(all(test, not(dev)))]
+#[path = "tests/embedded_frontend.rs"]
+mod embedded_frontend_tests;
+
 use commands::AppState;
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -683,7 +687,7 @@ pub fn run() {
             online_commands::get_cache_stats,
             online_commands::get_cache_dir,
         ])
-        .build(tauri::generate_context!())
+        .build(tauri::tauri_build_context!())
         .expect("error while building tauri application");
 
     app.run(|app_handle, event| {

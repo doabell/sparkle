@@ -51,7 +51,7 @@ jobs:
               uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
               with:
                   cache-workspaces: ./src-tauri -> target
-                  cache-shared-key: verify
+                  cache-shared-key: release
                   # Published tags reuse main's builds without saving duplicate tag caches.
                   cache-save-if: false
                   rustflags: ""
@@ -60,7 +60,18 @@ jobs:
               if: steps.packages.outputs.reused != 'true'
               run: bun install --frozen-lockfile
 
-            - name: Set up .NET for Velopack
+            - name: Find installed .NET SDK
+              id: dotnet
+              shell: pwsh
+              run: |
+                  $installed = $false
+                  if (Get-Command dotnet -ErrorAction SilentlyContinue) {
+                      $installed = [bool](dotnet --list-sdks | Where-Object { $_ -match '^8\.' })
+                  }
+                  "installed=$($installed.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+            - name: Install missing .NET SDK
+              if: steps.dotnet.outputs.installed != 'true'
               uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
               with:
                   dotnet-version: 8.0.x

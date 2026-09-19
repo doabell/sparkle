@@ -4,7 +4,8 @@ use std::sync::{Arc, Mutex};
 
 #[cfg(target_os = "windows")]
 use windows::{
-    Foundation::{EventRegistrationToken, TypedEventHandler},
+    core::Ref,
+    Foundation::TypedEventHandler,
     Media::{
         Control::{
             GlobalSystemMediaTransportControlsSession,
@@ -25,7 +26,7 @@ pub struct WindowsMediaController {
     media_player: Option<MediaPlayer>,
     controls: Option<SystemMediaTransportControls>,
     #[cfg(target_os = "windows")]
-    button_handler_token: Option<EventRegistrationToken>,
+    button_handler_token: Option<i64>,
     event_handler: Option<Arc<Mutex<Box<dyn Fn(MediaControlEvent) + Send>>>>,
     metadata: Option<MediaMetadata>,
     playback_info: Option<PlaybackInfo>,
@@ -126,8 +127,8 @@ impl WindowsMediaController {
             // Play button
             let play_handler = handler.clone();
             let token = controls.ButtonPressed(&TypedEventHandler::new(
-                move |_, args: &Option<SystemMediaTransportControlsButtonPressedEventArgs>| {
-                    if let Some(args) = args {
+                move |_, args: Ref<'_, SystemMediaTransportControlsButtonPressedEventArgs>| {
+                    if let Some(args) = args.as_ref() {
                         let button = args.Button()?;
                         let event = match button {
                             SystemMediaTransportControlsButton::Play => MediaControlEvent {
