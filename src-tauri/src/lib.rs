@@ -700,6 +700,7 @@ pub fn run() {
             playback_commands::get_queue,
             playback_commands::play_queue_index,
             playback_commands::get_playback_state,
+            discord::get_discord_preview,
             playback_commands::get_lrc_offset,
             playback_commands::set_lrc_offset,
             online_commands::get_lyrics,

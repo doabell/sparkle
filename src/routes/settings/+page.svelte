@@ -1615,6 +1615,7 @@
 
                     <DiscordLayoutSettings
                         bind:layout={settings.discord_layout}
+                        active={activeCategory === "sharing"}
                     />
 
                     <div class="field">

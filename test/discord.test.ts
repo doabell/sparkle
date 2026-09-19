@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
     defaultDiscordLayout,
     discordTemplateFields,
+    discordPreviewValues,
     renderDiscordTemplate,
 } from "../src/lib/utils/discord";
 
@@ -14,6 +15,48 @@ const track = {
 };
 
 describe("Discord layout preview", () => {
+    test("uses samples only without a loaded track and rejects stale metadata", () => {
+        const current = {
+            id: 9,
+            title: "Current song",
+            file_path: "C:\\Music\\Current song.flac",
+            artist_names: ["Current artist"],
+            album_title: "Current album",
+        };
+        const oldPreview = {
+            track_id: 8,
+            values: { title: "Old song", bitrate: "320 kbps" },
+            artwork: null,
+        };
+        expect(discordPreviewValues(null, oldPreview).title).toBe(
+            "Midnight drive",
+        );
+        const pending = discordPreviewValues(current, oldPreview);
+        expect(pending.title).toBe("Current song");
+        expect(pending.artist).toBe("Current artist");
+        expect(pending.bitrate).toBeUndefined();
+        const loaded = {
+            track_id: 9,
+            values: { title: "Current song", bitrate: "921 kbps" },
+            artwork: null,
+        };
+        expect(discordPreviewValues(current, loaded)).toEqual(loaded.values);
+        expect(
+            discordPreviewValues(
+                {
+                    ...current,
+                    title: null,
+                    artist_names: [],
+                    album_title: null,
+                },
+                null,
+            ),
+        ).toEqual({
+            title: "Current song",
+            artist: "Unknown artist",
+            album: "Unknown album",
+        });
+    });
     test("substitutes once and preserves unknown tokens", () => {
         expect(
             renderDiscordTemplate(

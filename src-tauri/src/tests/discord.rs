@@ -50,11 +50,88 @@ fn activity_defaults_to_artist_status_with_sparkle_card_name() {
     assert_eq!(payload["details"], "Song");
     assert_eq!(payload["state"], "Artist");
     assert_eq!(payload["assets"]["large_text"], "Album");
+    assert_eq!(payload["assets"]["large_image"], "logo");
     assert_eq!(
         payload["timestamps"]["end"].as_i64().unwrap()
             - payload["timestamps"]["start"].as_i64().unwrap(),
         180_000
     );
+}
+
+#[test]
+fn preview_uses_current_metadata_and_cached_lyrics_without_publishing() {
+    let conn = crate::db::test_connection();
+    conn.execute("INSERT INTO tracks (id, file_path, lyrics_source, audio_bitrate_kbps) VALUES (1, 'song.flac', 'custom', 921)", []).unwrap();
+    cache::set_lyrics(
+        &conn,
+        1,
+        "custom",
+        Some("[00:00]Current lyric\n[00:02]Next lyric"),
+        None,
+    )
+    .unwrap();
+    let mut playback = example_playback();
+    let root = Path::new("unused-preview-cache");
+    let preview = preview_for_playback(&conn, root, &playback, 1).unwrap();
+    assert_eq!(preview.track_id, 1);
+    assert_eq!(preview.values["title"], "Song");
+    assert_eq!(preview.values["artist"], "Artist");
+    assert_eq!(preview.values["lyrics"], "Current lyric");
+    assert_eq!(preview.values["bitrate"], "921 kbps");
+    assert!(preview.values["album_artist"].is_empty());
+    assert!(preview.artwork.is_none());
+    playback.position_ms = 2500;
+    assert_eq!(
+        preview_for_playback(&conn, root, &playback, 1)
+            .unwrap()
+            .values["lyrics"],
+        "Next lyric"
+    );
+    playback.is_playing = false;
+    assert!(preview_for_playback(&conn, root, &playback, 1).is_some());
+    assert!(preview_for_playback(&conn, root, &playback, 2).is_none());
+    playback.current_track = None;
+    assert!(preview_for_playback(&conn, root, &playback, 1).is_none());
+}
+
+#[test]
+fn preview_reuses_cached_album_art_and_handles_missing_art() {
+    let conn = crate::db::test_connection();
+    conn.execute("INSERT INTO albums (id, title) VALUES (1, 'Album')", [])
+        .unwrap();
+    conn.execute(
+        "INSERT INTO tracks (id, file_path, album_id) VALUES (1, 'song.flac', 1)",
+        [],
+    )
+    .unwrap();
+    let mut playback = example_playback();
+    playback.current_track.as_mut().unwrap().album_id = Some(1);
+    let root = std::env::temp_dir().join(format!(
+        "sparkle-discord-preview-{}-{}",
+        std::process::id(),
+        unix_time_millis()
+    ));
+    let image = cache::set_image(
+        &conn,
+        &root,
+        "album",
+        1,
+        "custom",
+        None,
+        Some(&test_artwork_jpeg().unwrap()),
+    )
+    .unwrap();
+    let preview = preview_for_playback(&conn, &root, &playback, 1).unwrap();
+    assert_eq!(preview.artwork.unwrap().file_path, image.file_path);
+    fs::remove_file(image.file_path.unwrap()).unwrap();
+    assert!(preview_for_playback(&conn, &root, &playback, 1)
+        .unwrap()
+        .artwork
+        .and_then(|art| art.file_path)
+        .is_none());
+    fs::remove_dir(root.join("images/album")).unwrap();
+    fs::remove_dir(root.join("images")).unwrap();
+    fs::remove_dir(root).unwrap();
 }
 
 #[test]

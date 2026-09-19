@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type { ThemeMode } from "$lib/utils/themeMode";
+import type { DiscordTemplateValues } from "$lib/utils/discord";
 
 export interface AppStatus {
     db_path: string;
@@ -209,6 +210,18 @@ export interface DiscordLayout {
     status_display: string;
     show_artwork: boolean;
     show_progress: boolean;
+}
+
+export interface DiscordPreview {
+    track_id: number;
+    values: DiscordTemplateValues;
+    artwork: CachedImage | null;
+}
+
+export async function getDiscordPreview(
+    trackId: number,
+): Promise<DiscordPreview | null> {
+    return invoke("get_discord_preview", { trackId });
 }
 
 export interface OnlineSettings {

@@ -6,7 +6,7 @@
 
 use crate::artwork_store::S3ArtworkStore;
 use crate::cache;
-use crate::models::{PlaybackState, Track};
+use crate::models::{CachedImage, PlaybackState, Track};
 use crate::settings::{self, DiscordLayout};
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
@@ -729,6 +729,10 @@ fn current_lyric(
     if !layout.uses_lyrics() {
         return None;
     }
+    cached_current_lyric(conn, playback)
+}
+
+fn cached_current_lyric(conn: &Connection, playback: &PlaybackState) -> Option<String> {
     let track = playback.current_track.as_ref()?;
     let text = crate::providers::lyrics::known_lyrics(conn, track)
         .ok()??
@@ -1093,14 +1097,12 @@ fn duration_text(duration_ms: i64) -> String {
     }
 }
 
-fn presence_fields(
+fn presence_template_values(
     playback: &PlaybackState,
     track: &Track,
-    artwork_url: Option<String>,
-    layout: &DiscordLayout,
     lyric: Option<&str>,
     metadata: &PresenceMetadata,
-) -> PresenceFields {
+) -> HashMap<&'static str, String> {
     let title = track
         .title
         .as_deref()
@@ -1124,21 +1126,13 @@ fn presence_fields(
         .unwrap_or("Unknown album")
         .to_string();
     let duration_ms = playback.duration_ms.max(track.duration_ms.unwrap_or(0));
-    let (timestamp_start, timestamp_end) = if layout.show_progress && duration_ms > 0 {
-        let now = unix_time_millis();
-        let start = now.saturating_sub(playback.position_ms.max(0));
-        (Some(start), Some(start.saturating_add(duration_ms)))
-    } else {
-        (None, None)
-    };
-
     let with_unit = |value: Option<i64>, unit: &str| {
         value
             .filter(|value| *value > 0)
             .map(|value| format!("{value}{unit}"))
             .unwrap_or_default()
     };
-    let values = HashMap::from([
+    HashMap::from([
         ("{title}", title),
         ("{artist}", artist),
         (
@@ -1181,7 +1175,26 @@ fn presence_fields(
                 _ => with_unit(metadata.channels, " channels"),
             },
         ),
-    ]);
+    ])
+}
+
+fn presence_fields(
+    playback: &PlaybackState,
+    track: &Track,
+    artwork_url: Option<String>,
+    layout: &DiscordLayout,
+    lyric: Option<&str>,
+    metadata: &PresenceMetadata,
+) -> PresenceFields {
+    let values = presence_template_values(playback, track, lyric, metadata);
+    let duration_ms = playback.duration_ms.max(track.duration_ms.unwrap_or(0));
+    let (timestamp_start, timestamp_end) = if layout.show_progress && duration_ms > 0 {
+        let now = unix_time_millis();
+        let start = now.saturating_sub(playback.position_ms.max(0));
+        (Some(start), Some(start.saturating_add(duration_ms)))
+    } else {
+        (None, None)
+    };
     PresenceFields {
         name: normalized_activity_name(&layout.name),
         status_display: layout.status_display.clone(),
@@ -1193,6 +1206,64 @@ fn presence_fields(
         timestamp_start,
         timestamp_end,
     }
+}
+
+#[derive(serde::Serialize)]
+pub struct DiscordPreview {
+    track_id: i64,
+    values: HashMap<&'static str, String>,
+    artwork: Option<CachedImage>,
+}
+
+fn preview_for_playback(
+    conn: &Connection,
+    cache_dir: &Path,
+    playback: &PlaybackState,
+    track_id: i64,
+) -> Option<DiscordPreview> {
+    let track = playback
+        .current_track
+        .as_ref()
+        .filter(|track| track.id == track_id)?;
+    let lyric = cached_current_lyric(conn, playback);
+    let values = presence_template_values(
+        playback,
+        track,
+        lyric.as_deref(),
+        &load_presence_metadata(conn, track),
+    )
+    .into_iter()
+    .map(|(key, value)| (key.trim_matches(['{', '}']), value))
+    .collect();
+    let artwork = track.album_id.and_then(|id| {
+        cache::get_image(conn, cache_dir, "album", id)
+            .ok()
+            .flatten()
+    });
+    Some(DiscordPreview {
+        track_id,
+        values,
+        artwork,
+    })
+}
+
+/// Preview existing playback/cache data without publishing or fetching artwork/lyrics.
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn get_discord_preview(
+    state: tauri::State<'_, crate::commands::AppState>,
+    trackId: i64,
+) -> Result<Option<DiscordPreview>, String> {
+    let db = state.db.clone();
+    let audio = state.audio.clone();
+    let cache_dir = state.cache_dir.clone();
+    tokio::task::spawn_blocking(move || {
+        let playback = audio.get_playback_state()?;
+        let conn = db.lock().map_err(|error| error.to_string())?;
+        Ok(preview_for_playback(&conn, &cache_dir, &playback, trackId))
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 fn build_activity(fields: PresenceFields) -> Activity<'static> {

@@ -1,14 +1,25 @@
 <script lang="ts">
     import { tick } from "svelte";
-    import type { DiscordLayout } from "$lib/api";
+    import {
+        getDiscordPreview,
+        type DiscordLayout,
+        type DiscordPreview,
+    } from "$lib/api";
+    import { playback, interpolatedPositionMs } from "$lib/stores/playback";
+    import { cachedImageToUrl } from "$lib/utils/base64";
+    import { formatTime } from "$lib/utils/formatTime";
     import Select from "$lib/components/Select.svelte";
     import {
         defaultDiscordLayout,
         discordTemplateFields,
+        discordPreviewValues,
         renderDiscordTemplate,
     } from "$lib/utils/discord";
 
-    let { layout = $bindable() }: { layout: DiscordLayout } = $props();
+    let {
+        layout = $bindable(),
+        active = true,
+    }: { layout: DiscordLayout; active?: boolean } = $props();
     const labels = {
         name: "Card name",
         details: "Title",
@@ -23,26 +34,66 @@
         { value: "details", label: "Title" },
         { value: "state", label: "Subtitle" },
     ];
-    const example = {
-        title: "Midnight drive",
-        artist: "Sample artist",
-        album: "After hours",
-        album_artist: "Sample ensemble",
-        lyrics: "Stay until morning",
-        year: "2024",
-        genre: "Pop",
-        track: "3",
-        disc: "1",
-        duration: "3:35",
-        format: "FLAC",
-        bitrate: "921 kbps",
-        sample_rate: "44.1 kHz",
-        bit_depth: "16-bit",
-        channels: "Stereo",
-    };
-    let details = $derived(renderDiscordTemplate(layout.details, example));
-    let subtitle = $derived(renderDiscordTemplate(layout.state, example));
-    let imageText = $derived(renderDiscordTemplate(layout.image_text, example));
+    let preview = $state<DiscordPreview | null>(null);
+    let trackId = $derived($playback.current_track?.id ?? null);
+    let currentPreview = $derived(
+        preview?.track_id === trackId ? preview : null,
+    );
+    let values = $derived(
+        discordPreviewValues($playback.current_track, currentPreview),
+    );
+    let details = $derived(renderDiscordTemplate(layout.details, values));
+    let subtitle = $derived(renderDiscordTemplate(layout.state, values));
+    let imageText = $derived(renderDiscordTemplate(layout.image_text, values));
+    let artwork = $derived(
+        currentPreview ? currentPreview.artwork : $playback.album_art,
+    );
+    let coverUrl = $derived(
+        artwork ? cachedImageToUrl(artwork, "/sparkle.svg") : "/sparkle.svg",
+    );
+    let failedCover = $state("");
+    let displayedCover = $derived(
+        failedCover === coverUrl ? "/sparkle.svg" : coverUrl,
+    );
+    let duration = $derived(
+        trackId === null
+            ? 215_000
+            : Math.max(
+                  $playback.duration_ms,
+                  $playback.current_track?.duration_ms ?? 0,
+              ),
+    );
+    let position = $derived(
+        trackId === null
+            ? 30_000
+            : Math.max(0, Math.min($interpolatedPositionMs, duration)),
+    );
+    let progress = $derived(duration > 0 ? (position / duration) * 100 : 0);
+
+    $effect(() => {
+        const id = trackId;
+        if (!active || id === null) return;
+        let cancelled = false;
+        let pending = false;
+        async function refresh() {
+            if (pending || document.hidden) return;
+            pending = true;
+            try {
+                const result = await getDiscordPreview(id!);
+                if (!cancelled) preview = result;
+            } catch {
+                // Keep basic current-track text available and retry on the next tick.
+            } finally {
+                pending = false;
+            }
+        }
+        void refresh();
+        const timer = setInterval(refresh, 1000);
+        return () => {
+            cancelled = true;
+            clearInterval(timer);
+        };
+    });
     let name = $derived(
         renderDiscordTemplate("{title}", {
             title: layout.name.trim() || "Sparkle",
@@ -74,34 +125,16 @@
         editor.focus();
         editor.setSelectionRange(start + token.length, start + token.length);
     }
-
-    function useLyrics() {
-        layout.details = "{title} — {artist}";
-        layout.state = "{lyrics}";
-        layout.image_text = "{lyrics}";
-        activeField = "state";
-    }
 </script>
 
 <div class="layout-settings">
     <div class="heading">
         <h3>Presence layout</h3>
-        <div class="presets">
-            <button
-                type="button"
-                class="btn-pill btn-secondary"
-                onclick={useLyrics}>Live lyrics</button
-            >
-            <button
-                type="button"
-                class="btn-pill btn-secondary"
-                onclick={() => (layout = defaultDiscordLayout())}>Reset</button
-            >
-        </div>
-    </div>
-    <div class="preview-heading">
-        <span>Preview</span>
-        <span>Click a field to edit.</span>
+        <button
+            type="button"
+            class="btn-pill btn-secondary"
+            onclick={() => (layout = defaultDiscordLayout())}>Default</button
+        >
     </div>
     <div class="preview" role="group" aria-label="Discord presence preview">
         <div class="activity-heading">
@@ -124,26 +157,12 @@
                     aria-label="Edit cover text"
                     onclick={() => selectField("image_text")}
                 >
-                    <svg viewBox="0 0 80 80" fill="none" aria-hidden="true">
-                        <circle
-                            cx="40"
-                            cy="40"
-                            r="27"
-                            stroke="currentColor"
-                            stroke-width="1"
-                        />
-                        <circle
-                            cx="40"
-                            cy="40"
-                            r="18"
-                            stroke="currentColor"
-                            stroke-width="1"
-                        />
-                        <path
-                            d="M44 49V27l13-3v8l-13 3M44 49c0 7-14 9-14 2s14-9 14-2Z"
-                            fill="currentColor"
-                        />
-                    </svg>
+                    <img
+                        src={displayedCover}
+                        alt=""
+                        class:fallback={displayedCover === "/sparkle.svg"}
+                        onerror={() => (failedCover = coverUrl)}
+                    />
                 </button>
             {/if}
             <div class="preview-text">
@@ -161,11 +180,13 @@
                         >{row.text || labels[field]}</button
                     >
                 {/each}
-                {#if layout.show_progress}
-                    <div class="playback" aria-label="Sample playback progress">
-                        <span>00:30</span>
-                        <div class="progress"><span></span></div>
-                        <span>03:35</span>
+                {#if layout.show_progress && duration > 0}
+                    <div class="playback" aria-label="Playback progress">
+                        <span>{formatTime(position)}</span>
+                        <div class="progress">
+                            <span style:width={`${progress}%`}></span>
+                        </div>
+                        <span>{formatTime(duration)}</span>
                     </div>
                 {/if}
             </div>
@@ -230,7 +251,6 @@
         gap: var(--spacing-md);
     }
     .heading,
-    .preview-heading,
     .options {
         display: flex;
         align-items: center;
@@ -241,7 +261,6 @@
     h3 {
         font-size: var(--font-size-base);
     }
-    .presets,
     .tokens,
     .toggles {
         display: flex;
@@ -258,16 +277,12 @@
     .field input {
         width: 100%;
     }
-    .preview-heading,
     .member-status {
         color: var(--color-text-muted);
         font-size: var(--font-size-xs);
     }
     .member-status {
         overflow-wrap: anywhere;
-    }
-    .preview-heading {
-        margin-bottom: calc(-1 * var(--spacing-sm));
     }
     .token {
         border: 1px solid var(--color-border);
@@ -305,7 +320,7 @@
     .activity-heading {
         display: flex;
         align-items: baseline;
-        gap: 4px;
+        gap: 0;
         font-size: 13px;
         margin-bottom: 12px;
     }
@@ -325,13 +340,18 @@
         flex: 0 0 80px;
         border: 0;
         border-radius: 10px;
-        background: linear-gradient(135deg, #41678d, #373750 60%, #825577);
-        color: #e5daed;
+        background: #25252a;
+        overflow: hidden;
         cursor: pointer;
     }
-    .cover svg {
+    .cover img {
         width: 100%;
         height: 100%;
+        object-fit: cover;
+    }
+    .cover img.fallback {
+        padding: 14px;
+        object-fit: contain;
     }
     .preview-text {
         flex: 1;
@@ -366,6 +386,8 @@
     .app-name {
         font-size: inherit;
         margin-left: 0;
+        padding-inline: 0.25em 0;
+        border: 0;
     }
     .track-title {
         font-size: 17px;
@@ -394,7 +416,6 @@
     }
     .progress span {
         display: block;
-        width: 14%;
         height: 100%;
         background: #dbdce0;
         border-radius: inherit;

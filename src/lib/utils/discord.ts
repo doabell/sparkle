@@ -1,4 +1,4 @@
-import type { DiscordLayout } from "$lib/api";
+import type { DiscordLayout, DiscordPreview, Track } from "$lib/api";
 
 export const discordTemplateFields = [
     { key: "title", label: "Title" },
@@ -21,6 +21,41 @@ export const discordTemplateFields = [
 export type DiscordTemplateValues = Partial<
     Record<(typeof discordTemplateFields)[number]["key"], string>
 >;
+
+const sampleValues: DiscordTemplateValues = {
+    title: "Midnight drive",
+    artist: "Sample artist",
+    album: "After hours",
+    album_artist: "Sample ensemble",
+    lyrics: "Stay until morning",
+    year: "2024",
+    genre: "Pop",
+    track: "3",
+    disc: "1",
+    duration: "3:35",
+    format: "FLAC",
+    bitrate: "921 kbps",
+    sample_rate: "44.1 kHz",
+    bit_depth: "16-bit",
+    channels: "Stereo",
+};
+
+/** Never mix a real track with sample data or a previous track's async result. */
+export function discordPreviewValues(
+    track: Track | null,
+    preview: DiscordPreview | null,
+): DiscordTemplateValues {
+    if (!track) return sampleValues;
+    if (preview?.track_id === track.id) return preview.values;
+    const basename = track.file_path.split(/[\\/]/).pop() ?? "";
+    return {
+        title: track.title?.trim()
+            ? track.title
+            : basename.replace(/\.[^.]+$/, "") || "Unknown track",
+        artist: track.artist_names.join(", ") || "Unknown artist",
+        album: track.album_title?.trim() ? track.album_title : "Unknown album",
+    };
+}
 
 export function defaultDiscordLayout(): DiscordLayout {
     return {
