@@ -232,14 +232,33 @@
             >
         </div>
         <div class="toggles">
-            <label
-                ><input type="checkbox" bind:checked={layout.show_artwork} /> Album
-                cover</label
-            >
-            <label
-                ><input type="checkbox" bind:checked={layout.show_progress} /> Progress
-                bar</label
-            >
+            <label for="discord-layout-artwork">
+                <button
+                    id="discord-layout-artwork"
+                    type="button"
+                    class="switch"
+                    class:on={layout.show_artwork}
+                    role="switch"
+                    aria-checked={layout.show_artwork}
+                    aria-label="Album cover"
+                    onclick={() => (layout.show_artwork = !layout.show_artwork)}
+                ></button>
+                <span>Album cover</span>
+            </label>
+            <label for="discord-layout-progress">
+                <button
+                    id="discord-layout-progress"
+                    type="button"
+                    class="switch"
+                    class:on={layout.show_progress}
+                    role="switch"
+                    aria-checked={layout.show_progress}
+                    aria-label="Progress bar"
+                    onclick={() =>
+                        (layout.show_progress = !layout.show_progress)}
+                ></button>
+                <span>Progress bar</span>
+            </label>
         </div>
     </div>
 </div>
@@ -309,6 +328,9 @@
         align-items: center;
         gap: var(--spacing-sm);
         font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-semibold);
+        cursor: pointer;
+        user-select: none;
     }
     .preview {
         border-radius: 16px;
