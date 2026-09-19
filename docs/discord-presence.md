@@ -2,13 +2,15 @@
 
 Open **Settings → Sharing → Discord → Presence layout**. Changes save automatically.
 
-Click the app name, title, subtitle, or cover text in the preview to edit that field. Metadata buttons insert at the cursor or replace selected text. The preview uses sample metadata, with the same field order as Discord's listening card.
+Click the card name, title, subtitle, or cover text in the preview to edit that field. Metadata buttons insert at the cursor or replace selected text. The preview uses sample metadata, with the same field order as Discord's listening card.
 
-- **App name** explicitly sets the activity name; the default is `Sparkle`.
-- **Member list** chooses the app name, title, or subtitle for Discord's member-list status.
+- **Card name** sets the app name in the card's `Listening to Sparkle` heading; the default is `Sparkle`.
+- **Under avatar** chooses the card name, title, or subtitle for Discord's compact status. It defaults to **Subtitle** (`{artist}`), giving `🎵 Artist` while the card heading stays `Listening to Sparkle`.
 - **Title**, **Subtitle**, and **Cover text** accept custom text and the metadata below. Empty fields are omitted. Text is limited to 128 UTF-8 bytes without splitting characters. Discord controls the final rendering.
 - **Album cover** controls cover uploads/display. Discord can still use its application icon when no image is supplied.
 - **Progress bar** includes the track's start/end timestamps when its duration is known.
+
+The card heading uses Discord's `activity.name`; the compact status uses `status_display_type` (`state` for Subtitle, `details` for Title, or `name` for Card name). Selecting Card name intentionally links both displays. Existing saved choices are preserved; use **Reset** once to replace an older branch layout with these defaults, or set **Card name** to `Sparkle` and **Under avatar** to **Subtitle**.
 
 | Field        | Token            | Example            |
 | ------------ | ---------------- | ------------------ |
@@ -37,9 +39,9 @@ Lyrics use the selected source, cached/local text, LRC offsets, and Sparkle's sa
 ## An old application name still appears
 
 1. Compare Sparkle's saved **Discord application ID** with **General Information → Application ID** in the [Discord Developer Portal](https://discord.com/developers/applications). Names edited on another application do not affect the saved ID.
-2. Keep **App name** set to `Sparkle` and **Member list** set to **App name**. Wait for the saved indicator. Sparkle sends `activity.name` explicitly and reconnects when the ID or display name changes.
+2. Keep **Card name** set to `Sparkle` and **Under avatar** set to **Subtitle**. Wait for the saved indicator. Sparkle sends `activity.name` explicitly and reconnects when the ID or display name changes.
 3. If the old name persists after checking the ID, fully quit and reopen Discord, then toggle playback sharing off/on. Client caching is a troubleshooting possibility, not proof that the portal rename failed.
 
 Before this customization, Sparkle omitted `activity.name` and relied on Discord's application metadata. The current integration supports the explicit override through the existing `discord-rich-presence` dependency.
 
-References: [Discord's name-override release note](https://discord.com/developers/docs/social-sdk/release_notes.html), [activity fields and status display types](https://discord.com/developers/docs/events/gateway-events#activity-object), and [the Rust activity API](https://docs.rs/discord-rich-presence/1.1.0/discord_rich_presence/activity/struct.Activity.html).
+References: [Discord's separate application name and status controls](https://docs.discord.com/developers/discord-social-sdk/development-guides/setting-rich-presence#configuring-status-text), [activity fields and status display types](https://discord.com/developers/docs/events/gateway-events#activity-object), and [the Rust activity API](https://docs.rs/discord-rich-presence/1.1.0/discord_rich_presence/activity/struct.Activity.html).

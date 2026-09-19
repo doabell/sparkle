@@ -10,7 +10,7 @@
 
     let { layout = $bindable() }: { layout: DiscordLayout } = $props();
     const labels = {
-        name: "App name",
+        name: "Card name",
         details: "Title",
         state: "Subtitle",
         image_text: "Cover text",
@@ -19,7 +19,7 @@
     let activeField = $state<EditableField>("details");
     let editor: HTMLInputElement;
     const statusOptions = [
-        { value: "name", label: "App name" },
+        { value: "name", label: "Card name" },
         { value: "details", label: "Title" },
         { value: "state", label: "Subtitle" },
     ];
@@ -110,7 +110,7 @@
                 type="button"
                 class="preview-field app-name"
                 class:selected={activeField === "name"}
-                aria-label="Edit app name"
+                aria-label="Edit card name"
                 aria-pressed={activeField === "name"}
                 onclick={() => selectField("name")}>{name}</button
             >
@@ -197,16 +197,18 @@
     {/if}
     <div class="options">
         <div class="field status-field">
-            <span id="discord-status-label">Member list</span>
+            <span id="discord-status-label">Under avatar</span>
             <div role="group" aria-labelledby="discord-status-label">
                 <Select
                     options={statusOptions}
                     value={layout.status_display}
                     onchange={(value) => (layout.status_display = value)}
-                    ariaLabel="Member list status"
+                    ariaLabel="Status under avatar"
                 />
             </div>
-            <span class="member-status">Listening to {status}</span>
+            <span class="member-status"
+                ><span aria-hidden="true">🎵</span> {status}</span
+            >
         </div>
         <div class="toggles">
             <label

@@ -15,6 +15,25 @@ fn settings_defaults_match_legacy_deserialization_and_storage() {
 }
 
 #[test]
+fn discord_layout_defaults_restore_artist_status_and_keep_saved_choices() {
+    let conn = crate::db::test_connection();
+    let defaults = load_settings(&conn).unwrap().discord_layout;
+    assert_eq!(defaults.name, "Sparkle");
+    assert_eq!(defaults.state, "{artist}");
+    assert_eq!(defaults.status_display, "state");
+    let partial: DiscordLayout = serde_json::from_str(r#"{"name":"John"}"#).unwrap();
+    assert_eq!(partial.name, "John");
+    assert_eq!(partial.status_display, "state");
+
+    let saved = DiscordLayout {
+        status_display: "name".into(),
+        ..defaults
+    };
+    save_json(&conn, DISCORD_LAYOUT_KEY, &saved).unwrap();
+    assert_eq!(load_settings(&conn).unwrap().discord_layout, saved);
+}
+
+#[test]
 fn settings_report_corrupt_storage_and_missing_schema() {
     let conn = crate::db::test_connection();
     conn.execute(

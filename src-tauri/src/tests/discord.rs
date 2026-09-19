@@ -33,7 +33,7 @@ fn example_playback() -> PlaybackState {
 }
 
 #[test]
-fn activity_explicitly_names_sparkle_and_defaults_to_app_status() {
+fn activity_defaults_to_artist_status_with_sparkle_card_name() {
     let playback = example_playback();
     let fields = presence_fields(
         &playback,
@@ -46,7 +46,7 @@ fn activity_explicitly_names_sparkle_and_defaults_to_app_status() {
     let payload = serde_json::to_value(build_activity(fields)).unwrap();
     assert_eq!(payload["name"], "Sparkle");
     assert_eq!(payload["type"], 2);
-    assert_eq!(payload["status_display_type"], 0);
+    assert_eq!(payload["status_display_type"], 1);
     assert_eq!(payload["details"], "Song");
     assert_eq!(payload["state"], "Artist");
     assert_eq!(payload["assets"]["large_text"], "Album");
@@ -55,6 +55,46 @@ fn activity_explicitly_names_sparkle_and_defaults_to_app_status() {
             - payload["timestamps"]["start"].as_i64().unwrap(),
         180_000
     );
+}
+
+#[test]
+fn card_name_and_avatar_status_are_separate_unless_name_is_selected() {
+    let playback = example_playback();
+    let mut layout = DiscordLayout {
+        name: "John".into(),
+        ..Default::default()
+    };
+    let payload = |layout: &DiscordLayout| {
+        serde_json::to_value(build_activity(presence_fields(
+            &playback,
+            playback.current_track.as_ref().unwrap(),
+            None,
+            layout,
+            None,
+            &PresenceMetadata::default(),
+        )))
+        .unwrap()
+    };
+    let activity = payload(&layout);
+    assert_eq!(activity["name"], "John");
+    assert_eq!(activity["state"], "Artist");
+    assert_eq!(activity["status_display_type"], 1);
+
+    layout.name = "Sparkle".into();
+    layout.state = "Custom subtitle".into();
+    let activity = payload(&layout);
+    assert_eq!(activity["name"], "Sparkle");
+    assert_eq!(activity["state"], "Custom subtitle");
+    assert_eq!(activity["status_display_type"], 1);
+
+    layout.status_display = "details".into();
+    let activity = payload(&layout);
+    assert_eq!(activity["name"], "Sparkle");
+    assert_eq!(activity["details"], "Song");
+    assert_eq!(activity["status_display_type"], 2);
+
+    layout.status_display = "name".into();
+    assert_eq!(payload(&layout)["status_display_type"], 0);
 }
 
 #[test]

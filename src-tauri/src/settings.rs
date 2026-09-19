@@ -195,7 +195,8 @@ impl Default for DiscordLayout {
             details: "{title}".into(),
             state: "{artist}".into(),
             image_text: "{album}".into(),
-            status_display: "name".into(),
+            // Match the original player: artist under the avatar, app on the card.
+            status_display: "state".into(),
             show_artwork: true,
             show_progress: true,
         }

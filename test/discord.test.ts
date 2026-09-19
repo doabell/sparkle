@@ -46,7 +46,8 @@ describe("Discord layout preview", () => {
         const edited = defaultDiscordLayout();
         edited.name = "Other";
         expect(defaultDiscordLayout().name).toBe("Sparkle");
-        expect(defaultDiscordLayout().status_display).toBe("name");
+        expect(defaultDiscordLayout().status_display).toBe("state");
+        expect(defaultDiscordLayout().state).toBe("{artist}");
     });
     test("renders every metadata button and omits missing values", () => {
         const values = {

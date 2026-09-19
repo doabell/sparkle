@@ -28,7 +28,7 @@ export function defaultDiscordLayout(): DiscordLayout {
         details: "{title}",
         state: "{artist}",
         image_text: "{album}",
-        status_display: "name",
+        status_display: "state",
         show_artwork: true,
         show_progress: true,
     };
