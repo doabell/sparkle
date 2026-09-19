@@ -10,7 +10,12 @@ import {
     interpolatedPositionMs,
     createPlaybackStore,
 } from "../src/lib/stores/playback";
-import { invoke, initializeMedia, listen } from "./support/platform";
+import {
+    invoke,
+    logFrontend,
+    initializeMedia,
+    listen,
+} from "./support/platform";
 import { initializeMediaSessionOnce } from "../src/lib/utils/mediaSession";
 import { LYRICS_CHANGED_EVENT } from "../src/lib/api";
 
@@ -179,24 +184,24 @@ test("playback initializes from native state and merges events without losing vo
 
 test("playback initialization failures stay observable without unhandled rejections", async () => {
     globalThis.window = {};
-    const log = spyOn(console, "error").mockImplementation(() => {});
+    logFrontend.mockReset();
     invoke.mockRejectedValue(Error("unavailable"));
     listen.mockRejectedValue(Error("events unavailable"));
     try {
         const store = createPlaybackStore();
         for (let i = 0; i < 10; i++) await Promise.resolve();
         expect(get(store).error).toBe("Error: unavailable");
-        expect(log).toHaveBeenCalledTimes(3);
+        expect(logFrontend).toHaveBeenCalledTimes(3);
     } finally {
         delete globalThis.window;
         invoke.mockReset();
         listen.mockReset();
-        log.mockRestore();
+        logFrontend.mockReset();
     }
 });
 
 test("playback commands preserve intent, return canonical state, and recover from errors", async () => {
-    const errorLog = spyOn(console, "error").mockImplementation(() => {});
+    logFrontend.mockReset();
     invoke.mockImplementation(async () => state);
     try {
         for (const [method, args, command, payload] of [
@@ -273,10 +278,12 @@ test("playback commands preserve intent, return canonical state, and recover fro
         expect(get(playback).is_playing).toBe(false);
         expect(get(playback).error).toBe("Error: offline");
         await playback.setVolumeLive(0.2);
-        expect(errorLog).toHaveBeenLastCalledWith(
-            "Live volume update failed:",
-            error,
-        );
+        expect(logFrontend).toHaveBeenLastCalledWith({
+            level: "error",
+            scope: "playback",
+            event: "live_volume_update_failed",
+            message: "offline",
+        });
         invoke.mockImplementation(async () => state);
         await playback.play();
         expect(get(playback).error).toBe(null);
@@ -287,13 +294,13 @@ test("playback commands preserve intent, return canonical state, and recover fro
         });
     } finally {
         invoke.mockReset();
-        errorLog.mockRestore();
+        logFrontend.mockReset();
     }
 });
 
 test("failed queue loads preserve the last metadata and a retry accepts the new canonical state", async () => {
     const store = createPlaybackStore();
-    const log = spyOn(console, "error").mockImplementation(() => {});
+    logFrontend.mockReset();
     store.set({ ...state, error: null });
     const failure = Error("track not found");
     try {
@@ -318,13 +325,13 @@ test("failed queue loads preserve the last metadata and a retry accepts the new 
         expect(get(store)).toEqual({ ...recovered, error: null });
     } finally {
         invoke.mockReset();
-        log.mockRestore();
+        logFrontend.mockReset();
     }
 });
 
 test("failed seeks preserve position and recover through native state events or a retry", async () => {
     const handlers = new Map();
-    const log = spyOn(console, "error").mockImplementation(() => {});
+    logFrontend.mockReset();
     globalThis.window = {};
     invoke.mockResolvedValue(state);
     listen.mockImplementation(async (name, handler) => {
@@ -359,7 +366,7 @@ test("failed seeks preserve position and recover through native state events or 
         delete globalThis.window;
         invoke.mockReset();
         listen.mockReset();
-        log.mockRestore();
+        logFrontend.mockReset();
     }
 });
 

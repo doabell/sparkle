@@ -1,3 +1,4 @@
+import { logger } from "$lib/logger";
 import { readable, writable } from "svelte/store";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -76,7 +77,11 @@ export function createPlaybackStore() {
             const state = await getPlaybackState();
             set({ ...state, error: null });
         } catch (err) {
-            console.error("Failed to get initial playback state:", err);
+            void logger.error(
+                "playback",
+                "failed_to_get_initial_playback_state",
+                err,
+            );
             update((s) => ({ ...s, error: String(err) }));
         }
 
@@ -105,7 +110,11 @@ export function createPlaybackStore() {
                 }));
             });
         } catch (err) {
-            console.error("Failed to listen to playback-state-changed:", err);
+            void logger.error(
+                "playback",
+                "failed_to_listen_to_playback_state_changed",
+                err,
+            );
         }
 
         try {
@@ -127,7 +136,11 @@ export function createPlaybackStore() {
                 });
             });
         } catch (err) {
-            console.error("Failed to listen to playback-progress:", err);
+            void logger.error(
+                "playback",
+                "failed_to_listen_to_playback_progress",
+                err,
+            );
         }
     }
 
@@ -147,7 +160,7 @@ export function createPlaybackStore() {
             return state;
         } catch (err) {
             const message = String(err);
-            console.error("Playback command failed:", err);
+            void logger.error("playback", "playback_command_failed", err);
             update((s) => ({ ...s, error: message, is_playing: false }));
             throw err;
         }
@@ -199,7 +212,7 @@ export function createPlaybackStore() {
             callCommand(() => backendSetVolume(volume, source)),
         setVolumeLive: (volume: number, source: PlaybackActionSource = "ui") =>
             backendSetVolumeLive(volume, source).catch((err) => {
-                console.error("Live volume update failed:", err);
+                void logger.error("playback", "live_volume_update_failed", err);
             }),
         setShuffle: (shuffle: boolean, source: PlaybackActionSource = "ui") =>
             callCommand(() => backendSetShuffle(shuffle, source)),

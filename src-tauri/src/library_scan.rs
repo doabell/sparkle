@@ -45,7 +45,9 @@ impl LibraryScan {
             notify: Box::new(notify),
             finished: false,
             last_progress: None,
+            started: Instant::now(),
         };
+        log::info!(target: "sparkle::scanner", "event=scan_started");
         (run.notify)(initial);
         Ok(run)
     }
@@ -57,6 +59,7 @@ pub struct ScanRun {
     notify: Box<dyn Fn(ScanStatus) + Send>,
     finished: bool,
     last_progress: Option<(String, Instant)>,
+    started: Instant,
 }
 
 impl ScanRun {
@@ -95,6 +98,22 @@ impl ScanRun {
 
     fn complete(&mut self, result: &Result<ScanResult, String>) {
         self.finished = true;
+        let elapsed_ms = self.started.elapsed().as_millis();
+        match result {
+            Ok(result) => {
+                let level = if result.errors > 0 {
+                    log::Level::Warn
+                } else {
+                    log::Level::Info
+                };
+                log::log!(target: "sparkle::scanner", level,
+                    "event=scan_completed scanned={} added={} updated={} removed={} errors={} elapsed_ms={elapsed_ms}",
+                    result.scanned, result.added, result.updated, result.removed, result.errors);
+            }
+            Err(error) => {
+                log::error!(target: "sparkle::scanner", "event=scan_failed elapsed_ms={elapsed_ms} error={error}")
+            }
+        }
         self.update(true, |status| {
             status.running = false;
             status.progress = None;

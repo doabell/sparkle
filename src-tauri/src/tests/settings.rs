@@ -1,6 +1,57 @@
 use super::*;
 
 #[test]
+fn logging_level_upgrades_legacy_switch_and_preserves_explicit_choices() {
+    let conn = crate::db::test_connection();
+    assert_eq!(load_log_level(&conn).unwrap(), LogLevel::Info);
+    save_json(&conn, DEBUG_LOGGING_ENABLED_KEY, &false).unwrap();
+    assert_eq!(load_log_level(&conn).unwrap(), LogLevel::Info);
+    save_json(&conn, DEBUG_LOGGING_ENABLED_KEY, &true).unwrap();
+    assert_eq!(load_log_level(&conn).unwrap(), LogLevel::Debug);
+    for level in [
+        LogLevel::Error,
+        LogLevel::Warn,
+        LogLevel::Info,
+        LogLevel::Debug,
+        LogLevel::Trace,
+    ] {
+        let settings = Settings {
+            log_level: level,
+            ..Settings::default()
+        };
+        save_settings(&conn, &settings).unwrap();
+        assert_eq!(load_settings(&conn).unwrap().log_level, level);
+        let json = serde_json::to_string(&settings).unwrap();
+        assert!(!json.contains("debug_logging_enabled"));
+        assert_eq!(
+            serde_json::from_str::<Settings>(&json).unwrap().log_level,
+            level
+        );
+    }
+    // An unrelated corrupt preference cannot prevent reading the log level.
+    conn.execute(
+        "UPDATE settings SET value = '{' WHERE key = ?",
+        [UI_FONT_KEY],
+    )
+    .unwrap();
+    assert_eq!(load_log_level(&conn).unwrap(), LogLevel::Trace);
+    save_json(&conn, LOG_LEVEL_KEY, &"invalid").unwrap();
+    assert!(load_log_level(&conn).is_err());
+}
+
+#[test]
+fn settings_in_legacy_backups_keep_their_logging_preference() {
+    for (enabled, expected) in [(true, LogLevel::Debug), (false, LogLevel::Info)] {
+        let settings: Settings =
+            serde_json::from_value(serde_json::json!({"debug_logging_enabled": enabled})).unwrap();
+        assert_eq!(settings.log_level, expected);
+    }
+    assert!(
+        serde_json::from_value::<Settings>(serde_json::json!({"log_level": "invalid"})).is_err()
+    );
+}
+
+#[test]
 fn settings_defaults_match_legacy_deserialization_and_storage() {
     let conn = crate::db::test_connection();
     let expected = serde_json::to_value(Settings::default()).unwrap();
@@ -79,7 +130,7 @@ fn settings_roundtrip() {
     settings.monitored_folders.push("C:\\Music".to_string());
     settings.accent_color = "FA243C".to_string();
     settings.accent_foreground_preference = AccentForegroundPreference::Light;
-    settings.debug_logging_enabled = true;
+    settings.log_level = LogLevel::Debug;
     settings.sound_check_enabled = true;
     settings.theme_mode = ThemeMode::Dark;
     settings.discord_artwork_s3_endpoint = "https://s3.example.test".to_string();
@@ -135,7 +186,7 @@ fn settings_roundtrip() {
         loaded.discord_artwork_s3_secret_key,
         settings.discord_artwork_s3_secret_key
     );
-    assert_eq!(loaded.debug_logging_enabled, settings.debug_logging_enabled);
+    assert_eq!(loaded.log_level, settings.log_level);
     assert_eq!(loaded.lyrics_sources, settings.lyrics_sources);
     assert_eq!(loaded.artist_info_sources, settings.artist_info_sources);
     assert_eq!(loaded.artist_image_sources, settings.artist_image_sources);

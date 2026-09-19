@@ -551,8 +551,8 @@
             if (typeof loaded.discord_artwork_s3_prefix !== "string") {
                 loaded.discord_artwork_s3_prefix = "";
             }
-            if (typeof loaded.debug_logging_enabled !== "boolean") {
-                loaded.debug_logging_enabled = false;
+            if (!loaded.log_level) {
+                loaded.log_level = "info";
             }
             if (typeof loaded.sound_check_enabled !== "boolean") {
                 loaded.sound_check_enabled = false;
@@ -2014,31 +2014,25 @@
                             <span class="debug-value">2 MiB · 3 files</span>
                         </div>
                         {#if settings}
-                            <div class="debug-row debug-row-toggle">
-                                <div class="debug-toggle-copy">
-                                    <span class="debug-label"
-                                        >Verbose logging</span
-                                    >
-                                </div>
-                                <label class="toggle">
-                                    <input
-                                        type="checkbox"
-                                        bind:checked={
-                                            settings.debug_logging_enabled
-                                        }
-                                        aria-label="Enable verbose logging"
-                                    />
-                                    <span
-                                        class="toggle-slider"
-                                        aria-hidden="true"
-                                    ></span>
-                                    <span
-                                        >{settings.debug_logging_enabled
-                                            ? "On"
-                                            : "Off"}</span
-                                    >
-                                </label>
+                            <div class="debug-row">
+                                <label class="debug-label" for="log-level"
+                                    >Log level</label
+                                >
+                                <select
+                                    id="log-level"
+                                    bind:value={settings.log_level}
+                                >
+                                    <option value="error">Errors only</option>
+                                    <option value="warn">Warnings</option>
+                                    <option value="info">Info (Default)</option>
+                                    <option value="debug">Debug</option>
+                                    <option value="trace">Trace</option>
+                                </select>
                             </div>
+                            <p class="hint">
+                                Debug adds troubleshooting details. Trace
+                                includes frequent playback and media events.
+                            </p>
                         {/if}
                     </div>
                 {:else}
@@ -2971,18 +2965,6 @@
         word-break: break-all;
         text-align: right;
         flex: 1;
-    }
-
-    .debug-row-toggle {
-        align-items: center;
-    }
-
-    .debug-toggle-copy {
-        display: flex;
-        flex: 1;
-        flex-direction: column;
-        gap: 0.125rem;
-        min-width: 0;
     }
 
     .debug-open {

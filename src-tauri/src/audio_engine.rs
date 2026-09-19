@@ -837,7 +837,7 @@ fn begin_active_listen(
     };
     writer.upsert_listen(record.clone());
     writer.record_event(event);
-    log::info!(
+    log::debug!(
         target: "sparkle::playback",
         "event=listen_started listen_id={} session_id={} track_id={} source={} reason={} context={} queue_index={} play_order_index={} queue_length={} new_session={}",
         record.id,
@@ -886,7 +886,7 @@ fn finalize_active_listen(
     };
     writer.upsert_listen(record.clone());
     writer.record_event(event);
-    log::info!(
+    log::debug!(
         target: "sparkle::playback",
         "event=listen_ended listen_id={} session_id={} track_id={} source={} reason={} listened_ms={} position_ms={} duration_ms={} meaningful={} completed={}",
         record.id,
@@ -950,7 +950,7 @@ fn resume_or_begin_listen(
                 s.current_track.as_ref().map(|track| track.id),
             )
         };
-        log::info!(
+        log::debug!(
             target: "sparkle::playback",
             "event=playback_resumed listen_id={} track_id={} source={}",
             listen_id.as_deref().unwrap_or("none"),
@@ -1607,10 +1607,7 @@ fn handle_command(
                 Some("queue_replaced"),
                 None,
             );
-            // Take one snapshot and release the mutex before logging. The log
-            // facade evaluates debug arguments because its global max level is
-            // Trace, even when the plugin later filters the record. Locking
-            // `state` separately for both arguments therefore self-deadlocked.
+            // Snapshot once and release the state lock before logging.
             let (context_kind, queue_length) = {
                 let s = lock_state(state);
                 (s.context.kind.clone(), s.queue.len())
@@ -1776,7 +1773,7 @@ fn handle_command(
                         s.position_ms,
                     )
                 };
-                log::info!(
+                log::debug!(
                     target: "sparkle::playback",
                     "event=playback_paused listen_id={} track_id={} source={} position_ms={position_ms}",
                     listen_id.as_deref().unwrap_or("none"),
@@ -1804,7 +1801,7 @@ fn handle_command(
             end_active_session(state);
             emit_state_changed(app_handle, state);
             save_session_to_db(state, writer);
-            log::info!(target: "sparkle::playback", "event=playback_stopped source={}", source.as_str());
+            log::debug!(target: "sparkle::playback", "event=playback_stopped source={}", source.as_str());
         }
         AudioCommand::Seek(position_ms, source) => {
             let (old_position_ms, duration_ms) = {
@@ -2530,7 +2527,7 @@ fn load_track_at_index_with_autoplay(
     }
 
     if analysis_pending {
-        log::info!(
+        log::debug!(
             target: "sparkle::loudness",
             "event=playback_started_unscanned track_id={} fallback=unity gain_latched=true",
             track.id
@@ -2710,7 +2707,7 @@ fn load_track_artists(
 
 fn emit_state_changed(app_handle: &AppHandle, state: &Arc<Mutex<SharedState>>) {
     let ps = build_playback_state(state);
-    log::debug!(
+    log::trace!(
         target: "sparkle::playback",
         "event=state_published playing={} track_id={:?} position_ms={} duration_ms={}",
         ps.is_playing,

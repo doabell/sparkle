@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { logger, installErrorLogging } from "$lib/logger";
     import "../app.css";
     import { browser } from "$app/environment";
     import { page } from "$app/stores";
@@ -247,7 +248,7 @@
             applyAccent(accentColor, accentPreference);
             cacheAccent(accentColor, accentPreference);
         } catch (err) {
-            console.error("Failed to load UI settings:", err);
+            void logger.error("layout", "failed_to_load_ui_settings", err);
         }
     }
 
@@ -312,6 +313,8 @@
         }
     }
 
+    onMount(() => installErrorLogging(window));
+
     onMount(() => {
         loadUiSettings();
         const disconnectScan = libraryScan.connect();
@@ -326,8 +329,9 @@
                     }),
                 );
             } catch (err) {
-                console.error(
-                    "Failed to listen for media key play/pause:",
+                void logger.error(
+                    "layout",
+                    "failed_to_listen_for_media_key_play_pause",
                     err,
                 );
             }
@@ -339,7 +343,11 @@
                     ),
                 );
             } catch (err) {
-                console.error("Failed to listen for media key next:", err);
+                void logger.error(
+                    "layout",
+                    "failed_to_listen_for_media_key_next",
+                    err,
+                );
             }
 
             try {
@@ -349,7 +357,11 @@
                     ),
                 );
             } catch (err) {
-                console.error("Failed to listen for media key previous:", err);
+                void logger.error(
+                    "layout",
+                    "failed_to_listen_for_media_key_previous",
+                    err,
+                );
             }
         }
 

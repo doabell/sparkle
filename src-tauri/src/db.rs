@@ -4,9 +4,8 @@ use tauri::{AppHandle, Manager};
 
 const CURRENT_SCHEMA_VERSION: i32 = 11;
 
-/// The full schema, created fresh on first launch. The database was reset
-/// for v1 (July 2026): lyrics, artist info, and image bytes live as files
-/// under the app data cache directory; the database only stores metadata.
+/// Schema for a new library. Lyrics and image bytes live in the app-data
+/// cache directory; SQLite stores library metadata and listening history.
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS folders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

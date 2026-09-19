@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import type { LogLevel } from "$lib/logger";
 import type { ThemeMode } from "$lib/utils/themeMode";
 import type { DiscordTemplateValues } from "$lib/utils/discord";
 
@@ -251,7 +252,7 @@ export interface OnlineSettings {
     discord_artwork_s3_session_token: string;
     discord_artwork_s3_region: string;
     discord_artwork_s3_prefix: string;
-    debug_logging_enabled: boolean;
+    log_level: LogLevel;
 }
 
 export interface LoudnessStatus {

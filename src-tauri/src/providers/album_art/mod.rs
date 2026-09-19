@@ -105,7 +105,7 @@ pub fn fetch_album_art_online(
                 // A broken tag or a temporary network failure should not make
                 // every card retry forever, nor prevent later providers from
                 // supplying a cover.
-                log::debug!(target: "sparkle::album_art", "source={source} fetch_failed error={error}");
+                log::debug!(target: "sparkle::album_art", "event=fetch_failed provider={source} error={error}");
             }
         }
     }

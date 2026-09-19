@@ -20,6 +20,7 @@ fn settings_and_custom_metadata_roundtrip_preserves_local_secrets_and_folders() 
         .unwrap();
     cache::set_lyrics(&source, 1, "custom", Some("[00:01.00]Mine"), Some("Mine")).unwrap();
     let settings = settings::Settings {
+        log_level: crate::logging::LogLevel::Trace,
         theme_mode: crate::models::ThemeMode::Light,
         ui_font: "Georgia".into(),
         brave_api_key: "source-secret".into(),
@@ -78,6 +79,7 @@ fn settings_and_custom_metadata_roundtrip_preserves_local_secrets_and_folders() 
     assert_eq!(summary.artwork, 2);
     assert_eq!(summary.unmatched_tracks, 0);
     let restored = settings::load_settings(&target).unwrap();
+    assert_eq!(restored.log_level, crate::logging::LogLevel::Trace);
     assert_eq!(restored.theme_mode, crate::models::ThemeMode::Light);
     assert_eq!(restored.ui_font, "Georgia");
     assert_eq!(restored.brave_api_key, "local-secret");

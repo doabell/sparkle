@@ -1,4 +1,5 @@
 use crate::analytics::PlaybackContext;
+use crate::logging::LogLevel;
 use crate::models::{AccentForegroundPreference, RepeatMode, ThemeMode};
 use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -30,6 +31,7 @@ const DISCORD_ARTWORK_S3_SECRET_KEY_KEY: &str = "discord_artwork_s3_secret_key";
 const DISCORD_ARTWORK_S3_SESSION_TOKEN_KEY: &str = "discord_artwork_s3_session_token";
 const DISCORD_ARTWORK_S3_REGION_KEY: &str = "discord_artwork_s3_region";
 const DISCORD_ARTWORK_S3_PREFIX_KEY: &str = "discord_artwork_s3_prefix";
+const LOG_LEVEL_KEY: &str = "log_level";
 const DEBUG_LOGGING_ENABLED_KEY: &str = "debug_logging_enabled";
 const SESSION_SNAPSHOT_KEY: &str = "session.snapshot";
 
@@ -140,10 +142,6 @@ fn default_discord_artwork_store() -> String {
     "catbox".to_string()
 }
 
-fn default_debug_logging_enabled() -> bool {
-    false
-}
-
 fn default_lyrics_sources() -> Vec<String> {
     vec![
         "custom".to_string(),
@@ -195,7 +193,6 @@ impl Default for DiscordLayout {
             details: "{title}".into(),
             state: "{artist}".into(),
             image_text: "{album}".into(),
-            // Match the original player: artist under the avatar, app on the card.
             status_display: "state".into(),
             show_artwork: true,
             show_progress: true,
@@ -260,8 +257,12 @@ pub struct Settings {
     pub discord_artwork_s3_region: String,
     #[serde(default)]
     pub discord_artwork_s3_prefix: String,
-    #[serde(default = "default_debug_logging_enabled")]
-    pub debug_logging_enabled: bool,
+    #[serde(
+        default,
+        alias = "debug_logging_enabled",
+        deserialize_with = "crate::logging::deserialize_setting"
+    )]
+    pub log_level: LogLevel,
     #[serde(default = "default_lyrics_sources")]
     pub lyrics_sources: Vec<String>,
     #[serde(default = "default_artist_info_sources")]
@@ -298,7 +299,7 @@ impl Default for Settings {
             discord_artwork_s3_session_token: String::new(),
             discord_artwork_s3_region: String::new(),
             discord_artwork_s3_prefix: String::new(),
-            debug_logging_enabled: default_debug_logging_enabled(),
+            log_level: LogLevel::default(),
             lyrics_sources: default_lyrics_sources(),
             artist_info_sources: default_artist_info_sources(),
             artist_image_sources: default_artist_image_sources(),
@@ -349,6 +350,18 @@ pub fn load_lyrics_sources(conn: &Connection) -> Result<Vec<String>, String> {
 
 pub fn load_album_art_sources(conn: &Connection) -> Result<Vec<String>, String> {
     load_json(conn, ALBUM_ART_SOURCES_KEY, default_album_art_sources())
+}
+
+pub fn load_log_level(conn: &Connection) -> Result<LogLevel, String> {
+    if let Some(level) = load_json::<Option<LogLevel>>(conn, LOG_LEVEL_KEY, None)? {
+        return Ok(level);
+    }
+    // Upgrade the saved verbose switch without rewriting other settings.
+    Ok(if load_json(conn, DEBUG_LOGGING_ENABLED_KEY, false)? {
+        LogLevel::Debug
+    } else {
+        LogLevel::Info
+    })
 }
 
 pub fn load_settings(conn: &Connection) -> Result<Settings, String> {
@@ -419,11 +432,7 @@ pub fn load_settings(conn: &Connection) -> Result<Settings, String> {
         )?,
         discord_artwork_s3_region: load_json(conn, DISCORD_ARTWORK_S3_REGION_KEY, String::new())?,
         discord_artwork_s3_prefix: load_json(conn, DISCORD_ARTWORK_S3_PREFIX_KEY, String::new())?,
-        debug_logging_enabled: load_json(
-            conn,
-            DEBUG_LOGGING_ENABLED_KEY,
-            default_debug_logging_enabled(),
-        )?,
+        log_level: load_log_level(conn)?,
         lyrics_sources,
         artist_info_sources: load_json(
             conn,
@@ -512,11 +521,7 @@ pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<(), Strin
         DISCORD_ARTWORK_S3_PREFIX_KEY,
         &settings.discord_artwork_s3_prefix,
     )?;
-    save_json(
-        conn,
-        DEBUG_LOGGING_ENABLED_KEY,
-        &settings.debug_logging_enabled,
-    )?;
+    save_json(conn, LOG_LEVEL_KEY, &settings.log_level)?;
     save_json(conn, LYRICS_SOURCES_KEY, &settings.lyrics_sources)?;
     save_json(conn, ARTIST_INFO_SOURCES_KEY, &settings.artist_info_sources)?;
     save_json(

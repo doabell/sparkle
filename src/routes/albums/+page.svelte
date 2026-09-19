@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { logger } from "$lib/logger";
     import { getAlbums, getTracks, type Album } from "$lib/api";
     import { loadQueue } from "$lib/stores/playback";
     import { uiPref } from "$lib/stores/uiPrefs";
@@ -236,7 +237,7 @@
                 );
             }
         } catch (e) {
-            console.error("Failed to play album:", e);
+            void logger.error("albums", "failed_to_play_album", e);
         }
     }
 </script>

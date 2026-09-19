@@ -252,8 +252,12 @@ pub struct OnlineSettings {
     pub discord_artwork_s3_region: String,
     #[serde(default)]
     pub discord_artwork_s3_prefix: String,
-    #[serde(default)]
-    pub debug_logging_enabled: bool,
+    #[serde(
+        default,
+        alias = "debug_logging_enabled",
+        deserialize_with = "crate::logging::deserialize_setting"
+    )]
+    pub log_level: crate::logging::LogLevel,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]

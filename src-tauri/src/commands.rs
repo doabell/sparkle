@@ -165,6 +165,7 @@ pub fn import_library_backup(
     };
     drop(conn);
     if let Some(settings) = restored_settings {
+        crate::logging::set_level(settings.log_level);
         crate::window_icon::apply_accent(&app, &settings.accent_color);
         state
             .audio

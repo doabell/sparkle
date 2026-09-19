@@ -125,7 +125,7 @@ pub fn fetch_artist_image_online(
             Ok(Some(image)) => return Ok(Some(image)),
             Ok(None) => {}
             Err(error) => {
-                log::debug!(target: "sparkle::artist_image", "source={source} fetch_failed error={error}");
+                log::debug!(target: "sparkle::artist_image", "event=fetch_failed provider={source} error={error}");
             }
         }
     }

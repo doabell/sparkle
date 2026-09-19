@@ -15,6 +15,8 @@ When all S3 Settings fields are empty, Sparkle also supports these environment v
 - `SPARKLE_ARTWORK_S3_REGION`
 - `SPARKLE_ARTWORK_S3_PREFIX`
 
-The Settings test action checks list/access permissions and uploads a small test object, which it leaves in the selected store.
+The Settings test action uploads a small test image. S3 verifies access to the
+object and deletes it afterward, reporting cleanup failures. Catbox retains the
+uploaded test image.
 
 In S3 mode, Sparkle lists the configured prefix once, reuses artwork by content hash, and uploads `<hash>.jpg` only when missing. Catbox URLs are preserved exactly. Separate cached URLs for each provider let you switch storage modes without replacing the other provider's filenames or repeating uploads.
