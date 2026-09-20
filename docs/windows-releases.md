@@ -27,6 +27,12 @@ Packages include the app, required DLLs, license notices, and offline dependency
 license texts. Setup creates a Start menu shortcut and installs WebView2 if
 needed. Workflows verify feed checksums, shortcut metadata, and packaged notices.
 
+`bun run build` reuses the frontend when source, configuration, environment,
+installed dependencies, generated assets, and the bundled-license report match
+the last successful build. Use `bun run build --force` to rebuild it explicitly.
+Release builds and Velopack packages disable LTO. The audio processing crates
+use one code generation unit to preserve decoding and Sound Check throughput.
+
 ## CI and artifact reuse
 
 - Every PR and main push checks formatting and version consistency.

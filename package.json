@@ -19,7 +19,7 @@
     "packageManager": "bun@1.3.14",
     "scripts": {
         "dev": "vite dev",
-        "build": "vite build",
+        "build": "bun scripts/build-frontend.mjs",
         "preview": "vite preview",
         "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
         "test": "svelte-kit sync && bun test",
