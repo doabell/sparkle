@@ -14,7 +14,7 @@ use std::time::Duration;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 fn http_client() -> Result<Client, String> {
-    Client::builder()
+    crate::http_client::builder()
         .timeout(REQUEST_TIMEOUT)
         .build()
         .map_err(|e| e.to_string())

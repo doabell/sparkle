@@ -24,7 +24,7 @@ struct WikipediaThumbnail {
 }
 
 fn fetch_summary_raw(title: &str, lang: &str) -> Result<Option<WikipediaSummary>, String> {
-    let client = Client::builder()
+    let client = crate::http_client::builder()
         .timeout(Duration::from_secs(10))
         .user_agent(USER_AGENT)
         .build()
@@ -109,7 +109,7 @@ pub fn fetch_image_by_title(title: &str, langs: &[String]) -> Result<Option<Imag
         _ => return Ok(None),
     };
 
-    let client = Client::builder()
+    let client = crate::http_client::builder()
         .timeout(Duration::from_secs(30))
         .user_agent(USER_AGENT)
         .build()
@@ -198,7 +198,7 @@ pub fn image_urls_by_title(title: &str, lang: &str, count: usize) -> Result<Vec<
     if title.trim().is_empty() || lang.trim().is_empty() || count == 0 {
         return Ok(Vec::new());
     }
-    let client = Client::builder()
+    let client = crate::http_client::builder()
         // Both requests fit within the chooser's eight-second search budget.
         .timeout(Duration::from_secs(4))
         .user_agent(USER_AGENT)

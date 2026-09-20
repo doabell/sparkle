@@ -984,7 +984,7 @@ pub async fn download_artist_image_candidate(
 ) -> Result<ImageData, String> {
     let log_source = source.clone();
     let result = tokio::task::spawn_blocking(move || -> Result<ImageData, String> {
-        let client = reqwest::blocking::Client::builder()
+        let client = crate::http_client::builder()
             .timeout(std::time::Duration::from_secs(20))
             .user_agent("SparkleMusicPlayer/0.1.0 (local desktop music player)")
             .build()

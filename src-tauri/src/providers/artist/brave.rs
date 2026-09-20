@@ -1,5 +1,4 @@
 use crate::models::{detect_image_mime_type, ImageData};
-use reqwest::blocking::Client;
 use serde::Deserialize;
 use std::time::Duration;
 
@@ -57,7 +56,7 @@ pub fn search_image_urls(
         return Err("Brave API key is missing".into());
     }
 
-    let client = Client::builder()
+    let client = crate::http_client::builder()
         .timeout(Duration::from_secs(15))
         .user_agent(USER_AGENT)
         .build()
@@ -93,7 +92,7 @@ pub fn search_image_urls(
 }
 
 fn download_image(url: &str) -> Result<Option<ImageData>, String> {
-    let client = Client::builder()
+    let client = crate::http_client::builder()
         .timeout(Duration::from_secs(20))
         .user_agent(USER_AGENT)
         .build()

@@ -167,6 +167,7 @@ impl S3ArtworkStore {
     }
 
     fn new(config: S3BuildConfig) -> Result<Self, String> {
+        crate::http_client::initialize_tls();
         let S3BuildConfig {
             endpoint,
             bucket,

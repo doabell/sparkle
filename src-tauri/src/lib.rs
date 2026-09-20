@@ -8,6 +8,7 @@ mod commands;
 mod db;
 mod db_writer;
 mod discord;
+mod http_client;
 mod library_scan;
 mod logging;
 mod loudness;
@@ -410,6 +411,7 @@ fn enable_media_control_events() -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    http_client::initialize_tls();
     let app = tauri::Builder::default()
         .plugin(logging::plugin())
         .plugin(tauri_plugin_opener::init())

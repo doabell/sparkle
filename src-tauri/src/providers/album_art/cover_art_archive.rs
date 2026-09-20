@@ -27,7 +27,7 @@ pub fn fetch_by_mbid(mbid: &str) -> Result<Option<ImageData>, String> {
         return Ok(None);
     }
 
-    let client = Client::builder()
+    let client = crate::http_client::builder()
         .timeout(Duration::from_secs(30))
         .user_agent(USER_AGENT)
         .build()

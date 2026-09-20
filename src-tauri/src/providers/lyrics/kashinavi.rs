@@ -13,7 +13,7 @@ const SEARCH_URL: &str = "https://kashinavi.com/search.php";
 const LYRICS_URL_PREFIX: &str = "https://kashinavi.com/lyrics/";
 
 fn client() -> Result<Client, String> {
-    Client::builder()
+    crate::http_client::builder()
         .timeout(REQUEST_TIMEOUT)
         .user_agent(
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \

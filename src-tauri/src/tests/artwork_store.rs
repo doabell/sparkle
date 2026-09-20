@@ -1,6 +1,34 @@
 use super::*;
 use object_store::memory::InMemory;
 
+#[test]
+fn configured_credentials_sign_s3_requests_with_a_session_token() {
+    let peer = crate::test_support::HttpFixture::new(
+        b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nLast-Modified: Sun, 01 Jan 2023 00:00:00 GMT\r\nETag: \"artwork\"\r\nConnection: close\r\n\r\n".to_vec(),
+    );
+    let store = S3ArtworkStore::new(S3BuildConfig {
+        endpoint: Url::parse(&peer.url).unwrap(),
+        bucket: "sparkle".to_string(),
+        public_url: Url::parse("https://cdn.example.test").unwrap(),
+        access_key: Some("AKIDEXAMPLE".to_string()),
+        secret_key: Some("example-secret".to_string()),
+        session_token: Some("example-session-token".to_string()),
+        region: DEFAULT_REGION.to_string(),
+        prefix: normalize_prefix("artwork"),
+    })
+    .unwrap();
+
+    assert!(store.object_exists("artwork/example.jpg").unwrap());
+    let request = peer.request();
+    assert!(request.starts_with("HEAD /sparkle/artwork/example.jpg HTTP/1.1\r\n"));
+    assert!(request.contains("AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/"));
+    assert!(request.contains("/us-east-1/s3/aws4_request"));
+    assert!(request.contains("Signature="));
+    assert!(request
+        .to_ascii_lowercase()
+        .contains("x-amz-security-token: example-session-token\r\n"));
+}
+
 fn config(prefix: &str) -> S3Config {
     S3Config {
         public_url: Url::parse("https://cdn.example.test").unwrap(),

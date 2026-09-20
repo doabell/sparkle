@@ -32,7 +32,7 @@ struct Artist {
 }
 
 fn client() -> Result<Client, String> {
-    Client::builder()
+    crate::http_client::builder()
         .timeout(Duration::from_secs(6))
         .user_agent(USER_AGENT)
         .build()

@@ -113,7 +113,7 @@ impl Drop for HttpFixture {
 }
 
 pub(crate) fn http_client() -> reqwest::blocking::Client {
-    reqwest::blocking::Client::builder()
+    crate::http_client::builder()
         .no_proxy()
         .timeout(std::time::Duration::from_secs(5))
         .build()

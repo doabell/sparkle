@@ -1001,7 +1001,7 @@ fn upload_to_catbox(jpeg: Vec<u8>, cache_key: &str, user_hash: &str) -> Result<S
     if !user_hash.is_empty() {
         form = form.text("userhash", user_hash.to_string());
     }
-    let response = reqwest::blocking::Client::builder()
+    let response = crate::http_client::builder()
         .user_agent("Sparkle/0.1")
         .build()
         .map_err(|e| e.to_string())?
