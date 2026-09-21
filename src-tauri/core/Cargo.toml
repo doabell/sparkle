@@ -1,0 +1,30 @@
+[package]
+name = "sparkle-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+license = "MIT"
+publish = false
+description = "Library, metadata, storage, and provider logic independent of the desktop shell."
+
+[dependencies]
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+flate2 = "1.1.9"
+lofty = { version = "0.25.1", features = ["serde"] }
+symphonia = { version = "0.5.5", default-features = false, features = ["flac", "mp3", "isomp4", "aac", "ogg", "vorbis"] }
+sha2 = "0.10.9"
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls-no-provider", "charset", "http2", "system-proxy", "json", "blocking", "query", "form"] }
+rustls = { version = "0.23.43", default-features = false, features = ["ring", "std", "tls12"] }
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "fs", "time"] }
+regex = "1.13.1"
+base64 = "0.23.1"
+image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "jpeg", "png", "webp"] }
+object_store = { version = "0.14.1", default-features = false, features = ["aws-base", "reqwest", "ring"] }
+encoding_rs = "0.8.35"
+aes = "0.9.2"
+cbc = "0.2.1"
+num-bigint = "0.5.1"
+num-traits = "0.2.19"
+log = "0.4.33"

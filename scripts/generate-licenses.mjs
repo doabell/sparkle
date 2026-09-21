@@ -24,6 +24,7 @@ const inputs = [
     "package.json",
     "src-tauri/Cargo.lock",
     "src-tauri/Cargo.toml",
+    "src-tauri/core/Cargo.toml",
     "src-tauri/patches/tauri-plugin-media/Cargo.toml",
     "src-tauri/patches/tauri-plugin-media/LICENSE-MIT",
     "src-tauri/patches/velopack/Cargo.toml",
@@ -172,7 +173,7 @@ function add(license, text, component) {
 
 for (const license of rust.licenses) {
     for (const { crate: pkg } of license.used_by) {
-        if (pkg.name === "sparkle") continue;
+        if (["sparkle", "sparkle-core"].includes(pkg.name)) continue;
         const component = {
             name: pkg.name,
             version: pkg.version,

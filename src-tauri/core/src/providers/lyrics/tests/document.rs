@@ -14,7 +14,7 @@ struct Contract {
 #[test]
 fn shared_lrc_contract_matches_playback_editing_and_export() {
     let cases: Vec<Contract> =
-        serde_json::from_str(include_str!("../../../../../test/fixtures/lrc.json")).unwrap();
+        serde_json::from_str(include_str!("../../../../../../test/fixtures/lrc.json")).unwrap();
     for case in cases {
         assert_eq!(parse_lrc(&case.text), case.lines, "{}: parse", case.name);
         assert_eq!(

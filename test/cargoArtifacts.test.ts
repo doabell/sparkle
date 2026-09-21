@@ -50,7 +50,35 @@ test.each([
     "fails closed when no unique library test executable is available",
     (messages) => {
         expect(() => libraryTestExecutable(messages, manifest)).toThrow(
-            "Expected one Sparkle library test executable",
+            "Expected one sparkle_lib test executable",
         );
     },
 );
+
+test("packaging selects both workspace suites and rejects a missing core suite", () => {
+    const coreManifest = resolve("src-tauri/core/Cargo.toml");
+    const core = {
+        ...artifact,
+        manifest_path: coreManifest,
+        target: { name: "sparkle_core" },
+        executable: resolve(
+            "src-tauri/target/release/deps/sparkle_core-tests.exe",
+        ),
+        fresh: true,
+    };
+    const messages = output(artifact, core);
+    expect(libraryTestExecutable(messages, manifest)).toBe(artifact.executable);
+    expect(libraryTestExecutable(messages, coreManifest, "sparkle_core")).toBe(
+        core.executable,
+    );
+    expect(() =>
+        libraryTestExecutable(output(artifact), coreManifest, "sparkle_core"),
+    ).toThrow("Expected one sparkle_core test executable");
+    expect(() =>
+        libraryTestExecutable(
+            output({ ...core, profile: { test: false } }),
+            coreManifest,
+            "sparkle_core",
+        ),
+    ).toThrow("Expected one sparkle_core test executable");
+});

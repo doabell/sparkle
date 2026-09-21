@@ -78,8 +78,8 @@ jobs:
 
             - name: Run Rust tests
               if: steps.changes.outputs.rust == 'true' && (github.event_name != 'push' || steps.changes.outputs.package != 'true')
-              # Main packaging compiles the app and library tests together below.
-              run: cargo test --lib --locked --manifest-path src-tauri/Cargo.toml --timings
+              # Main packaging compiles the app and both library test suites below.
+              run: cargo test --workspace --lib --locked --manifest-path src-tauri/Cargo.toml --timings
 
             - name: Find installed .NET SDK
               if: github.event_name == 'push' && steps.changes.outputs.package == 'true'

@@ -78,9 +78,13 @@ const buildOutput = run(
         "--",
         "--locked",
         "--timings",
-        // Tauri already selects --bins. Add library tests to the same dependency graph.
+        // Tauri selects --bins. Build both workspace test suites in the same graph.
         ...(withTests
-            ? ["--tests", "--message-format=json-render-diagnostics"]
+            ? [
+                  "--workspace",
+                  "--tests",
+                  "--message-format=json-render-diagnostics",
+              ]
             : []),
     ],
     {
@@ -93,22 +97,29 @@ if (withTests) {
     for (const line of buildOutput.split(/\r?\n/)) {
         if (line && !line.startsWith('{"reason":')) console.log(line);
     }
-    const executable = libraryTestExecutable(
-        buildOutput,
-        join(root, "src-tauri/Cargo.toml"),
-    );
-    // Match Cargo's test working directory and expose adjacent native libraries.
-    run(executable, [], {
-        cwd: join(root, "src-tauri"),
-        env: {
-            ...process.env,
-            PATH: [
-                dirname(executable),
-                dirname(dirname(executable)),
-                process.env.PATH,
-            ].join(delimiter),
-        },
-    });
+    for (const [manifest, target] of [
+        ["src-tauri/Cargo.toml", "sparkle_lib"],
+        ["src-tauri/core/Cargo.toml", "sparkle_core"],
+    ]) {
+        const manifestPath = join(root, manifest);
+        const executable = libraryTestExecutable(
+            buildOutput,
+            manifestPath,
+            target,
+        );
+        // Match Cargo's test working directory and expose adjacent native libraries.
+        run(executable, [], {
+            cwd: dirname(manifestPath),
+            env: {
+                ...process.env,
+                PATH: [
+                    dirname(executable),
+                    dirname(dirname(executable)),
+                    process.env.PATH,
+                ].join(delimiter),
+            },
+        });
+    }
 }
 run("bun", ["run", "licenses:check", "--built"]);
 

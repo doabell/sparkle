@@ -1,4 +1,5 @@
 use super::*;
+use log::LevelFilter;
 
 #[test]
 fn verbosity_is_cumulative_and_dependency_noise_stays_suppressed() {
@@ -16,6 +17,8 @@ fn verbosity_is_cumulative_and_dependency_noise_stays_suppressed() {
                 "sparkle::audio",
                 "sparkle::frontend",
                 "sparkle_lib::logging",
+                "sparkle_core",
+                "sparkle_core::logging",
             ] {
                 assert_eq!(
                     should_emit(event.level(), target, configured as u8),
@@ -27,6 +30,7 @@ fn verbosity_is_cumulative_and_dependency_noise_stays_suppressed() {
                 "symphonia::decode",
                 "sparkle_other",
                 "sparkle_lib_extra",
+                "sparkle_core_extra",
             ] {
                 assert_eq!(
                     should_emit(event.level(), target, configured as u8),
@@ -88,6 +92,11 @@ fn live_level_changes_update_call_site_filtering() {
     let previous = log::max_level();
     set_level(LogLevel::Debug);
     assert_eq!(log::max_level(), LevelFilter::Debug);
+    let trace = log::Metadata::builder()
+        .level(Level::Trace)
+        .target("sparkle_core::playback")
+        .build();
+    assert!(!enabled(&trace));
     assert!(!should_emit(
         Level::Trace,
         "sparkle::playback",
@@ -95,6 +104,7 @@ fn live_level_changes_update_call_site_filtering() {
     ));
     set_level(LogLevel::Trace);
     assert_eq!(log::max_level(), LevelFilter::Trace);
+    assert!(enabled(&trace));
     set_level(LogLevel::Info);
     log::set_max_level(previous);
 }

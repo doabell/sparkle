@@ -27,7 +27,7 @@ const DEFAULT_PREFIX: &str = "sparkle/";
 /// The worker is a synchronous thread, so the async object_store client is
 /// driven by a small runtime owned by this store. Only deterministic artwork
 /// keys are probed; the configured prefix is never enumerated.
-pub(crate) struct S3ArtworkStore {
+pub struct S3ArtworkStore {
     config: S3Config,
     store: Arc<dyn ObjectStore>,
     runtime: Runtime,
@@ -115,7 +115,7 @@ impl S3ArtworkStore {
     /// selected artwork mode. A partially configured store is treated as a
     /// configuration error so it cannot silently cause new uploads to go
     /// somewhere unexpected.
-    pub(crate) fn from_settings(settings: &Settings) -> Result<Option<Self>, String> {
+    pub fn from_settings(settings: &Settings) -> Result<Option<Self>, String> {
         let values = S3Values::from_settings(settings);
         if values.is_configured() {
             Self::from_values(values)
@@ -222,7 +222,7 @@ impl S3ArtworkStore {
 
     /// Returns a public URL for an existing object or uploads the object under
     /// the first stable content hash when bounded HEAD probes find no match.
-    pub(crate) fn find_or_upload(
+    pub fn find_or_upload(
         &mut self,
         jpeg: Vec<u8>,
         content_hashes: &[String],
@@ -249,7 +249,7 @@ impl S3ArtworkStore {
     /// write and read access without requiring permission to list the bucket.
     /// The probe is deleted before this returns, including when verification
     /// fails after the upload.
-    pub(crate) fn test_access_and_upload(&mut self, jpeg: Vec<u8>) -> Result<String, String> {
+    pub fn test_access_and_upload(&mut self, jpeg: Vec<u8>) -> Result<String, String> {
         let object_key = self.config.object_key("sparkle-test");
         let test_result = self.put_object(&object_key, jpeg).and_then(|()| {
             if self.object_exists(&object_key)? {
@@ -264,7 +264,7 @@ impl S3ArtworkStore {
         finish_test_with_cleanup(test_result, cleanup_result, &object_key)
     }
 
-    pub(crate) fn owns_public_url(&self, url: &str) -> bool {
+    pub fn owns_public_url(&self, url: &str) -> bool {
         let base = self.config.public_url.as_str().trim_end_matches('/');
         url.starts_with(&format!("{base}/"))
     }

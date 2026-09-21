@@ -6,8 +6,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 // This self-signed certificate and public test key are trusted only by these tests.
-const CERTIFICATE: &[u8] = include_bytes!("fixtures/localhost-cert.pem");
-const PRIVATE_KEY: &[u8] = include_bytes!("fixtures/localhost-key.pem");
+const CERTIFICATE: &[u8] = include_bytes!("../../../test-support/fixtures/localhost-cert.pem");
+const PRIVATE_KEY: &[u8] = include_bytes!("../../../test-support/fixtures/localhost-key.pem");
 
 struct TlsFixture {
     url: String,

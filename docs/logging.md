@@ -49,4 +49,5 @@ truncated. Logs are not uploaded automatically.
   playback-state lock; snapshot the required fields first.
 
 Filtering, formatting, retention, and frontend IPC live in
-`src-tauri/src/logging.rs`; frontend helpers live in `src/lib/logger.ts`.
+`src-tauri/core/src/logging.rs`; the Tauri plugin and IPC adapter live in
+`src-tauri/src/logging.rs`. Frontend helpers live in `src/lib/logger.ts`.

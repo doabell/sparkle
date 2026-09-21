@@ -52,6 +52,10 @@ test.each([
         { frontend: false, rust: true, package: true },
     ],
     [
+        ["src-tauri/core/src/scanner.rs", "src-tauri/test-support/mod.rs"],
+        { frontend: false, rust: true, package: true },
+    ],
+    [
         [
             "CHANGELOG.md",
             "LICENSE",

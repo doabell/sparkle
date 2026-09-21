@@ -1,11 +1,16 @@
 import { resolve } from "node:path";
 
 /**
- * Select Sparkle's library tests from the current Cargo invocation, including cache hits.
+ * Select a workspace library's tests from this Cargo invocation, including cache hits.
  * @param {string} output
  * @param {string} manifestPath
+ * @param {string} [targetName]
  */
-export function libraryTestExecutable(output, manifestPath) {
+export function libraryTestExecutable(
+    output,
+    manifestPath,
+    targetName = "sparkle_lib",
+) {
     const executables = new Set();
     const manifest = resolve(manifestPath).toLowerCase();
     for (const line of output.split(/\r?\n/)) {
@@ -19,7 +24,7 @@ export function libraryTestExecutable(output, manifestPath) {
             artifact?.reason === "compiler-artifact" &&
             typeof artifact.manifest_path === "string" &&
             resolve(artifact.manifest_path).toLowerCase() === manifest &&
-            artifact.target?.name === "sparkle_lib" &&
+            artifact.target?.name === targetName &&
             artifact.profile?.test === true &&
             typeof artifact.executable === "string"
         ) {
@@ -28,7 +33,7 @@ export function libraryTestExecutable(output, manifestPath) {
     }
     if (executables.size !== 1) {
         throw new Error(
-            `Expected one Sparkle library test executable from Cargo; found ${executables.size}.`,
+            `Expected one ${targetName} test executable from Cargo; found ${executables.size}.`,
         );
     }
     return [...executables][0];

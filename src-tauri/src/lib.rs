@@ -1,26 +1,18 @@
-mod analytics;
-mod artwork_store;
 mod audio_engine;
-mod audio_identity;
-mod backup;
-mod cache;
 mod commands;
 mod db;
-mod db_writer;
 mod discord;
-mod http_client;
-mod library_scan;
 mod logging;
 mod loudness;
-mod models;
-mod normalizer;
 mod online_commands;
 mod playback_commands;
-mod providers;
-mod scanner;
-mod settings;
 mod updates;
 mod window_icon;
+
+use sparkle_core::{
+    analytics, artwork_store, backup, cache, db_writer, http_client, library_scan, models,
+    providers, scanner, settings,
+};
 
 /// Handle installer invocations before opening windows, audio, or the library.
 pub fn initialize_updater() {
@@ -32,7 +24,7 @@ pub fn initialize_updater() {
 }
 
 #[cfg(test)]
-#[path = "tests/support.rs"]
+#[path = "../test-support/mod.rs"]
 mod test_support;
 
 #[cfg(all(test, not(dev)))]

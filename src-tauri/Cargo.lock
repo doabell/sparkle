@@ -4386,29 +4386,20 @@ dependencies = [
 name = "sparkle"
 version = "0.5.0"
 dependencies = [
- "aes",
  "base64 0.23.1",
- "cbc",
  "discord-rich-presence",
  "ebur128",
- "encoding_rs",
- "flate2",
  "image",
  "lofty",
  "log",
  "md-5",
- "num-bigint 0.5.1",
- "num-traits",
- "object_store",
- "regex",
  "reqwest",
  "rodio",
  "rusqlite",
- "rustls",
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "symphonia",
+ "sparkle-core",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
@@ -4419,6 +4410,32 @@ dependencies = [
  "tokio",
  "velopack",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "sparkle-core"
+version = "0.1.0"
+dependencies = [
+ "aes",
+ "base64 0.23.1",
+ "cbc",
+ "encoding_rs",
+ "flate2",
+ "image",
+ "lofty",
+ "log",
+ "num-bigint 0.5.1",
+ "num-traits",
+ "object_store",
+ "regex",
+ "reqwest",
+ "rusqlite",
+ "rustls",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "symphonia",
+ "tokio",
 ]
 
 [[package]]
