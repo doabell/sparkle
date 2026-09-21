@@ -52,6 +52,9 @@ sharing it.
 
 ## Playback outcomes and retention
 
+See [Playback event contracts](playback-events.md) for the semantic event
+catalog, correlation fields, recovery rules, and frontend ordering contract.
+
 Every playback command carries a `command_id` from the frontend or native media
 entry point through the audio worker and reply. Results distinguish `applied`,
 `deferred` (waiting for output), `noop`, and `failed`. Failures identify the

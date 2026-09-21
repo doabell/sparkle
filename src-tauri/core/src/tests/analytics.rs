@@ -100,3 +100,153 @@ fn context_rejects_free_form_kinds_and_content_ids() {
 fn generated_trace_ids_are_distinct() {
     assert_ne!(new_trace_id("listen"), new_trace_id("listen"));
 }
+
+#[test]
+fn semantic_payloads_have_canonical_names_and_only_applicable_reasons() {
+    let cases = [
+        (
+            PlaybackEvent::QueueLoaded(QueueLoadReason::QueueReplaced),
+            "queue_loaded",
+            Some("queue_replaced"),
+        ),
+        (
+            PlaybackEvent::QueueLoaded(QueueLoadReason::SingleTrack),
+            "queue_loaded",
+            Some("single_track"),
+        ),
+        (
+            PlaybackEvent::ListenStarted(ListenStartReason::ResumeAfterInactivity),
+            "listen_started",
+            Some("resume_after_inactivity"),
+        ),
+        (PlaybackEvent::PlaybackResumed, "playback_resumed", None),
+        (PlaybackEvent::PlaybackPaused, "playback_paused", None),
+        (
+            PlaybackEvent::Seeked {
+                reason: SeekReason::Absolute,
+                target_position_ms: 80_000,
+            },
+            "seeked",
+            Some("absolute"),
+        ),
+        (
+            PlaybackEvent::Seeked {
+                reason: SeekReason::PreviousRestart,
+                target_position_ms: 0,
+            },
+            "seeked",
+            Some("previous_restart"),
+        ),
+        (
+            PlaybackEvent::ListenEnded(ListenEndReason::Interrupted),
+            "listen_ended",
+            Some("interrupted"),
+        ),
+        (PlaybackEvent::PlaybackStopped, "playback_stopped", None),
+        (PlaybackEvent::ShuffleChanged, "shuffle_changed", None),
+        (PlaybackEvent::RepeatChanged, "repeat_changed", None),
+        (
+            PlaybackEvent::QueuedNext {
+                target_track_id: 42,
+            },
+            "queued_next",
+            None,
+        ),
+        (
+            PlaybackEvent::OutputUnavailable(OutputUnavailableReason::ClockStalled),
+            "output_unavailable",
+            Some("clock_stalled"),
+        ),
+        (
+            PlaybackEvent::OutputUnavailable(OutputUnavailableReason::DeviceChanged),
+            "output_unavailable",
+            Some("device_changed"),
+        ),
+        (
+            PlaybackEvent::OutputUnavailable(OutputUnavailableReason::OpenFailed),
+            "output_unavailable",
+            Some("open_failed"),
+        ),
+        (PlaybackEvent::OutputRestored, "output_restored", None),
+        (
+            PlaybackEvent::CommandFailed {
+                command: "seek".into(),
+                stage: "seek_after_reload".into(),
+                target_track_id: Some(42),
+            },
+            "command_failed",
+            None,
+        ),
+    ];
+    for (event, name, reason) in cases {
+        assert_eq!(event.kind().as_str(), name);
+        assert_eq!(PlaybackEventKind::parse(name), event.kind());
+        assert_eq!(event.reason(), reason);
+        assert_eq!(event.kind().canonical_reason(reason), reason);
+    }
+    let seek = PlaybackEvent::Seeked {
+        reason: SeekReason::Absolute,
+        target_position_ms: 80_000,
+    };
+    assert_eq!(seek.target_position_ms(), Some(80_000));
+    assert_eq!(seek.target_track_id(), None);
+    assert_eq!(seek.command(), None);
+    assert_eq!(seek.failure_stage(), None);
+}
+
+#[test]
+fn imports_and_recovery_share_the_live_vocabulary() {
+    assert_eq!(
+        PlaybackEventKind::parse("track_started"),
+        PlaybackEventKind::ListenStarted
+    );
+    for reason in [
+        "interrupted",
+        "legacy_import",
+        "legacy_migration",
+        "completed",
+        "manual_next",
+        "playback_error",
+    ] {
+        assert_eq!(ListenEndReason::parse(reason).as_str(), reason);
+        assert_eq!(
+            PlaybackEventKind::ListenEnded.canonical_reason(Some(reason)),
+            Some(reason)
+        );
+    }
+    for reason in [
+        "legacy_import",
+        "legacy_migration",
+        "queue_started",
+        "output_restored",
+        "restored_resume",
+        "play_next",
+    ] {
+        assert_eq!(ListenStartReason::parse(reason).as_str(), reason);
+    }
+    assert_eq!(
+        PlaybackEventKind::parse("future_event"),
+        PlaybackEventKind::Unknown
+    );
+    assert_eq!(PlaybackEventKind::Unknown.as_str(), "unknown");
+    for kind in [
+        PlaybackEventKind::ListenStarted,
+        PlaybackEventKind::ListenEnded,
+        PlaybackEventKind::QueueLoaded,
+        PlaybackEventKind::Seeked,
+        PlaybackEventKind::OutputUnavailable,
+    ] {
+        assert_eq!(
+            kind.canonical_reason(Some("private arbitrary text")),
+            Some("unknown")
+        );
+    }
+    assert_eq!(
+        PlaybackEventKind::OutputUnavailable.canonical_reason(Some("device_unavailable")),
+        Some("unknown")
+    );
+    assert_eq!(
+        PlaybackEventKind::PlaybackPaused.canonical_reason(Some("user_pause")),
+        None
+    );
+}

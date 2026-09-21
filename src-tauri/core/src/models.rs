@@ -81,6 +81,7 @@ impl RepeatMode {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct PlaybackState {
+    pub revision: u64,
     pub is_playing: bool,
     pub current_track: Option<Track>,
     pub first_lyric_line: Option<String>,

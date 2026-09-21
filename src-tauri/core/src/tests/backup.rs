@@ -318,7 +318,8 @@ fn create_analytics_test_schema(conn: &Connection) {
             play_order_index INTEGER,
             queue_length INTEGER NOT NULL,
             shuffle INTEGER NOT NULL,
-            repeat_mode TEXT NOT NULL
+            repeat_mode TEXT NOT NULL,
+            target_track_id INTEGER
          );",
     )
     .unwrap();
@@ -418,7 +419,7 @@ fn history_backup_omits_diagnostics_and_legacy_trace_import_is_idempotent() {
             "INSERT INTO playback_events VALUES (
                 'event-1', 'listen-1', 'session-1', 1700000060123,
                 'listen_ended', 'keyboard', 'manual_next', 1, 60000, NULL,
-                'album', '1', 0, 0, 3, 0, 'off'
+                'album', '1', 0, 0, 3, 0, 'off', NULL
              )",
             [],
         )
@@ -467,6 +468,19 @@ fn history_backup_omits_diagnostics_and_legacy_trace_import_is_idempotent() {
         shuffle: false,
         repeat_mode: "off".into(),
     });
+    let mut started = legacy.playback_events[0].clone();
+    started.id = "legacy-start".into();
+    started.event_type = "track_started".into();
+    started.reason = Some("queue_started".into());
+    legacy.playback_events.push(started);
+    let mut queued = legacy.playback_events[0].clone();
+    queued.id = "legacy-queued".into();
+    queued.event_type = "queued_next".into();
+    queued.reason = Some("play_next".into());
+    legacy.playback_events.push(queued.clone());
+    queued.id = "legacy-queued-without-listen".into();
+    queued.listen_id = None;
+    legacy.playback_events.push(queued);
     std::fs::write(&path, encode(&legacy).unwrap()).unwrap();
 
     let target = Connection::open_in_memory().unwrap();
@@ -483,7 +497,29 @@ fn history_backup_omits_diagnostics_and_legacy_trace_import_is_idempotent() {
             .query_row("SELECT COUNT(*) FROM playback_events", [], |row| row
                 .get::<_, i64>(0))
             .unwrap(),
-        1
+        4
+    );
+    let queued: (i64, i64, Option<String>) = target
+        .query_row(
+            "SELECT track_id,target_track_id,reason FROM playback_events WHERE id='legacy-queued'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(queued, (99, 99, None));
+    let detached: (Option<i64>, i64, Option<i64>) = target.query_row(
+        "SELECT track_id,target_track_id,position_ms FROM playback_events WHERE id='legacy-queued-without-listen'", [],
+        |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?))).unwrap();
+    assert_eq!(detached, (None, 99, None));
+    assert_eq!(
+        target
+            .query_row(
+                "SELECT event_type FROM playback_events WHERE id='legacy-start'",
+                [],
+                |row| row.get::<_, String>(0)
+            )
+            .unwrap(),
+        "listen_started"
     );
     let restored: (i64, String, String, i64, i64, i64) = target
         .query_row(

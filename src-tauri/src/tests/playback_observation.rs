@@ -81,3 +81,22 @@ fn recent_commands_are_bounded_and_volume_drags_do_not_evict_failure_context() {
     assert_eq!(CommandOutcome::Deferred.as_str(), "deferred");
     assert_eq!(CommandOutcome::Noop.as_str(), "noop");
 }
+
+#[test]
+fn output_events_follow_availability_and_observed_causes_without_retry_spam() {
+    let mut observation = PlaybackObservation::default();
+    assert!(observation.output_unavailable(OutputUnavailableReason::OpenFailed));
+    observation.recovery_attempts = 4;
+    let started = observation.recovery_started_at_ms;
+    assert!(!observation.output_unavailable(OutputUnavailableReason::OpenFailed));
+    assert_eq!(observation.recovery_attempts, 4);
+    assert_eq!(observation.recovery_started_at_ms, started);
+    observation.output_available = true;
+    assert!(observation.output_unavailable(OutputUnavailableReason::DeviceChanged));
+    assert_eq!(observation.recovery_attempts, 0);
+    assert!(observation.output_unavailable(OutputUnavailableReason::ClockStalled));
+    assert_eq!(
+        observation.output_unavailable_reason,
+        Some(OutputUnavailableReason::ClockStalled)
+    );
+}

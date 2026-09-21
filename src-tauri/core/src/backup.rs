@@ -1,3 +1,6 @@
+use crate::analytics::{
+    ListenEndReason, ListenStartReason, PlaybackContext, PlaybackEventKind, PlaybackSource,
+};
 use crate::cache;
 use crate::settings::{self, Settings};
 use flate2::read::GzDecoder;
@@ -839,18 +842,20 @@ fn restore_analytics(
         let (start_source, start_reason, end_reason, meaningful) = if backup_version == 3 {
             (
                 "legacy".to_string(),
-                "legacy_import".to_string(),
-                Some("legacy_import".to_string()),
+                ListenStartReason::LegacyImport.as_str().to_string(),
+                Some(ListenEndReason::LegacyImport.as_str().into()),
                 true,
             )
         } else {
             (
                 analytics_source(&listen.start_source),
-                sanitize_token(&listen.start_reason, "unknown"),
+                ListenStartReason::parse(&listen.start_reason)
+                    .as_str()
+                    .to_string(),
                 listen
                     .end_reason
                     .as_deref()
-                    .map(|reason| sanitize_token(reason, "unknown")),
+                    .map(|reason| ListenEndReason::parse(reason).as_str().to_string()),
                 listen.meaningful,
             )
         };
@@ -912,6 +917,7 @@ fn restore_analytics(
             }
             None => None,
         };
+        let kind = PlaybackEventKind::parse(&event.event_type);
         let fallback_id = format!("backup-{backup_created_at}-event-{index}");
         let id = sanitize_trace_id(Some(&event.id), &fallback_id);
         let listen_id = event
@@ -929,6 +935,26 @@ fn restore_analytics(
                     .as_deref()
                     .map(|value| sanitize_trace_id(Some(value), &fallback_id))
             });
+        // Legacy queued_next used track_id for the target but listen_id for
+        // the current listen. Reconstruct explicit subjects at the import boundary.
+        let target_track_id = (kind == PlaybackEventKind::QueuedNext)
+            .then_some(track_id)
+            .flatten();
+        let track_id = if kind == PlaybackEventKind::QueuedNext {
+            listen_id
+                .as_ref()
+                .map(|id| {
+                    conn.query_row("SELECT track_id FROM listens WHERE id=?1", [id], |row| {
+                        row.get::<_, i64>(0)
+                    })
+                    .optional()
+                })
+                .transpose()
+                .map_err(|error| error.to_string())?
+                .flatten()
+        } else {
+            track_id
+        };
         let context_type = analytics_context(&event.context_type);
         let context_id = analytics_context_id(&context_type, event.context_id.as_deref());
 
@@ -937,23 +963,20 @@ fn restore_analytics(
                 "INSERT OR IGNORE INTO playback_events ( \
                     id, listen_id, session_id, occurred_at_ms, event_type, source, \
                     reason, track_id, position_ms, target_position_ms, context_type, \
-                    context_id, queue_index, play_order_index, queue_length, shuffle, repeat_mode \
+                    context_id, queue_index, play_order_index, queue_length, shuffle, repeat_mode, target_track_id \
                  ) VALUES ( \
-                    ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17 \
+                    ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18 \
                  )",
                 rusqlite::params![
                     id,
                     listen_id,
                     session_id,
                     event.occurred_at_ms,
-                    analytics_event_type(&event.event_type),
+                    kind.as_str(),
                     analytics_source(&event.source),
-                    event
-                        .reason
-                        .as_deref()
-                        .map(|reason| sanitize_token(reason, "unknown")),
+                    kind.canonical_reason(event.reason.as_deref()),
                     track_id,
-                    event.position_ms.filter(|position| *position >= 0),
+                    track_id.and(event.position_ms).filter(|position| *position >= 0),
                     event.target_position_ms.filter(|position| *position >= 0),
                     context_type,
                     context_id,
@@ -962,6 +985,7 @@ fn restore_analytics(
                     event.queue_length.max(0),
                     event.shuffle as i64,
                     analytics_repeat_mode(&event.repeat_mode),
+                    target_track_id,
                 ],
             )
             .map_err(|e| e.to_string())?;
@@ -1007,58 +1031,22 @@ fn analytics_context_id(context_type: &str, value: Option<&str>) -> Option<Strin
     }
 }
 
-fn sanitize_token(value: &str, fallback: &str) -> String {
-    let value = value.trim().to_ascii_lowercase();
-    if !value.is_empty()
-        && value.len() <= 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
-    {
-        value
-    } else {
-        fallback.to_string()
-    }
-}
-
 fn analytics_source(value: &str) -> String {
-    let value = sanitize_token(value, "unknown");
-    if matches!(
-        value.as_str(),
-        "ui" | "keyboard"
-            | "system_media"
-            | "automatic"
-            | "restore"
-            | "internal"
-            | "legacy"
-            | "unknown"
-    ) {
-        value
-    } else {
-        "unknown".to_string()
-    }
+    serde_json::from_value::<PlaybackSource>(serde_json::Value::String(
+        value.trim().to_ascii_lowercase(),
+    ))
+    .unwrap_or_default()
+    .as_str()
+    .into()
 }
 
 fn analytics_context(value: &str) -> String {
-    let value = sanitize_token(value, "unknown");
-    if matches!(
-        value.as_str(),
-        "album"
-            | "artist"
-            | "genre"
-            | "health"
-            | "home"
-            | "playlist"
-            | "queue"
-            | "search"
-            | "single"
-            | "songs"
-            | "unknown"
-    ) {
-        value
-    } else {
-        "unknown".to_string()
+    PlaybackContext {
+        kind: value.into(),
+        id: None,
     }
+    .sanitized()
+    .kind
 }
 
 fn analytics_repeat_mode(value: &str) -> String {
@@ -1066,29 +1054,6 @@ fn analytics_repeat_mode(value: &str) -> String {
         "all" => "all".to_string(),
         "one" => "one".to_string(),
         _ => "off".to_string(),
-    }
-}
-
-fn analytics_event_type(value: &str) -> String {
-    let value = sanitize_token(value, "unknown");
-    if matches!(
-        value.as_str(),
-        "queue_loaded"
-            | "track_started"
-            | "playback_resumed"
-            | "playback_paused"
-            | "seeked"
-            | "listen_ended"
-            | "playback_stopped"
-            | "shuffle_changed"
-            | "repeat_changed"
-            | "queued_next"
-            | "output_unavailable"
-            | "output_restored"
-    ) {
-        value
-    } else {
-        "unknown".to_string()
     }
 }
 

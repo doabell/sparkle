@@ -155,6 +155,8 @@ export interface PlaybackContext {
 }
 
 export interface PlaybackState {
+    /** Monotonic state revision shared by snapshots, replies, and events. */
+    revision: number;
     is_playing: boolean;
     current_track: Track | null;
     first_lyric_line: string | null;
@@ -165,6 +167,17 @@ export interface PlaybackState {
     shuffle: boolean;
     repeat_mode: RepeatMode;
 }
+
+export interface PlaybackProgress {
+    revision: number;
+    sequence: number;
+    track_id: number;
+    position_ms: number;
+    duration_ms: number;
+}
+
+export const PLAYBACK_STATE_EVENT = "playback-state-changed";
+export const PLAYBACK_PROGRESS_EVENT = "playback-progress";
 
 export interface ScanResult {
     scanned: number;

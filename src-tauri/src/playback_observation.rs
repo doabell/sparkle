@@ -1,4 +1,4 @@
-use crate::analytics::{new_trace_id, now_epoch_ms, PlaybackSource};
+use crate::analytics::{new_trace_id, now_epoch_ms, OutputUnavailableReason, PlaybackSource};
 use crate::models::PlaybackState;
 use serde::Serialize;
 use std::collections::VecDeque;
@@ -136,6 +136,7 @@ pub(crate) struct ActiveStage {
 pub(crate) struct PlaybackObservation {
     pub run_id: String,
     pub output_available: bool,
+    pub output_unavailable_reason: Option<OutputUnavailableReason>,
     pub output_config: Option<String>,
     pub recovery_started_at_ms: Option<i64>,
     pub recovery_attempts: u64,
@@ -157,6 +158,7 @@ impl Default for PlaybackObservation {
         Self {
             run_id: new_trace_id("run"),
             output_available: false,
+            output_unavailable_reason: None,
             output_config: None,
             recovery_started_at_ms: None,
             recovery_attempts: 0,
@@ -174,6 +176,20 @@ impl Default for PlaybackObservation {
 }
 
 impl PlaybackObservation {
+    /// Availability belongs to the output pipeline, independently of whether
+    /// a track is playing. Retry attempts with the same cause are coalesced.
+    pub fn output_unavailable(&mut self, reason: OutputUnavailableReason) -> bool {
+        let changed = self.output_available || self.output_unavailable_reason != Some(reason);
+        if self.output_available || self.recovery_started_at_ms.is_none() {
+            self.recovery_started_at_ms = Some(now_epoch_ms());
+            self.recovery_attempts = 0;
+        }
+        self.output_available = false;
+        self.output_config = None;
+        self.output_unavailable_reason = Some(reason);
+        changed
+    }
+
     pub fn record(&mut self, record: CommandObservation) {
         if let Some(failure) = &record.failure {
             self.last_failure = Some(failure.clone());

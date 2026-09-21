@@ -329,6 +329,28 @@ fn v8_to_v9_preserves_history_and_recovers_session_groups() {
         )
         .unwrap();
     assert_eq!(recovered, (1, 1_060_000, 0, 0, "interrupted".into()));
+    let event: (String, String, String, i64) = conn.query_row(
+        "SELECT event_type,reason,source,position_ms FROM playback_events WHERE reason='interrupted'", [],
+        |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?))).unwrap();
+    assert_eq!(
+        event,
+        (
+            "listen_ended".into(),
+            "interrupted".into(),
+            "internal".into(),
+            10000
+        )
+    );
+    assert_eq!(recover_interrupted_listens(&conn).unwrap(), 0);
+    assert_eq!(
+        conn.query_row(
+            "SELECT COUNT(*) FROM playback_events WHERE reason='interrupted'",
+            [],
+            |row| row.get::<_, i64>(0)
+        )
+        .unwrap(),
+        1
+    );
     let legacy_table: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'play_history'",

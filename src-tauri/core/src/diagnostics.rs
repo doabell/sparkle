@@ -85,7 +85,8 @@ fn recent_events(conn: &Connection, incident_at_ms: i64) -> rusqlite::Result<(Ve
     let mut stmt = conn.prepare(
         "SELECT id, listen_id, session_id, occurred_at_ms, event_type, source, reason,
          track_id, position_ms, target_position_ms, context_type, context_id,
-         queue_index, play_order_index, queue_length, shuffle, repeat_mode
+         queue_index, play_order_index, queue_length, shuffle, repeat_mode,
+         run_id, command_id, target_track_id, command, failure_stage
          FROM playback_events WHERE occurred_at_ms >= ?1 AND occurred_at_ms <= ?2
          ORDER BY occurred_at_ms DESC, id DESC LIMIT ?3",
     )?;
@@ -101,6 +102,9 @@ fn recent_events(conn: &Connection, incident_at_ms: i64) -> rusqlite::Result<(Ve
         "queue_index": row.get::<_, Option<i64>>(12)?, "play_order_index": row.get::<_, Option<i64>>(13)?,
         "queue_length": row.get::<_, i64>(14)?, "shuffle": row.get::<_, bool>(15)?,
         "repeat_mode": row.get::<_, String>(16)?,
+        "run_id": row.get::<_, String>(17)?, "command_id": row.get::<_, Option<String>>(18)?,
+        "target_track_id": row.get::<_, Option<i64>>(19)?, "command": row.get::<_, Option<String>>(20)?,
+        "failure_stage": row.get::<_, Option<String>>(21)?,
     })))?.collect::<rusqlite::Result<Vec<_>>>()?;
     let truncated = events.len() > EVENT_LIMIT;
     events.truncate(EVENT_LIMIT);

@@ -96,108 +96,231 @@ impl PlaybackContext {
     }
 }
 
+// One vocabulary is used by live producers, recovery, and backup import.
+// Aliases are accepted on input only; new records always use canonical names.
+macro_rules! vocabulary {
+    ($name:ident { $($variant:ident => $label:literal $(| $alias:literal)*,)* }) => {
+        #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+        pub enum $name { $($variant,)* #[default] Unknown }
+        impl $name {
+            pub fn as_str(self) -> &'static str {
+                match self { $(Self::$variant => $label,)* Self::Unknown => "unknown" }
+            }
+            pub fn parse(value: &str) -> Self {
+                match value.trim().to_ascii_lowercase().as_str() {
+                    $($label $(| $alias)* => Self::$variant,)*
+                    _ => Self::Unknown,
+                }
+            }
+        }
+    };
+}
+
+vocabulary!(PlaybackEventKind {
+    QueueLoaded => "queue_loaded",
+    ListenStarted => "listen_started" | "track_started",
+    PlaybackResumed => "playback_resumed",
+    PlaybackPaused => "playback_paused",
+    Seeked => "seeked",
+    ListenEnded => "listen_ended",
+    PlaybackStopped => "playback_stopped",
+    ShuffleChanged => "shuffle_changed",
+    RepeatChanged => "repeat_changed",
+    QueuedNext => "queued_next",
+    OutputUnavailable => "output_unavailable",
+    OutputRestored => "output_restored",
+    CommandFailed => "command_failed",
+});
+
+vocabulary!(ListenStartReason {
+    QueueStarted => "queue_started",
+    TrackSelected => "track_selected",
+    ManualNext => "manual_next",
+    ManualPrevious => "manual_previous",
+    QueueJump => "queue_jump",
+    AutoAdvance => "auto_advance",
+    RepeatOne => "repeat_one",
+    PlayNext => "play_next",
+    Replay => "replay",
+    ResumeAfterInactivity => "resume_after_inactivity",
+    RestoredResume => "restored_resume",
+    OutputRestored => "output_restored",
+    LegacyMigration => "legacy_migration",
+    LegacyImport => "legacy_import",
+});
+
+vocabulary!(ListenEndReason {
+    Completed => "completed",
+    ManualNext => "manual_next",
+    ManualPrevious => "manual_previous",
+    QueueJump => "queue_jump",
+    QueueReplaced => "queue_replaced",
+    TrackSelected => "track_selected",
+    Stopped => "stopped",
+    AppShutdown => "app_shutdown",
+    RepeatOne => "repeat_one",
+    SessionTimeout => "session_timeout",
+    PlaybackError => "playback_error",
+    Interrupted => "interrupted",
+    LegacyMigration => "legacy_migration",
+    LegacyImport => "legacy_import",
+});
+
+impl PlaybackEventKind {
+    /// Imported records use the same vocabulary as live producers. Old
+    /// redundant reasons are discarded, and unproven output causes stay unknown.
+    pub fn canonical_reason(self, value: Option<&str>) -> Option<&'static str> {
+        let value = value.unwrap_or("").trim().to_ascii_lowercase();
+        match self {
+            Self::ListenStarted => Some(ListenStartReason::parse(&value).as_str()),
+            Self::ListenEnded => Some(ListenEndReason::parse(&value).as_str()),
+            Self::QueueLoaded => Some(match value.as_str() {
+                "queue_replaced" => "queue_replaced",
+                "single_track" => "single_track",
+                _ => "unknown",
+            }),
+            Self::Seeked => Some(match value.as_str() {
+                "absolute" => "absolute",
+                "previous_restart" => "previous_restart",
+                _ => "unknown",
+            }),
+            Self::OutputUnavailable => Some(match value.as_str() {
+                "device_changed" => "device_changed",
+                "clock_stalled" => "clock_stalled",
+                "open_failed" => "open_failed",
+                _ => "unknown",
+            }),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PlaybackEventKind {
-    QueueLoaded,
-    TrackStarted,
+pub enum QueueLoadReason {
+    QueueReplaced,
+    SingleTrack,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SeekReason {
+    Absolute,
+    PreviousRestart,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OutputUnavailableReason {
+    DeviceChanged,
+    ClockStalled,
+    OpenFailed,
+}
+
+impl OutputUnavailableReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::DeviceChanged => "device_changed",
+            Self::ClockStalled => "clock_stalled",
+            Self::OpenFailed => "open_failed",
+        }
+    }
+}
+
+/// Variant-specific data prevents a queue target from replacing the current
+/// listen's track, and prevents unrelated reasons from being mixed together.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PlaybackEvent {
+    QueueLoaded(QueueLoadReason),
+    ListenStarted(ListenStartReason),
     PlaybackResumed,
     PlaybackPaused,
-    Seeked,
-    ListenEnded,
+    Seeked {
+        reason: SeekReason,
+        target_position_ms: i64,
+    },
+    ListenEnded(ListenEndReason),
     PlaybackStopped,
     ShuffleChanged,
     RepeatChanged,
-    QueuedNext,
-    OutputUnavailable,
+    QueuedNext {
+        target_track_id: i64,
+    },
+    OutputUnavailable(OutputUnavailableReason),
     OutputRestored,
+    CommandFailed {
+        command: String,
+        stage: String,
+        target_track_id: Option<i64>,
+    },
 }
 
-impl PlaybackEventKind {
-    pub fn as_str(self) -> &'static str {
+impl PlaybackEvent {
+    pub fn kind(&self) -> PlaybackEventKind {
         match self {
-            Self::QueueLoaded => "queue_loaded",
-            Self::TrackStarted => "track_started",
-            Self::PlaybackResumed => "playback_resumed",
-            Self::PlaybackPaused => "playback_paused",
-            Self::Seeked => "seeked",
-            Self::ListenEnded => "listen_ended",
-            Self::PlaybackStopped => "playback_stopped",
-            Self::ShuffleChanged => "shuffle_changed",
-            Self::RepeatChanged => "repeat_changed",
-            Self::QueuedNext => "queued_next",
-            Self::OutputUnavailable => "output_unavailable",
-            Self::OutputRestored => "output_restored",
+            Self::QueueLoaded(_) => PlaybackEventKind::QueueLoaded,
+            Self::ListenStarted(_) => PlaybackEventKind::ListenStarted,
+            Self::PlaybackResumed => PlaybackEventKind::PlaybackResumed,
+            Self::PlaybackPaused => PlaybackEventKind::PlaybackPaused,
+            Self::Seeked { .. } => PlaybackEventKind::Seeked,
+            Self::ListenEnded(_) => PlaybackEventKind::ListenEnded,
+            Self::PlaybackStopped => PlaybackEventKind::PlaybackStopped,
+            Self::ShuffleChanged => PlaybackEventKind::ShuffleChanged,
+            Self::RepeatChanged => PlaybackEventKind::RepeatChanged,
+            Self::QueuedNext { .. } => PlaybackEventKind::QueuedNext,
+            Self::OutputUnavailable(_) => PlaybackEventKind::OutputUnavailable,
+            Self::OutputRestored => PlaybackEventKind::OutputRestored,
+            Self::CommandFailed { .. } => PlaybackEventKind::CommandFailed,
         }
     }
-}
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum ListenStartReason {
-    QueueStarted,
-    TrackSelected,
-    ManualNext,
-    ManualPrevious,
-    QueueJump,
-    AutoAdvance,
-    RepeatOne,
-    PlayNext,
-    Replay,
-    ResumeAfterInactivity,
-    RestoredResume,
-    OutputRestored,
-    #[default]
-    Unknown,
-}
-
-impl ListenStartReason {
-    pub fn as_str(self) -> &'static str {
+    pub fn reason(&self) -> Option<&'static str> {
         match self {
-            Self::QueueStarted => "queue_started",
-            Self::TrackSelected => "track_selected",
-            Self::ManualNext => "manual_next",
-            Self::ManualPrevious => "manual_previous",
-            Self::QueueJump => "queue_jump",
-            Self::AutoAdvance => "auto_advance",
-            Self::RepeatOne => "repeat_one",
-            Self::PlayNext => "play_next",
-            Self::Replay => "replay",
-            Self::ResumeAfterInactivity => "resume_after_inactivity",
-            Self::RestoredResume => "restored_resume",
-            Self::OutputRestored => "output_restored",
-            Self::Unknown => "unknown",
+            Self::QueueLoaded(QueueLoadReason::QueueReplaced) => Some("queue_replaced"),
+            Self::QueueLoaded(QueueLoadReason::SingleTrack) => Some("single_track"),
+            Self::ListenStarted(reason) => Some(reason.as_str()),
+            Self::ListenEnded(reason) => Some(reason.as_str()),
+            Self::Seeked {
+                reason: SeekReason::Absolute,
+                ..
+            } => Some("absolute"),
+            Self::Seeked {
+                reason: SeekReason::PreviousRestart,
+                ..
+            } => Some("previous_restart"),
+            Self::OutputUnavailable(reason) => Some(reason.as_str()),
+            _ => None,
         }
     }
-}
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ListenEndReason {
-    Completed,
-    ManualNext,
-    ManualPrevious,
-    QueueJump,
-    QueueReplaced,
-    TrackSelected,
-    Stopped,
-    AppShutdown,
-    RepeatOne,
-    SessionTimeout,
-    PlaybackError,
-}
-
-impl ListenEndReason {
-    pub fn as_str(self) -> &'static str {
+    pub fn target_track_id(&self) -> Option<i64> {
         match self {
-            Self::Completed => "completed",
-            Self::ManualNext => "manual_next",
-            Self::ManualPrevious => "manual_previous",
-            Self::QueueJump => "queue_jump",
-            Self::QueueReplaced => "queue_replaced",
-            Self::TrackSelected => "track_selected",
-            Self::Stopped => "stopped",
-            Self::AppShutdown => "app_shutdown",
-            Self::RepeatOne => "repeat_one",
-            Self::SessionTimeout => "session_timeout",
-            Self::PlaybackError => "playback_error",
+            Self::QueuedNext { target_track_id } => Some(*target_track_id),
+            Self::CommandFailed {
+                target_track_id, ..
+            } => *target_track_id,
+            _ => None,
+        }
+    }
+
+    pub fn target_position_ms(&self) -> Option<i64> {
+        match self {
+            Self::Seeked {
+                target_position_ms, ..
+            } => Some(*target_position_ms),
+            _ => None,
+        }
+    }
+
+    pub fn command(&self) -> Option<&str> {
+        match self {
+            Self::CommandFailed { command, .. } => Some(command),
+            _ => None,
+        }
+    }
+
+    pub fn failure_stage(&self) -> Option<&str> {
+        match self {
+            Self::CommandFailed { stage, .. } => Some(stage),
+            _ => None,
         }
     }
 }
@@ -238,15 +361,15 @@ pub struct ListenRecord {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PlaybackEventRecord {
     pub id: String,
+    pub run_id: String,
+    pub command_id: Option<String>,
     pub listen_id: Option<String>,
     pub session_id: Option<String>,
     pub occurred_at_ms: i64,
-    pub kind: PlaybackEventKind,
+    pub event: PlaybackEvent,
     pub source: PlaybackSource,
-    pub reason: Option<String>,
     pub track_id: Option<i64>,
     pub position_ms: Option<i64>,
-    pub target_position_ms: Option<i64>,
     pub context: PlaybackContext,
     pub queue_index: Option<usize>,
     pub play_order_index: Option<usize>,

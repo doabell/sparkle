@@ -147,7 +147,8 @@ fn play_next_moves_existing_entries_without_losing_current_song_or_other_orderin
                 }
                 let mut next_order = order.clone();
                 let (index, next_pos) =
-                    queue_track_next(&mut queue, &mut next_order, current_index, pos, requested);
+                    queue_track_next(&mut queue, &mut next_order, current_index, pos, requested)
+                        .unwrap_or((current_index, pos));
                 assert_eq!(queue[index], current_id);
                 assert_eq!(next_order[next_pos], index);
                 assert!(is_valid_play_order(&next_order, queue.len()));
@@ -158,9 +159,11 @@ fn play_next_moves_existing_entries_without_losing_current_song_or_other_orderin
                 assert_eq!(queue.iter().filter(|&&id| id == requested).count(), 1);
                 // Repeating Play Next has no further effect on queue or cursors.
                 let snapshot = (queue.clone(), next_order.clone(), index, next_pos);
-                let cursors =
-                    queue_track_next(&mut queue, &mut next_order, index, next_pos, requested);
-                assert_eq!((queue, next_order, cursors.0, cursors.1), snapshot);
+                assert_eq!(
+                    queue_track_next(&mut queue, &mut next_order, index, next_pos, requested),
+                    None
+                );
+                assert_eq!((queue, next_order, index, next_pos), snapshot);
             }
         }
     }
@@ -374,6 +377,43 @@ fn shuffled_order_keeps_start_first_and_is_permutation() {
     assert_eq!(pos, 0);
     assert_eq!(order[0], 3);
     assert!(is_valid_play_order(&order, 10));
+}
+
+#[test]
+fn redundant_shuffle_requests_preserve_the_exact_queue_order() {
+    let mut enabled = true;
+    let mut order = vec![3, 1, 0, 2];
+    let mut position = Some(1);
+    assert!(!change_shuffle(
+        &mut enabled,
+        true,
+        4,
+        Some(1),
+        &mut order,
+        &mut position
+    ));
+    assert_eq!(order, vec![3, 1, 0, 2]);
+    assert_eq!(position, Some(1));
+    assert!(change_shuffle(
+        &mut enabled,
+        false,
+        4,
+        Some(1),
+        &mut order,
+        &mut position
+    ));
+    assert_eq!(order, vec![0, 1, 2, 3]);
+    assert_eq!(position, Some(1));
+    assert!(change_shuffle(
+        &mut enabled,
+        true,
+        0,
+        None,
+        &mut order,
+        &mut position
+    ));
+    assert!(order.is_empty());
+    assert_eq!(position, None);
 }
 
 #[test]

@@ -1,6 +1,6 @@
 use super::*;
 use crate::analytics::{
-    ListenEndReason, ListenStartReason, PlaybackContext, PlaybackEventKind, PlaybackSource,
+    ListenEndReason, ListenStartReason, PlaybackContext, PlaybackEvent, PlaybackSource,
 };
 
 fn create_test_schema(conn: &Connection) {
@@ -43,6 +43,11 @@ fn create_test_schema(conn: &Connection) {
             session_id TEXT,
             occurred_at_ms INTEGER NOT NULL,
             event_type TEXT NOT NULL,
+    run_id TEXT NOT NULL DEFAULT 'legacy',
+    command_id TEXT,
+    target_track_id INTEGER,
+    command TEXT,
+    failure_stage TEXT,
             source TEXT NOT NULL,
             reason TEXT,
             track_id INTEGER REFERENCES tracks(id) ON DELETE CASCADE,
@@ -93,15 +98,15 @@ fn sample_listen(id: &str, started_at_ms: i64, finalized: bool) -> ListenRecord 
 fn sample_event(id: &str, listen_id: &str, occurred_at_ms: i64) -> PlaybackEventRecord {
     PlaybackEventRecord {
         id: id.to_string(),
+        run_id: "run-test".into(),
+        command_id: Some("command-test".into()),
         listen_id: Some(listen_id.to_string()),
         session_id: Some("session-1".to_string()),
         occurred_at_ms,
-        kind: PlaybackEventKind::ListenEnded,
+        event: PlaybackEvent::ListenEnded(ListenEndReason::ManualNext),
         source: PlaybackSource::Ui,
-        reason: Some("manual_next".to_string()),
         track_id: Some(7),
         position_ms: Some(123_000),
-        target_position_ms: None,
         context: PlaybackContext::default(),
         queue_index: Some(0),
         play_order_index: Some(0),
@@ -149,6 +154,57 @@ fn semantic_event_insert_is_idempotent() {
         .query_row("SELECT COUNT(*) FROM playback_events", [], |row| row.get(0))
         .unwrap();
     assert_eq!(count, 1);
+}
+
+#[test]
+fn event_subjects_and_command_causality_survive_persistence() {
+    let conn = Connection::open_in_memory().unwrap();
+    create_test_schema(&conn);
+    write_listen(&conn, &sample_listen("listen-a", 1_700_000_000_000, false)).unwrap();
+    let mut queued = sample_event("queued", "listen-a", 1_700_000_123_000);
+    queued.event = PlaybackEvent::QueuedNext {
+        target_track_id: 42,
+    };
+    write_event(&conn, &queued).unwrap();
+    let actual: (i64, i64, String, i64, String, String) = conn.query_row(
+        "SELECT track_id,target_track_id,listen_id,position_ms,run_id,command_id FROM playback_events WHERE id='queued'", [],
+        |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?,row.get(5)?))).unwrap();
+    assert_eq!(
+        actual,
+        (
+            7,
+            42,
+            "listen-a".into(),
+            123_000,
+            "run-test".into(),
+            "command-test".into()
+        )
+    );
+
+    // The requested track can be absent from the library; a failed attempt
+    // must still be recorded instead of failing its own foreign-key check.
+    let mut failed = sample_event("failure", "listen-a", 1_700_000_123_001);
+    failed.listen_id = None;
+    failed.track_id = None;
+    failed.position_ms = None;
+    failed.event = PlaybackEvent::CommandFailed {
+        command: "play_track".into(),
+        stage: "metadata".into(),
+        target_track_id: Some(999),
+    };
+    write_event(&conn, &failed).unwrap();
+    let actual: (String, String, String, i64) = conn.query_row(
+        "SELECT event_type,command,failure_stage,target_track_id FROM playback_events WHERE id='failure'", [],
+        |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?))).unwrap();
+    assert_eq!(
+        actual,
+        (
+            "command_failed".into(),
+            "play_track".into(),
+            "metadata".into(),
+            999
+        )
+    );
 }
 
 #[test]

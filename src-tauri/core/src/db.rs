@@ -236,6 +236,11 @@ CREATE TABLE IF NOT EXISTS playback_events (
     session_id TEXT,
     occurred_at_ms INTEGER NOT NULL CHECK (occurred_at_ms > 0),
     event_type TEXT NOT NULL,
+    run_id TEXT NOT NULL DEFAULT 'legacy',
+    command_id TEXT,
+    target_track_id INTEGER,
+    command TEXT,
+    failure_stage TEXT,
     source TEXT NOT NULL,
     reason TEXT,
     track_id INTEGER REFERENCES tracks(id) ON DELETE CASCADE,
@@ -374,6 +379,11 @@ CREATE TABLE playback_events (
     session_id TEXT,
     occurred_at_ms INTEGER NOT NULL CHECK (occurred_at_ms > 0),
     event_type TEXT NOT NULL,
+    run_id TEXT NOT NULL DEFAULT 'legacy',
+    command_id TEXT,
+    target_track_id INTEGER,
+    command TEXT,
+    failure_stage TEXT,
     source TEXT NOT NULL,
     reason TEXT,
     track_id INTEGER REFERENCES tracks(id) ON DELETE CASCADE,
@@ -604,7 +614,29 @@ fn migrate_v10_to_v11(conn: &Connection) -> Result<()> {
 /// A normal shutdown closes its active listen explicitly before the writer
 /// durability barrier, so any remaining row is unambiguously interrupted.
 pub fn recover_interrupted_listens(conn: &Connection) -> Result<usize> {
-    conn.execute(
+    use crate::analytics::{
+        new_trace_id, now_epoch_ms, ListenEndReason, PlaybackEventKind, PlaybackSource,
+    };
+    let tx = conn.unchecked_transaction()?;
+    // Recovery is an observation made now, not an invented crash timestamp.
+    // The listen itself still ends at its last durable activity checkpoint.
+    tx.execute(
+        "INSERT INTO playback_events (
+            id, run_id, listen_id, session_id, occurred_at_ms, event_type, source, reason,
+            track_id, position_ms, context_type, context_id, queue_index, play_order_index,
+            queue_length, shuffle, repeat_mode
+         ) SELECT ?1 || '-' || id, ?1, id, session_id, ?2, ?3, ?4, ?5,
+            track_id, end_position_ms, context_type, context_id, queue_index, play_order_index,
+            queue_length, shuffle, repeat_mode FROM listens WHERE finalized = 0",
+        rusqlite::params![
+            new_trace_id("recovery"),
+            now_epoch_ms(),
+            PlaybackEventKind::ListenEnded.as_str(),
+            PlaybackSource::Internal.as_str(),
+            ListenEndReason::Interrupted.as_str()
+        ],
+    )?;
+    let recovered = tx.execute(
         "UPDATE listens SET \
          finalized = 1, \
          ended_at_ms = last_activity_at_ms, \
@@ -615,10 +647,12 @@ pub fn recover_interrupted_listens(conn: &Connection) -> Result<usize> {
          completed = CASE \
              WHEN duration_ms > 0 AND end_position_ms * 10 >= duration_ms * 9 \
              THEN 1 ELSE 0 END, \
-         end_reason = 'interrupted' \
+         end_reason = ?1 \
          WHERE finalized = 0",
-        [],
-    )
+        [ListenEndReason::Interrupted.as_str()],
+    )?;
+    tx.commit()?;
+    Ok(recovered)
 }
 
 /// Upgraded databases retain their applied-version history. Recording only the

@@ -17,7 +17,7 @@ fn capture_marks_the_incident_and_exports_only_recent_diagnostic_fields() {
         ("recent", incident - 1),
         ("future", incident + 1),
     ] {
-        conn.execute("INSERT INTO playback_events(id,occurred_at_ms,event_type,source,track_id) VALUES(?1,?2,'seeked','ui',1)", rusqlite::params![id, time]).unwrap();
+        conn.execute("INSERT INTO playback_events(id,occurred_at_ms,event_type,source,track_id,run_id,command_id,target_track_id,command,failure_stage) VALUES(?1,?2,'command_failed','ui',1,'run-1','command-1',99,'play_track','metadata')", rusqlite::params![id, time]).unwrap();
     }
     std::fs::write(
         root.join("sparkle-dev.log"),
@@ -39,6 +39,10 @@ fn capture_marks_the_incident_and_exports_only_recent_diagnostic_fields() {
     assert_eq!(capture.capture.incident_at_ms, incident);
     assert_eq!(capture.recent_events.len(), 1);
     assert_eq!(capture.recent_events[0]["id"], "recent");
+    assert_eq!(capture.recent_events[0]["run_id"], "run-1");
+    assert_eq!(capture.recent_events[0]["command_id"], "command-1");
+    assert_eq!(capture.recent_events[0]["target_track_id"], 99);
+    assert_eq!(capture.recent_events[0]["failure_stage"], "metadata");
     assert!(!capture.events_truncated);
     assert_eq!(capture.logs.len(), 1);
     assert!(capture.logs[0].text.contains("[url]"));

@@ -4,6 +4,7 @@ use std::fs;
 
 fn example_playback() -> PlaybackState {
     PlaybackState {
+        revision: 0,
         is_playing: true,
         current_track: Some(Track {
             id: 1,

@@ -307,7 +307,7 @@ fn writer_loop(db_path: PathBuf, rx: mpsc::Receiver<QueuedWrite>, monitor: Write
                     if persisted {
                         log::trace!(target: "sparkle::analytics::writer",
                             "event=trace_persisted event_id={} event_type={} listen_id={}",
-                            event.id, event.kind.as_str(), event.listen_id.as_deref().unwrap_or("none"));
+                            event.id, event.event.kind().as_str(), event.listen_id.as_deref().unwrap_or("none"));
                     }
                     monitor.complete(queued.id);
                     maintain_analytics_limits(&conn, &mut writes_since_prune);
@@ -458,22 +458,23 @@ fn write_event(conn: &Connection, event: &PlaybackEventRecord) -> rusqlite::Resu
             "INSERT OR IGNORE INTO playback_events (
                 id, listen_id, session_id, occurred_at_ms, event_type, source,
                 reason, track_id, position_ms, target_position_ms, context_type,
-                context_id, queue_index, play_order_index, queue_length, shuffle, repeat_mode
+                context_id, queue_index, play_order_index, queue_length, shuffle, repeat_mode,
+                run_id, command_id, target_track_id, command, failure_stage
              ) VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
-                ?14, ?15, ?16, ?17
+                ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22
              )",
             rusqlite::params![
                 event.id,
                 event.listen_id,
                 event.session_id,
                 event.occurred_at_ms,
-                event.kind.as_str(),
+                event.event.kind().as_str(),
                 event.source.as_str(),
-                event.reason,
+                event.event.reason(),
                 event.track_id,
                 event.position_ms,
-                event.target_position_ms,
+                event.event.target_position_ms(),
                 event.context.kind,
                 event.context.id,
                 event.queue_index.map(|index| index as i64),
@@ -481,6 +482,11 @@ fn write_event(conn: &Connection, event: &PlaybackEventRecord) -> rusqlite::Resu
                 event.queue_length as i64,
                 event.shuffle as i64,
                 repeat_mode_name(event.repeat_mode),
+                event.run_id,
+                event.command_id,
+                event.event.target_track_id(),
+                event.event.command(),
+                event.event.failure_stage(),
             ],
         )
     })
