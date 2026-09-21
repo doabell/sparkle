@@ -174,7 +174,78 @@ fn busy_writes_are_retried() {
 }
 
 #[test]
-fn retention_keeps_newest_finalized_listens_and_cascades_events() {
+fn failed_writes_do_not_advance_success_and_recovery_remains_visible() {
+    let conn = Connection::open_in_memory().unwrap();
+    create_test_schema(&conn);
+    let monitor = WriterMonitor::default();
+    let mut first_error = None;
+    let mut missing = sample_listen("missing-track", 1, true);
+    missing.track_id = 999;
+    capture_write_error(
+        &monitor,
+        &mut first_error,
+        "upsert listen",
+        write_listen(&conn, &missing),
+    );
+    let failed = monitor.snapshot();
+    assert_eq!(failed.failed_writes, 1);
+    assert_eq!(failed.consecutive_failures, 1);
+    assert!(failed.last_success_at_ms.is_none());
+    assert!(failed.last_error_at_ms.is_some());
+    assert!(first_error.is_some());
+    capture_write_error(
+        &monitor,
+        &mut first_error,
+        "upsert listen",
+        write_listen(&conn, &sample_listen("valid", 2, true)),
+    );
+    let recovered = monitor.snapshot();
+    assert_eq!(recovered.failed_writes, 1);
+    assert_eq!(recovered.consecutive_failures, 0);
+    assert!(recovered.last_success_at_ms.is_some());
+    assert!(recovered.last_error.is_some());
+}
+
+#[test]
+fn a_full_or_disconnected_queue_reports_loss_without_blocking_playback() {
+    let (tx, rx) = mpsc::sync_channel(1);
+    let monitor = WriterMonitor::default();
+    let writer = DbWriter {
+        tx: Some(tx),
+        worker: None,
+        monitor: monitor.clone(),
+    };
+    writer.save_session(SessionSnapshot::default());
+    writer.save_session(SessionSnapshot::default());
+    assert_eq!(monitor.snapshot().pending_writes, 1);
+    assert_eq!(monitor.snapshot().dropped_writes, 1);
+    let queued = rx.try_recv().unwrap();
+    monitor.complete(queued.id);
+    drop(rx);
+    writer.save_session(SessionSnapshot::default());
+    assert_eq!(monitor.snapshot().pending_writes, 0);
+    assert_eq!(monitor.snapshot().dropped_writes, 2);
+    assert_eq!(
+        monitor.snapshot().last_error.as_deref(),
+        Some("writer_stopped")
+    );
+}
+
+#[test]
+fn an_unavailable_database_is_reported_by_the_writer_monitor() {
+    let root = crate::test_support::TestDir::new();
+    let mut writer = DbWriter::new(root.path().to_path_buf());
+    let monitor = writer.monitor();
+    writer.worker.take().unwrap().join().unwrap();
+    assert!(!monitor.snapshot().running);
+    assert_eq!(monitor.snapshot().failed_writes, 1);
+    writer.save_session(SessionSnapshot::default());
+    assert_eq!(monitor.snapshot().dropped_writes, 1);
+    assert!(monitor.snapshot().last_success_at_ms.is_none());
+}
+
+#[test]
+fn retention_bounds_diagnostics_without_deleting_listening_history() {
     let conn = Connection::open_in_memory().unwrap();
     create_test_schema(&conn);
     for index in 1..=5 {
@@ -191,7 +262,7 @@ fn retention_keeps_newest_finalized_listens_and_cascades_events() {
         .unwrap();
     }
 
-    assert_eq!(prune_listens_to(&conn, 3).unwrap(), 2);
+    assert_eq!(prune_events_to(&conn, 3, 0).unwrap(), 2);
     let timestamps = conn
         .prepare("SELECT started_at_ms FROM listens ORDER BY started_at_ms")
         .unwrap()
@@ -201,12 +272,19 @@ fn retention_keeps_newest_finalized_listens_and_cascades_events() {
         .unwrap();
     assert_eq!(
         timestamps,
-        vec![1_700_000_000_003, 1_700_000_000_004, 1_700_000_000_005]
+        (1..=5).map(|i| 1_700_000_000_000 + i).collect::<Vec<i64>>()
     );
     let events: i64 = conn
         .query_row("SELECT COUNT(*) FROM playback_events", [], |row| row.get(0))
         .unwrap();
     assert_eq!(events, 3);
+    assert_eq!(prune_events_to(&conn, 3, 5).unwrap(), 2);
+    assert_eq!(
+        conn.query_row("SELECT COUNT(*) FROM listens", [], |row| row
+            .get::<_, i64>(0))
+            .unwrap(),
+        5
+    );
 }
 
 #[test]

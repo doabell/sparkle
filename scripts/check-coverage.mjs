@@ -70,7 +70,7 @@ if (language === "typescript") {
     // orchestration. These complete modules also remain in the overall gate.
     const core = files.filter(
         (file) =>
-            /^src-tauri\/(?:core\/)?src\/(analytics|artwork_store|backup|cache|db|db_writer|models|normalizer|settings)\.rs$/.test(
+            /^src-tauri\/(?:core\/)?src\/(analytics|artwork_store|backup|cache|db|db_writer|diagnostics|models|normalizer|settings)\.rs$/.test(
                 file.path,
             ) ||
             /^src-tauri\/core\/src\/providers\/lyrics\/(mod|embedded|lrc)\.rs$/.test(

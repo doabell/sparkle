@@ -3,6 +3,7 @@ import { readable, writable } from "svelte/store";
 import { listen } from "@tauri-apps/api/event";
 import {
     getPlaybackState,
+    describePlaybackError,
     play as backendPlay,
     pause as backendPause,
     stop as backendStop,
@@ -160,8 +161,12 @@ export function createPlaybackStore() {
             return state;
         } catch (err) {
             const message = String(err);
-            void logger.error("playback", "playback_command_failed", err);
-            update((s) => ({ ...s, error: message, is_playing: false }));
+            void logger.error(
+                "playback",
+                "playback_command_failed",
+                describePlaybackError(err),
+            );
+            update((s) => ({ ...s, error: message }));
             throw err;
         }
     }
@@ -212,7 +217,11 @@ export function createPlaybackStore() {
             callCommand(() => backendSetVolume(volume, source)),
         setVolumeLive: (volume: number, source: PlaybackActionSource = "ui") =>
             backendSetVolumeLive(volume, source).catch((err) => {
-                void logger.error("playback", "live_volume_update_failed", err);
+                void logger.error(
+                    "playback",
+                    "live_volume_update_failed",
+                    describePlaybackError(err),
+                );
             }),
         setShuffle: (shuffle: boolean, source: PlaybackActionSource = "ui") =>
             callCommand(() => backendSetShuffle(shuffle, source)),

@@ -32,6 +32,50 @@ paths and library IDs; review them before sharing. HTTP(S) URLs are replaced
 with `[url]`, control characters are escaped or removed, and long records are
 truncated. Logs are not uploaded automatically.
 
+**Capture playback diagnostics** in the same Diagnostics section marks the
+incident and freezes playback state before opening a save dialog. It saves a
+local JSON file containing:
+
+- Output availability/configuration, pending playback intent, the current
+  command, and history-writer health.
+- The latest 200 command results, including queue wait, execution and loading
+  stage timings. Consecutive successful volume updates are coalesced.
+- Up to 2,000 playback events from the 30 minutes ending at the incident.
+- The last 512 KiB of the active log and up to two archives for this profile.
+
+The capture records missing sections and truncation explicitly. It remains
+useful when the database or logs cannot be read. Pending database writes are
+reported rather than waiting for them to flush; the newest transitions may
+therefore appear only in the runtime command records. The file is saved only
+to the destination you choose and is never uploaded. Review local paths before
+sharing it.
+
+## Playback outcomes and retention
+
+Every playback command carries a `command_id` from the frontend or native media
+entry point through the audio worker and reply. Results distinguish `applied`,
+`deferred` (waiting for output), `noop`, and `failed`. Failures identify the
+command, target track when known, and stage. Reply timeouts do not cancel a
+command that is already queued; a later completion uses the same ID.
+
+`first_playback_progress` measures the time from enqueueing a start/resume
+command to forward movement of the engine clock. It is not proof that sound
+reached the speakers. `playback_stalled` reports an observed stationary clock;
+output loss is a suspected cause. Device recovery logs attempts and elapsed
+time, including an open call that remains pending.
+
+Diagnostic playback events expire after seven days and are capped at 50,000
+rows, with cleanup at startup and every 512 analytics writes. Listening history
+has no automatic retention limit. Normal `.sparklebackup` exports include
+listening history but omit diagnostic events; older backups containing events
+remain importable.
+
+History writes use a bounded, nonblocking queue of 1,024 requests. The Diagnostics
+section shows recorder availability, pending writes, and failed/dropped counts.
+If the queue is exhausted or the writer stops, playback continues and dropped
+writes are counted and logged. Captures include the oldest pending age, last
+successful write, and last failure. Failed writes never produce success logs.
+
 ## Adding events
 
 - Native code uses `log` macros with `target: "sparkle::<subsystem>"` and

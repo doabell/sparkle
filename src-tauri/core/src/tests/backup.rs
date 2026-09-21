@@ -397,7 +397,7 @@ fn playlist_restore_matches_a_moved_reindexed_track() {
 }
 
 #[test]
-fn analytics_backup_roundtrip_preserves_trace_and_is_idempotent() {
+fn history_backup_omits_diagnostics_and_legacy_trace_import_is_idempotent() {
     let source = Connection::open_in_memory().unwrap();
     source.execute("PRAGMA foreign_keys = ON", []).unwrap();
     create_analytics_test_schema(&source);
@@ -441,6 +441,33 @@ fn analytics_backup_roundtrip_preserves_trace_and_is_idempotent() {
     let manifest = export(&source, Path::new("."), &path, sections).unwrap();
     assert_eq!(manifest.history, 1);
     assert_eq!(manifest.file_version, 4);
+    let (mut legacy, _) = read(&path).unwrap();
+    assert!(legacy.playback_events.is_empty());
+    assert!(!serde_json::to_value(&legacy)
+        .unwrap()
+        .as_object()
+        .unwrap()
+        .contains_key("playback_events"));
+    legacy.playback_events.push(BackupPlaybackEvent {
+        id: "event-1".into(),
+        listen_id: Some("listen-1".into()),
+        session_id: Some("session-1".into()),
+        occurred_at_ms: 1700000060123,
+        event_type: "listen_ended".into(),
+        source: "keyboard".into(),
+        reason: Some("manual_next".into()),
+        track_key: Some(0),
+        position_ms: Some(60000),
+        target_position_ms: None,
+        context_type: "album".into(),
+        context_id: Some("1".into()),
+        queue_index: Some(0),
+        play_order_index: Some(0),
+        queue_length: 3,
+        shuffle: false,
+        repeat_mode: "off".into(),
+    });
+    std::fs::write(&path, encode(&legacy).unwrap()).unwrap();
 
     let target = Connection::open_in_memory().unwrap();
     target.execute("PRAGMA foreign_keys = ON", []).unwrap();

@@ -1,11 +1,13 @@
 mod audio_engine;
 mod commands;
 mod db;
+mod diagnostics;
 mod discord;
 mod logging;
 mod loudness;
 mod online_commands;
 mod playback_commands;
+mod playback_observation;
 mod updates;
 mod window_icon;
 
@@ -46,6 +48,7 @@ struct AppStatus {
     audio_backend: &'static str,
     audio_output_mode: &'static str,
     audio_precision_bits: u8,
+    writer_health: db_writer::WriterHealth,
 }
 
 #[cfg(desktop)]
@@ -332,6 +335,7 @@ fn get_status(state: State<'_, AppState>, app: tauri::AppHandle) -> Result<AppSt
             "system default"
         },
         audio_precision_bits: 64,
+        writer_health: state.audio.writer_health(),
     })
 }
 
@@ -410,6 +414,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_media::init())
         .manage(updates::UpdateState::default())
+        .manage(diagnostics::Captures::default())
         .manage(library_scan::LibraryScan::default())
         .setup(|app| {
             let (conn, fresh_db) = db::init_db(app.handle()).map_err(|e| e.to_string())?;
@@ -592,6 +597,8 @@ pub fn run() {
             updates::install_update,
             get_status,
             logging::log_frontend,
+            diagnostics::capture_playback_diagnostics,
+            diagnostics::export_playback_diagnostics,
             enable_media_control_events,
             commands::pick_folder,
             commands::add_folder,

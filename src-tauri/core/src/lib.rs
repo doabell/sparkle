@@ -7,6 +7,7 @@ pub mod backup;
 pub mod cache;
 pub mod db;
 pub mod db_writer;
+pub mod diagnostics;
 pub mod http_client;
 pub mod library_scan;
 pub mod logging;

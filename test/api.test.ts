@@ -25,6 +25,77 @@ const image = (id) => ({
     mime_type: "image/jpeg",
 });
 
+test("playback failures retain command identity and stage without exposing payloads", async () => {
+    let firstId;
+    invoke.mockImplementation(async (command, payload) => {
+        firstId = payload.commandId;
+        expect(command).toBe("play_track");
+        throw {
+            command_id: payload.commandId,
+            command,
+            stage: "decode",
+            track_id: 7,
+            message: "Unsupported audio",
+        };
+    });
+    let failure;
+    try {
+        await api.playTrack(7);
+    } catch (error) {
+        failure = error;
+    }
+    expect(String(failure)).toBe("Error: Unsupported audio");
+    expect(api.describePlaybackError(failure)).toBe(
+        `command=play_track command_id=${firstId} stage=decode track_id=7 error=Unsupported audio`,
+    );
+    invoke.mockImplementation(async (_command, payload) => {
+        expect(payload.commandId).not.toBe(firstId);
+        throw "bridge unavailable";
+    });
+    await expect(api.pause()).rejects.toThrow("bridge unavailable");
+    invoke.mockRejectedValue({ secret: "never log this" });
+    await expect(api.play()).rejects.toThrow("Playback command failed.");
+    expect(api.describePlaybackError({ secret: "never log this" })).toBe(
+        "Unknown playback error",
+    );
+    expect(api.describePlaybackError("plain failure")).toBe("plain failure");
+    expect(api.describePlaybackError(Error("unrelated"))).toBe("unrelated");
+});
+
+test("diagnostic capture freezes the incident before choosing a destination", async () => {
+    const calls = [];
+    const capture = { id: "capture-1", incident_at_ms: 1700000000000 };
+    invoke.mockImplementation(async (command, payload) => {
+        calls.push([command, payload]);
+        return capture;
+    });
+    save.mockImplementation(async () => {
+        expect(calls.map(([command]) => command)).toEqual([
+            "capture_playback_diagnostics",
+        ]);
+        return "C:/chosen.json";
+    });
+    expect(await api.capturePlaybackDiagnostics()).toBe("C:/chosen.json");
+    expect(calls[1]).toEqual([
+        "export_playback_diagnostics",
+        { captureId: capture.id, path: "C:/chosen.json" },
+    ]);
+    expect(save.mock.lastCall[0].filters[0].extensions).toEqual(["json"]);
+    expect(save.mock.lastCall[0].defaultPath).not.toContain(":");
+
+    calls.length = 0;
+    save.mockResolvedValue(null);
+    expect(await api.capturePlaybackDiagnostics()).toBeNull();
+    expect(calls).toHaveLength(1);
+
+    save.mockResolvedValue("C:/chosen.json");
+    invoke.mockImplementation(async (command) => {
+        if (command === "export_playback_diagnostics") throw Error("disk full");
+        return capture;
+    });
+    await expect(api.capturePlaybackDiagnostics()).rejects.toThrow("disk full");
+});
+
 test("read-only bridge commands preserve native results", async () => {
     const result = { native: true };
     invoke.mockResolvedValue(result);

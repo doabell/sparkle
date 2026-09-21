@@ -171,7 +171,7 @@ struct BackupData {
     artist_bios: Vec<BackupArtistBio>,
     artwork: Vec<BackupArtwork>,
     listening_history: Vec<BackupHistory>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     playback_events: Vec<BackupPlaybackEvent>,
 }
 
@@ -278,26 +278,6 @@ struct ExportListenRow {
     repeat_mode: String,
 }
 
-struct ExportPlaybackEventRow {
-    id: String,
-    listen_id: Option<String>,
-    session_id: Option<String>,
-    occurred_at_ms: i64,
-    event_type: String,
-    source: String,
-    reason: Option<String>,
-    track_id: Option<i64>,
-    position_ms: Option<i64>,
-    target_position_ms: Option<i64>,
-    context_type: String,
-    context_id: Option<String>,
-    queue_index: Option<i64>,
-    play_order_index: Option<i64>,
-    queue_length: i64,
-    shuffle: bool,
-    repeat_mode: String,
-}
-
 pub fn export(
     conn: &Connection,
     cache_dir: &Path,
@@ -336,14 +316,14 @@ pub fn export(
     } else {
         (Vec::new(), Vec::new(), Vec::new())
     };
-    let (listening_history, playback_events) = if sections.history {
-        (
-            export_history(conn, &mut catalogue)?,
-            export_playback_events(conn, &mut catalogue)?,
-        )
+    let listening_history = if sections.history {
+        export_history(conn, &mut catalogue)?
     } else {
-        (Vec::new(), Vec::new())
+        Vec::new()
     };
+    // Diagnostic transitions expire independently and are exported through
+    // playback diagnostics. Continue accepting them in older v4 backups.
+    let playback_events = Vec::new();
 
     let data = BackupData {
         format: BACKUP_FORMAT.to_string(),
@@ -785,79 +765,6 @@ fn export_history(
                 start_source: row.start_source,
                 start_reason: row.start_reason,
                 end_reason: row.end_reason,
-                context_type: row.context_type,
-                context_id: row.context_id,
-                queue_index: row.queue_index,
-                play_order_index: row.play_order_index,
-                queue_length: row.queue_length,
-                shuffle: row.shuffle,
-                repeat_mode: row.repeat_mode,
-            })
-        })
-        .collect()
-}
-
-fn export_playback_events(
-    conn: &Connection,
-    catalogue: &mut TrackCatalogue,
-) -> Result<Vec<BackupPlaybackEvent>, String> {
-    let rows = {
-        let mut stmt = conn
-            .prepare(
-                "SELECT e.id, e.listen_id, e.session_id, e.occurred_at_ms, \
-                        e.event_type, e.source, e.reason, e.track_id, e.position_ms, \
-                        e.target_position_ms, e.context_type, e.context_id, \
-                        e.queue_index, e.play_order_index, e.queue_length, e.shuffle, e.repeat_mode \
-                 FROM playback_events e \
-                 LEFT JOIN listens l ON l.id = e.listen_id \
-                 WHERE e.listen_id IS NULL OR l.finalized = 1 \
-                 ORDER BY e.occurred_at_ms, e.id",
-            )
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map([], |row| {
-                Ok(ExportPlaybackEventRow {
-                    id: row.get(0)?,
-                    listen_id: row.get(1)?,
-                    session_id: row.get(2)?,
-                    occurred_at_ms: row.get(3)?,
-                    event_type: row.get(4)?,
-                    source: row.get(5)?,
-                    reason: row.get(6)?,
-                    track_id: row.get(7)?,
-                    position_ms: row.get(8)?,
-                    target_position_ms: row.get(9)?,
-                    context_type: row.get(10)?,
-                    context_id: row.get(11)?,
-                    queue_index: row.get(12)?,
-                    play_order_index: row.get(13)?,
-                    queue_length: row.get(14)?,
-                    shuffle: row.get::<_, i64>(15)? != 0,
-                    repeat_mode: row.get(16)?,
-                })
-            })
-            .map_err(|e| e.to_string())?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| e.to_string())?;
-        rows
-    };
-
-    rows.into_iter()
-        .map(|row| {
-            Ok(BackupPlaybackEvent {
-                id: row.id,
-                listen_id: row.listen_id,
-                session_id: row.session_id,
-                occurred_at_ms: row.occurred_at_ms,
-                event_type: row.event_type,
-                source: row.source,
-                reason: row.reason,
-                track_key: row
-                    .track_id
-                    .map(|track_id| catalogue.key_for(conn, track_id))
-                    .transpose()?,
-                position_ms: row.position_ms,
-                target_position_ms: row.target_position_ms,
                 context_type: row.context_type,
                 context_id: row.context_id,
                 queue_index: row.queue_index,
