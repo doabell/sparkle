@@ -1,6 +1,54 @@
 use super::*;
 
 #[test]
+fn playback_file_seeking_can_rewind_to_zero_after_reading() {
+    let root = crate::test_support::TestDir::new();
+    let path = root.audio("tone.flac");
+    let mut source = decode_playback_file(File::open(path).unwrap()).unwrap();
+    let duration_ms = source.total_duration().unwrap().as_millis() as i64;
+    for requested in [125, -100, 0, i64::MIN] {
+        let target = clamp_seek_position(requested, duration_ms);
+        source
+            .try_seek(Duration::from_millis(target as u64))
+            .unwrap_or_else(|error| panic!("seek {requested} -> {target} failed: {error:?}"));
+        assert!(source.by_ref().take(200).any(|sample| sample.abs() > 0.001));
+    }
+}
+
+#[test]
+fn playback_file_seeking_caps_the_end_before_eof() {
+    let root = crate::test_support::TestDir::new();
+    let path = root.audio("tone.flac");
+    let mut source = decode_playback_file(File::open(path).unwrap()).unwrap();
+    let duration_ms = source.total_duration().unwrap().as_millis() as i64;
+    for requested in [duration_ms, duration_ms + 1000, i64::MAX] {
+        let target = clamp_seek_position(requested, duration_ms);
+        source
+            .try_seek(Duration::from_millis(target as u64))
+            .unwrap_or_else(|error| panic!("seek {requested} -> {target} failed: {error:?}"));
+        assert_eq!(target, duration_ms - 1);
+        assert!(source.next().is_some());
+    }
+}
+
+#[test]
+fn seek_limits_use_decoded_duration_and_handle_short_or_unknown_tracks() {
+    let root = crate::test_support::TestDir::new();
+    let path = root.audio("tone.flac");
+    let source = decode_playback_file(File::open(path).unwrap()).unwrap();
+    let duration_ms = decoded_duration_ms(&source, 1000);
+    assert_eq!(duration_ms, 250);
+    assert_eq!(clamp_seek_position(1000, duration_ms), 249);
+    assert_eq!(clamp_seek_position(i64::MAX, 1), 0);
+    assert_eq!(clamp_seek_position(i64::MIN, 1), 0);
+    assert_eq!(clamp_seek_position(50, 0), 50);
+    assert_eq!(clamp_seek_position(-50, 0), 0);
+    let unknown = rodio::source::SineWave::new(440.0);
+    assert_eq!(decoded_duration_ms(&unknown, 1000), 1000);
+    assert_eq!(decoded_duration_ms(&unknown, -1), 0);
+}
+
+#[test]
 fn lyric_seek_caps_and_pauses_at_end_without_touching_a_new_track() {
     assert_eq!(
         lyric_seek_target(Some(1), 1, 180_000, 120_000),
@@ -193,7 +241,7 @@ fn a_failed_source_load_can_recover_without_opening_an_output_device() {
     }
     track.file_path = path.to_string_lossy().into_owned();
     player.set_volume(0.4);
-    assert!(load_source_into_player(&player, &track).is_ok());
+    assert_eq!(load_source_into_player(&player, &track).unwrap(), 250);
     assert_eq!(player.len(), 1);
     assert_eq!(player.volume(), 0.4);
     assert!(player.is_paused());
@@ -234,7 +282,12 @@ fn a_reload_that_cannot_seek_reports_failure_and_keeps_a_paused_player_paused() 
     assert_eq!(player.volume(), 0.4);
     let (recovered, _samples) = Player::new();
     recovered.pause();
-    assert!(reload_source_at_position(&recovered, &track, 0.6, 0, |_, _| Ok(())).is_ok());
+    assert!(
+        reload_source_at_position(&recovered, &track, 0.6, 0, |_, _| {
+            panic!("a fresh source must not need a decoder seek to reach zero")
+        })
+        .is_ok()
+    );
     assert!(recovered.is_paused());
     assert_eq!(recovered.volume(), 0.6);
 }

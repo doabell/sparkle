@@ -14,7 +14,7 @@ use crate::playback_observation::{
 };
 use crate::providers::lyrics;
 use crate::settings::{load_album_art_sources, load_session, SessionSnapshot};
-use rodio::{Decoder, DeviceSinkBuilder, Float, MixerDeviceSink, Player};
+use rodio::{Decoder, DeviceSinkBuilder, Float, MixerDeviceSink, Player, Source};
 use serde::Serialize;
 use std::fs::File;
 use std::io::BufReader;
@@ -1251,9 +1251,10 @@ fn restore_session(
     }
 
     if snapshot.position_ms > 0 {
+        let target_ms = clamp_seek_position(snapshot.position_ms, lock_state(state).duration_ms);
         let position_ms = if let Some(player) = player {
-            match seek_player(player, state, snapshot.position_ms) {
-                Ok(()) => snapshot.position_ms,
+            match seek_player(player, state, target_ms) {
+                Ok(()) => target_ms,
                 Err(error) => {
                     log::warn!(target: "sparkle::playback", "event=session_seek_restore_failed stage={} error={error}", error.stage);
                     lock_state(state).observation.last_failure = Some(error);
@@ -1261,7 +1262,7 @@ fn restore_session(
                 }
             }
         } else {
-            snapshot.position_ms
+            target_ms
         };
         let mut s = lock_state(state);
         s.position_ms = position_ms;
@@ -1279,15 +1280,32 @@ fn restore_session(
     emit_state_changed(app_handle, state);
 }
 
-fn load_source_into_player(player: &Player, track: &Track) -> Result<(), PlaybackFailure> {
+fn decode_playback_file(
+    file: File,
+) -> Result<Decoder<BufReader<File>>, rodio::decoder::DecoderError> {
+    // The File conversion supplies byte length and enables random access. The
+    // generic BufReader constructor defaults to an unseekable stream.
+    Decoder::try_from(file)
+}
+
+fn decoded_duration_ms(source: &impl Source, fallback_ms: i64) -> i64 {
+    source
+        .total_duration()
+        .map(|duration| duration.as_millis().min(i64::MAX as u128) as i64)
+        .filter(|duration_ms| *duration_ms > 0)
+        .unwrap_or(fallback_ms.max(0))
+}
+
+fn load_source_into_player(player: &Player, track: &Track) -> Result<i64, PlaybackFailure> {
     let file = File::open(&track.file_path)
         .map_err(|error| PlaybackFailure::new("file_open", Some(track.id), error))?;
-    let decoded_source = Decoder::new(BufReader::new(file))
+    let decoded_source = decode_playback_file(file)
         .map_err(|error| PlaybackFailure::new("decode", Some(track.id), error))?;
+    let duration_ms = decoded_duration_ms(&decoded_source, track.duration_ms.unwrap_or(0));
     player.stop();
     player.clear();
     player.append(decoded_source);
-    Ok(())
+    Ok(duration_ms)
 }
 
 fn reload_current_for_device(
@@ -1352,21 +1370,26 @@ fn reload_current_for_device_inner(
     };
 
     player.pause();
-    if let Err(error) = timed_stage(state, "recovery_source", Some(track.id), || {
+    let duration_ms = match timed_stage(state, "recovery_source", Some(track.id), || {
         load_source_into_player(player, &track)
     }) {
-        log::error!(target: "sparkle::audio", "event=output_restore_failed stage={} track_id={} error={error}", error.stage, track.id);
-        player.stop();
-        player.clear();
-        update_state_for_stop(
-            state,
-            writer,
-            ListenEndReason::PlaybackError,
-            PlaybackSource::Internal,
-        );
-        emit_state_changed(app_handle, state);
-        return Err(error);
-    }
+        Ok(duration_ms) => duration_ms,
+        Err(error) => {
+            log::error!(target: "sparkle::audio", "event=output_restore_failed stage={} track_id={} error={error}", error.stage, track.id);
+            player.stop();
+            player.clear();
+            update_state_for_stop(
+                state,
+                writer,
+                ListenEndReason::PlaybackError,
+                PlaybackSource::Internal,
+            );
+            emit_state_changed(app_handle, state);
+            return Err(error);
+        }
+    };
+    lock_state(state).duration_ms = duration_ms;
+    let position_ms = clamp_seek_position(position_ms, duration_ms);
 
     apply_player_volume(player, state);
 
@@ -1396,6 +1419,7 @@ fn reload_current_for_device_inner(
 
     {
         let mut s = lock_state(state);
+        s.position_ms = position_ms;
         s.seek_target = Some((position_ms, Instant::now()));
         s.play_when_device_ready = false;
         s.is_playing = was_playing;
@@ -2176,11 +2200,7 @@ fn handle_command(
             if track_id.is_none() {
                 return Ok(CommandFlow::Continue(CommandOutcome::Noop));
             }
-            let position_ms = if duration_ms > 0 {
-                position_ms.clamp(0, duration_ms)
-            } else {
-                position_ms.max(0)
-            };
+            let position_ms = clamp_seek_position(position_ms, duration_ms);
             if let Some(player) = player {
                 if let Err(error) = timed_stage(state, "seek", track_id, || {
                     seek_player(player, state, position_ms)
@@ -2571,6 +2591,16 @@ fn handle_command(
     Ok(CommandFlow::Continue(outcome))
 }
 
+fn clamp_seek_position(position_ms: i64, duration_ms: i64) -> i64 {
+    if duration_ms > 0 {
+        // EOF has no audio frame to seek to. Stay inside the stream at the
+        // millisecond precision used by playback state and command replies.
+        position_ms.clamp(0, duration_ms - 1)
+    } else {
+        position_ms.max(0)
+    }
+}
+
 fn seek_player(
     player: &Player,
     state: &Arc<Mutex<SharedState>>,
@@ -2581,7 +2611,7 @@ fn seek_player(
     let result = match player.try_seek(Duration::from_millis(position_ms.max(0) as u64)) {
         Ok(()) => Ok(()),
         Err(error) => {
-            log::debug!(target: "sparkle::audio", "event=seek_fallback_started target_position_ms={position_ms} error={error}");
+            log::debug!(target: "sparkle::audio", "event=seek_fallback_started target_position_ms={position_ms} error={error:?}");
             let (track, gain) = {
                 let s = lock_state(state);
                 (
@@ -2592,7 +2622,9 @@ fn seek_player(
             let track =
                 track.ok_or_else(|| PlaybackFailure::new("seek", None, "No track is loaded."))?;
             reload_source_at_position(player, &track, gain, position_ms, |player, position| {
-                player.try_seek(position).map_err(|error| error.to_string())
+                player
+                    .try_seek(position)
+                    .map_err(|error| format!("{error:?}"))
             })
         }
     };
@@ -2965,9 +2997,11 @@ fn load_track_at_index_with_autoplay(
             .map_err(|error| PlaybackFailure::new("file_open", Some(track.id), error))
     })?;
     let decoded_source = timed_stage(state, "decode", Some(track.id), || {
-        Decoder::new(BufReader::new(file))
+        decode_playback_file(file)
             .map_err(|error| PlaybackFailure::new("decode", Some(track.id), error))
     })?;
+    lock_state(state).duration_ms =
+        decoded_duration_ms(&decoded_source, track.duration_ms.unwrap_or(0));
 
     // Pause before swapping the source. A fresh or currently-playing rodio
     // Player would otherwise start the appended source immediately, producing
@@ -3008,7 +3042,7 @@ fn reload_source_at_position(
 ) -> Result<(), PlaybackFailure> {
     let file = File::open(&track.file_path)
         .map_err(|error| PlaybackFailure::new("seek_reopen", Some(track.id), error))?;
-    let source = Decoder::new(BufReader::new(file))
+    let source = decode_playback_file(file)
         .map_err(|error| PlaybackFailure::new("seek_decode", Some(track.id), error))?;
 
     // Keep a paused player paused across the reload so no audio blips out.
@@ -3023,8 +3057,14 @@ fn reload_source_at_position(
     }
 
     let pos = Duration::from_millis(position_ms.max(0) as u64);
-    let result = seek(player, pos)
-        .map_err(|error| PlaybackFailure::new("seek_after_reload", Some(track.id), error));
+    // A newly opened decoder is already at zero; asking it to seek there again
+    // can repeat a format-specific failure that caused this reload.
+    let result = if pos.is_zero() {
+        Ok(())
+    } else {
+        seek(player, pos)
+            .map_err(|error| PlaybackFailure::new("seek_after_reload", Some(track.id), error))
+    };
 
     player.set_volume(gain);
 

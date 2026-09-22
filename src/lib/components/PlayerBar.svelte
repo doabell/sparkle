@@ -244,6 +244,7 @@
     let dragProgressPercent = $state(0);
     let pendingSeekMs = $state<number | null>(null);
     let pendingSeekTrackId = $state<number | null>(null);
+    let progressSeekRequest = 0;
 
     let progressPercent = $derived.by(() => {
         if (isDraggingProgress) {
@@ -298,6 +299,7 @@
 
     function handleProgressMouseDown(e: MouseEvent) {
         if (!progressBar || $playback.duration_ms <= 0) return;
+        progressSeekRequest += 1;
         isDraggingProgress = true;
         pendingSeekMs = null;
         const fraction = getBarFraction(progressBar, e.clientX);
@@ -311,7 +313,7 @@
         dragProgressPercent = fraction * 100;
     }
 
-    function handleProgressMouseUp() {
+    async function handleProgressMouseUp() {
         if (!isDraggingProgress) return;
         isDraggingProgress = false;
         if (!progressBar || $playback.duration_ms <= 0) return;
@@ -319,7 +321,14 @@
         const targetMs = Math.round(fraction * $playback.duration_ms);
         pendingSeekMs = targetMs;
         pendingSeekTrackId = $playback.current_track?.id ?? null;
-        seek(targetMs);
+        const request = ++progressSeekRequest;
+        try {
+            await seek(targetMs);
+        } catch {
+            // The playback store reports the failure and keeps the native state.
+        } finally {
+            if (request === progressSeekRequest) pendingSeekMs = null;
+        }
     }
 
     let volumePercent = $derived(volumeInput * 100);

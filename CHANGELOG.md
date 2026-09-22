@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fix seeks at both ends of the progress bar by enabling random access for audio files and keeping targets inside the decoded duration.
 - Define typed playback event payloads, command-linked failures, accurate queue/output transitions, and crash-recovery listen endings.
 - Prevent delayed playback events and command replies from rewinding seeks or overwriting newer state.
 - Report playback command outcomes and failures with correlation IDs, loading timings, and device recovery diagnostics.
