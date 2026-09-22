@@ -1,34 +1,77 @@
-# Windows releases
+# Windows builds and releases
 
-Sparkle uses Velopack 1.2.0 for its Windows x64 setup and in-app updates. Keep the Rust SDK in `src-tauri/Cargo.toml` and CLI in `.config/dotnet-tools.json` on the same version. The app ID is `com.doabell.sparkle`, and the feed channel is `win-x64`. Changing these breaks the installed app's update path.
+Sparkle targets Windows x64 with Velopack 1.2.0. Keep the Rust SDK in
+`src-tauri/Cargo.toml` and CLI in `.config/dotnet-tools.json` aligned. Installed
+updates use app ID `com.doabell.sparkle` and feed channel `win-x64`.
 
-## Build and release
+## Release
 
-1. Update the version in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`, refresh `Cargo.lock`, and add the matching changelog section.
-2. If dependencies change, run `cargo install cargo-about --version 0.8.4 --locked`, then `bun run licenses:generate`. Review and commit `licenses/dependencies.json`. This collects Windows runtime crates and packages actually included in the frontend build, retaining full texts and notices. `licenses/about.toml` records accepted licenses. Generation fails for missing/unaccepted licenses or a generic MIT fallback without an upstream copyright/license file. `licenses/upstream.json` records version-specific source files omitted from published crates; update those snapshots from the corresponding upstream revision when necessary. `CARGO_ABOUT` can point to a local cargo-about executable.
-3. On Windows x64 with Bun, Rust/Tauri prerequisites, and .NET SDK 8, run `dotnet tool restore`, then `bun run package:windows`. Packages appear in `.tmp/releases`. Use a fresh output directory for each release. `VPK` can point to a local vpk executable.
-4. Merge the PR and let main CI finish, then tag that commit as `vX.Y.Z` and push the tag. GitHub Actions reuses the verified package from that exact commit when available and creates a draft release with setup, full `.nupkg`, and the channel feed. Review the release and publish the draft to make it discoverable. Do not rename assets or publish just the setup: installed apps need the feed and package too. Drafts and prereleases are excluded from the stable updater.
+1. Update `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`,
+   `Cargo.lock`, and the matching `CHANGELOG.md` section. Run `bun run version:check`.
+2. For dependency changes, install `cargo-about` 0.8.4 with `--locked`, run
+   `bun run licenses:generate`, and commit the reviewed `licenses/dependencies.json`.
+   `licenses/about.toml` lists accepted licenses; `licenses/upstream.json` supplies
+   version-specific license files missing from published crates.
+3. To test packaging locally, install the Tauri prerequisites and .NET SDK 8,
+   run `dotnet tool restore`, then `bun run package:windows`. Use a fresh
+   `.tmp/releases` output directory. `VPK` and `CARGO_ABOUT` can select local tools.
+   `VPK` also accepts the pinned CLI's DLL when using an installed .NET runtime.
+   Add `--test` to compile the app and both workspace library test suites together,
+   then run the desktop and core tests before creating the installer.
+4. Merge and wait for main CI, then tag that commit `vX.Y.Z` and push the tag.
+   Actions creates a draft release. Review and publish its setup, full `.nupkg`,
+   and channel feed together, preserving asset names. Stable updates exclude
+   drafts and prereleases.
 
-The setup creates only a Start menu shortcut. WebView2 is bootstrapped when missing. Packages contain the app, required DLLs, `LICENSE`, `THIRD_PARTY_NOTICES.md`, and offline dependency license texts. Main and tag workflows verify feed metadata/checksums, shortcut metadata, and packaged notice contents. Release builds use ThinLTO from `.cargo/config.toml` and disable Tauri's MSI bundler. LTO does not apply to dev/test or coverage builds. The desktop executable links an `rlib`; unused mobile `staticlib` and `cdylib` outputs are not produced.
+Packages include the app, required DLLs, license notices, and offline dependency
+license texts. Setup creates a Start menu shortcut and installs WebView2 if
+needed. Workflows verify feed checksums, shortcut metadata, and packaged notices.
 
-Frontend builds stage their output and preserve unchanged files in `build/`, allowing Cargo to reuse the native executable when the embedded assets have not changed. SvelteKit uses the app version rather than a build timestamp. Asset additions, changes, and deletions still trigger native rebuilding. See [local build measurements](build-performance.md) for timings and cache warm-up limits.
+`bun run build` reuses the frontend when source, configuration, environment,
+installed dependencies, generated assets, and the bundled-license report match
+the last successful build. Use `bun run build --force` to rebuild it explicitly.
+Release builds and Velopack packages disable LTO. The audio processing crates
+use one code generation unit to preserve decoding and Sound Check throughput.
 
-CI keeps the `verify` job on every pull request and push to `main`, checking formatting and version consistency even for documentation-only changes. `scripts/ci-changes.mjs` selects the remaining work from the PR base or that workflow's last successful main push. Comparing against a successful run preserves unfinished checks after failures or cancellations. Documentation-only changes skip compilation. Frontend changes run frontend checks and tests but skip Rust tests; native changes run Rust tests. Changes to shared fixtures run both test suites. Unknown paths, scripts, workflows, and shared dependency/configuration inputs run all checks. Missing comparison history, an unavailable baseline, or rewritten history also runs all checks. Deleted paths and both sides of renames participate in selection.
+## CI and artifact reuse
 
-On `main`, changes to the application, embedded frontend, release notes, or packaged licenses also build and verify the Windows installer. Frontend changes still require native packaging because the executable embeds the frontend. With no outstanding changes from earlier pushes, changes confined to `test/` or documentation skip installer packaging. The `sparkle-windows-x64` artifact is retained for 30 days. Coverage runs separately on `main` with the same path selection and a separate instrumented cache.
+- Every PR and main push checks formatting and version consistency.
+  `scripts/ci-changes.mjs` selects other checks against the PR base or the
+  workflow's last successful main push, retaining work from failed/canceled runs.
+- Frontend changes run frontend checks; native changes run Rust tests. Shared
+  fixtures run both. Docs-only changes skip compilation. Unknown paths, shared
+  configuration, scripts, workflows, or missing history select all checks.
+- Main builds the installer for changes to app code, embedded frontend, release
+  notes, or packaged licenses. Test-only and docs-only changes skip packaging
+  when no earlier work is outstanding. Packaging builds the frontend once;
+  standalone native unit tests and coverage do not require frontend assets.
+  `sparkle-windows-x64` artifacts last 30 days, and `rust-build-timings` reports
+  last 14 days.
+- Tags reuse only a successful main CI artifact from the exact tagged commit in
+  this repository, then verify it against the tagged source. Missing or expired
+  artifacts trigger a source build; invalid packages fail verification.
+- Main packaging uses `--test` when native tests are required, running both the
+  desktop and core suites, including a check of embedded frontend assets. PRs
+  and test-only changes use the dev profile and test the full workspace.
+  Release, dev, and coverage caches are separate and save after successful runs.
+- CI and releases reuse an installed .NET SDK 8, installing it only when missing.
+  Coverage downloads the pinned, checksum-verified `cargo-llvm-cov` Windows binary
+  when its tool cache is empty.
 
-Release tags look for an unexpired artifact from a successful `ci.yml` push run on `main` in this repository whose commit SHA exactly matches the tag. They never reuse packages by version alone or from PR runs. A reused package is verified again against the tagged source before creating the draft, and skips Rust setup, dependency installation, and compilation. If CI has not finished or the artifact is missing, expired, or unavailable, the release workflow builds and verifies from source. An invalid downloaded package fails verification instead of being published. Waiting for main CI before pushing the tag avoids the fallback rebuild.
+## Upgrade smoke test
 
-The shared Rust cache covers dependency artifacts throughout `src-tauri/target`, including test dependencies and Windows x64 release dependencies used by `package:windows`. Successful PR runs save updated test caches for that PR; successful main runs also cache release dependencies and provide the baseline available to future PRs and release tags. Caches are saved only after the run succeeds. The release workflow uses the same shared cache key. Cargo manifests/lockfiles/configuration, installed Rust toolchains, and build-environment changes participate in cache keys; compatible older dependency caches can still be restored on a lockfile or configuration change, and Cargo rebuilds the affected crates. Coverage keeps its separate cache. Cache hits still run the checks scheduled for that event.
+Use a disposable Windows user or VM, a small test library, and two consecutive
+release versions.
 
-## Manual upgrade smoke test
+1. Install the older version. Check the Start menu shortcut, absence of a desktop
+   shortcut, and library playback.
+2. In **Settings → About**, check for updates, download, then restart to install.
+   Each stage requires its own click. An ordinary restart before installation
+   keeps the older version and pending update.
+3. Confirm the new version preserves the library/settings and reports up to date.
+   Check offline failure, interrupted-download retry, and concurrent-action blocking.
+4. For MSI migration, close and uninstall the MSI before running setup. Confirm
+   library/settings survive. Unpackaged builds should link to GitHub Releases.
 
-Use a disposable Windows user or VM with two consecutive release versions; do not use a real music library for installer testing.
-
-1. Install the older setup. Confirm the Start menu entry exists and no desktop shortcut was created. Open Sparkle and add a small test library.
-2. Open Settings → About. Confirm no check/download begins automatically. Check for updates and confirm only the newer version is offered; the app keeps running and no package downloads until Download update is clicked.
-3. Download the update. Close and reopen Sparkle normally: the older version must still run and Settings must offer Restart to install. Click it and confirm the new version launches with library/settings preserved.
-4. Check again: the app should report up to date. Disconnect the network and check again: it should show an error. Interrupt a download and verify that retry succeeds. Check that only one update action can run at a time.
-5. Test migration separately: close an old MSI install, uninstall it, and install the Velopack setup. Its library/settings should remain available in the unchanged app-data directory. Unpackaged/debug builds should link to GitHub Releases instead of attempting an in-app update.
-
-For feed testing before a stable release, use a fork and change the repository constant in `src-tauri/src/updates.rs` in test builds. Never publish a fake higher version to the production repository: update clients compare semantic versions. The automated Rust tests cover action sequencing, retries, concurrent requests, and release validation without contacting GitHub or exiting the test process.
+For feed testing, use a fork and the repository constant in
+`src-tauri/src/updates.rs`. Do not publish test versions to the production feed.

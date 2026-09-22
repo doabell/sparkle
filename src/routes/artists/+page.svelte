@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { logger } from "$lib/logger";
     import { getArtists, getTracksByArtist, type Artist } from "$lib/api";
     import { plural } from "$lib/utils/text";
     import { loadQueue } from "$lib/stores/playback";
@@ -139,7 +140,7 @@
                 );
             }
         } catch (e) {
-            console.error("Failed to play artist:", e);
+            void logger.error("artists", "failed_to_play_artist", e);
         }
     }
 </script>

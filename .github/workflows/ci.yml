@@ -35,18 +35,6 @@ jobs:
                   CI_WORKFLOW_FILE: ci.yml
               run: bun scripts/ci-changes.mjs
 
-            - name: Set up Rust and cache test and release builds
-              if: steps.changes.outputs.rust == 'true' || (github.event_name == 'push' && steps.changes.outputs.package == 'true')
-              uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
-              with:
-                  # Includes debug/test and x86_64-pc-windows-msvc/release artifacts.
-                  cache-workspaces: ./src-tauri -> target
-                  # Preserve existing verify caches; main warms the baseline for PRs and tags.
-                  cache-shared-key: verify
-                  # Main saves test and release dependencies; PRs save test dependencies.
-                  cache-on-failure: false
-                  rustflags: ""
-
             - name: Install Bun dependencies
               run: bun install --frozen-lockfile
 
@@ -56,10 +44,6 @@ jobs:
             - name: Check formatting
               run: bunx --no-install prettier --check .
 
-            - name: Check Rust formatting
-              if: steps.changes.outputs.rust == 'true'
-              run: cargo fmt --check --manifest-path src-tauri/Cargo.toml
-
             - name: Check Svelte and TypeScript
               if: steps.changes.outputs.frontend == 'true'
               run: bun run check
@@ -68,20 +52,48 @@ jobs:
               if: steps.changes.outputs.frontend == 'true'
               run: bun run test
 
+            # Main packaging builds and validates the frontend once inside package:windows.
             - name: Build frontend
-              if: steps.changes.outputs.frontend == 'true' || steps.changes.outputs.rust == 'true' || steps.changes.outputs.package == 'true'
+              id: frontend
+              if: steps.changes.outputs.frontend == 'true' && (github.event_name != 'push' || steps.changes.outputs.package != 'true')
               run: bun run build
 
             - name: Check dependency licenses
               if: steps.changes.outputs.frontend == 'true' || steps.changes.outputs.rust == 'true' || steps.changes.outputs.package == 'true'
-              run: bun run licenses:check --built
+              run: bun run licenses:check ${{ steps.frontend.outcome == 'success' && '--built' || '' }}
+
+            - name: Set up Rust and cache builds
+              if: steps.changes.outputs.rust == 'true' || (github.event_name == 'push' && steps.changes.outputs.package == 'true')
+              uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+              with:
+                  cache-workspaces: ./src-tauri -> target
+                  # Keep packaged release builds separate from PR/dev test artifacts.
+                  cache-shared-key: ${{ github.event_name == 'push' && steps.changes.outputs.package == 'true' && 'release' || 'verify' }}
+                  cache-on-failure: false
+                  rustflags: ""
+
+            - name: Check Rust formatting
+              if: steps.changes.outputs.rust == 'true'
+              run: cargo fmt --check --manifest-path src-tauri/Cargo.toml
 
             - name: Run Rust tests
-              if: steps.changes.outputs.rust == 'true'
-              run: cargo test --lib --locked --manifest-path src-tauri/Cargo.toml
+              if: steps.changes.outputs.rust == 'true' && (github.event_name != 'push' || steps.changes.outputs.package != 'true')
+              # Main packaging compiles the app and both library test suites below.
+              run: cargo test --workspace --lib --locked --manifest-path src-tauri/Cargo.toml --timings
 
-            - name: Set up .NET for Velopack
+            - name: Find installed .NET SDK
               if: github.event_name == 'push' && steps.changes.outputs.package == 'true'
+              id: dotnet
+              shell: pwsh
+              run: |
+                  $installed = $false
+                  if (Get-Command dotnet -ErrorAction SilentlyContinue) {
+                      $installed = [bool](dotnet --list-sdks | Where-Object { $_ -match '^8\.' })
+                  }
+                  "installed=$($installed.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+            - name: Install missing .NET SDK
+              if: github.event_name == 'push' && steps.changes.outputs.package == 'true' && steps.dotnet.outputs.installed != 'true'
               uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
               with:
                   dotnet-version: 8.0.x
@@ -92,7 +104,7 @@ jobs:
 
             - name: Build and verify Windows setup and update feed
               if: github.event_name == 'push' && steps.changes.outputs.package == 'true'
-              run: bun run package:windows
+              run: bun run package:windows ${{ steps.changes.outputs.rust == 'true' && '--test' || '' }}
 
             - name: Upload Windows packages for testing
               if: github.event_name == 'push' && steps.changes.outputs.package == 'true'
@@ -102,3 +114,12 @@ jobs:
                   path: .tmp/releases/*
                   if-no-files-found: error
                   retention-days: 30
+
+            - name: Upload Rust build timings
+              if: always() && (steps.changes.outputs.rust == 'true' || (github.event_name == 'push' && steps.changes.outputs.package == 'true'))
+              uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+              with:
+                  name: rust-build-timings
+                  path: src-tauri/target/cargo-timings/*.html
+                  if-no-files-found: ignore
+                  retention-days: 14

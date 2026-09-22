@@ -4,7 +4,8 @@ use std::sync::{Arc, Mutex};
 
 #[cfg(target_os = "windows")]
 use windows::{
-    Foundation::{EventRegistrationToken, TypedEventHandler},
+    core::Ref,
+    Foundation::TypedEventHandler,
     Media::{
         Control::{
             GlobalSystemMediaTransportControlsSession,
@@ -25,7 +26,7 @@ pub struct WindowsMediaController {
     media_player: Option<MediaPlayer>,
     controls: Option<SystemMediaTransportControls>,
     #[cfg(target_os = "windows")]
-    button_handler_token: Option<EventRegistrationToken>,
+    button_handler_token: Option<i64>,
     event_handler: Option<Arc<Mutex<Box<dyn Fn(MediaControlEvent) + Send>>>>,
     metadata: Option<MediaMetadata>,
     playback_info: Option<PlaybackInfo>,
@@ -100,7 +101,7 @@ impl WindowsMediaController {
                 // command manager enabled makes it compete with that handler.
                 let command_manager = player.CommandManager()?;
                 command_manager.SetIsEnabled(false)?;
-                log::info!(
+                log::debug!(
                     target: "sparkle::media::smtc",
                     "event=manual_mode_enabled command_manager=disabled"
                 );
@@ -126,8 +127,8 @@ impl WindowsMediaController {
             // Play button
             let play_handler = handler.clone();
             let token = controls.ButtonPressed(&TypedEventHandler::new(
-                move |_, args: &Option<SystemMediaTransportControlsButtonPressedEventArgs>| {
-                    if let Some(args) = args {
+                move |_, args: Ref<'_, SystemMediaTransportControlsButtonPressedEventArgs>| {
+                    if let Some(args) = args.as_ref() {
                         let button = args.Button()?;
                         let event = match button {
                             SystemMediaTransportControlsButton::Play => MediaControlEvent {
@@ -176,7 +177,7 @@ impl WindowsMediaController {
                 },
             ))?;
             self.button_handler_token = Some(token);
-            log::info!(
+            log::debug!(
                 target: "sparkle::media::smtc",
                 "event=button_handler_registered"
             );
@@ -216,7 +217,7 @@ impl super::MediaController for WindowsMediaController {
             controls.SetIsStopEnabled(true)?;
 
             self.setup_button_handlers()?;
-            log::info!(
+            log::debug!(
                 target: "sparkle::media::smtc",
                 "event=session_initialized play=true pause=true next=true previous=true stop=true"
             );
@@ -293,7 +294,7 @@ impl super::MediaController for WindowsMediaController {
                 PlaybackStatus::Stopped => MediaPlaybackStatus::Stopped,
             };
             controls.SetPlaybackStatus(status)?;
-            log::debug!(
+            log::trace!(
                 target: "sparkle::media::smtc",
                 "event=playback_info_applied status={:?} position_seconds={:.3}",
                 info.status,
@@ -345,7 +346,7 @@ impl super::MediaController for WindowsMediaController {
                 PlaybackStatus::Stopped => MediaPlaybackStatus::Stopped,
             };
             controls.SetPlaybackStatus(media_status)?;
-            log::debug!(
+            log::trace!(
                 target: "sparkle::media::smtc",
                 "event=playback_status_applied status={status:?}"
             );
@@ -416,7 +417,7 @@ impl super::MediaController for WindowsMediaController {
 
     fn set_event_handler(&mut self, handler: Box<dyn Fn(MediaControlEvent) + Send>) {
         self.event_handler = Some(Arc::new(Mutex::new(handler)));
-        log::info!(
+        log::debug!(
             target: "sparkle::media::smtc",
             "event=button_handler_registration_requested"
         );

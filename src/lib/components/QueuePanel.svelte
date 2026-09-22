@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { logger } from "$lib/logger";
     import { getQueue, type QueueView, type Track } from "$lib/api";
     import { playQueueIndex } from "$lib/stores/playback";
     import { formatTime } from "$lib/utils/formatTime";
@@ -46,7 +47,7 @@
                 currentRowRef?.scrollIntoView({ block: "center" });
             }
         } catch (e) {
-            console.error("Failed to load queue:", e);
+            void logger.error("queue", "failed_to_load_queue", e);
         }
     }
 

@@ -1,203 +1,94 @@
-# Sparkle interface language
+# Interface language
 
-This document is the contract for Sparkle's interface. It describes the roles
-behind the CSS tokens in `src/app.css`; individual pages should consume those
-roles instead of inventing nearby colors, shapes, or motion.
+Use the semantic tokens in `src/app.css` and shared components. Sparkle uses
+large artwork, clear type, rounded controls, and quiet navigation. Album art is
+square; artist imagery is circular.
 
-## Character
+## Interaction and controls
 
-Sparkle takes its cues from Apple Music: generous artwork, rounded controls,
-clear type, and quiet navigation. Album art stays square and artist imagery
-stays circular unless the source itself calls for another crop. Chrome supports
-the music rather than competing with it.
+- Rows, cards, and contained controls change background across their full hit
+  area using `--interactive-hover` and `--interactive-active`. Text and icon
+  links change color. Feedback is immediate; borders describe structure.
+- Prominent actions and interactive artwork may scale with
+  `--motion-hover-scale` and `--motion-press-scale`. Metadata and passive surfaces
+  stay still. Avoid lifting, bouncing, and decorative hover glows.
+- Standard controls use `--control-height` and pill-shaped `--control-radius`;
+  compact controls use `--control-height-sm`. Inputs and navigation rows use
+  smaller surface radii.
+- Use `.segmented-control` for mutually exclusive choices and `.control-cluster`
+  for related adjustments. Each group has one quiet fill without nested borders.
+- Layered rows have one full-row hit target, with independent actions above it.
+  Clickable areas must look clickable.
 
-## Interaction grammar
+Search uses `SearchField`, `SearchFeedback`, and shared `search-dialog` styles.
+Keep headings and actions visible while results scroll. Lyrics search is 28rem,
+artist editing 32rem, and the LRC editor 44rem, bounded by the viewport. Empty,
+failed, and partial results have distinct states with expandable provider details.
 
-Use one primary response for each interaction:
+## Surfaces and color
 
-- Rows, cards, and contained controls use an instant, clearly visible background
-  change over their full hit area. Their position stays fixed on hover.
-  `--interactive-hover` uses the same solid elevated surface as the Songs list;
-  controls already on that surface use the raised `--interactive-active` fill.
-  Avoid faint transparent white overlays for neutral interaction feedback.
-- Text and icon links use a color change. App navigation and metadata links do
-  not underline.
-- Prominent contained actions and interactive artwork may gradually scale to
-  `--motion-hover-scale`; pressed actions scale to `--motion-press-scale`.
-  Metadata text does not scale on hover. Do not lift or bounce controls.
-- Borders describe structure. They do not brighten on hover. Focus outlines,
-  validation borders, and selection indicators are semantic exceptions.
-- Non-interactive surfaces do not lift, glow, or otherwise react to the mouse.
+Use spacing, headings, and row dividers before adding containers. Reserve filled
+surfaces for artwork, inputs, previews, and selected options. Settings uses open
+sections separated by a single rule.
 
-An element must look clickable everywhere it is clickable. Layered rows use one
-full-row link, with any independent action raised above that hit target.
+Appearance supports System (default), Light, and Dark, with a validated preference
+restored before first paint. Light mode uses a white canvas, neutral surfaces,
+solid gray hover fills, and small shadows. Artwork backdrops stay at or below
+6% opacity over white. The light player bar is opaque with a thin divider.
+Dark mode uses its own surfaces, translucency, and shadows.
 
-## Controls and shape
+The accent is a seed. Use its semantic roles:
 
-- Standard actions are `--control-height` with pill-shaped `--control-radius`.
-- Compact controls are `--control-height-sm`.
-- Circles are reserved for avatars, artist imagery, artwork-level play buttons,
-  and icon-only controls where the icon is the visual object.
-- Related mutually exclusive actions use `.segmented-control`.
-- Related adjustment actions use `.control-cluster`.
-- Segments and adjustment buttons share the pill radius inside a single quiet
-  fill. Do not outline both the group and its individual controls.
-- The lyrics source action and timing controls share `.control-cluster` for
-  identical height, fill, type, radius, and interaction states. Headers and
-  controls use the UI font; the lyrics font applies only to lyric content.
-- Primary filled actions use the accent fill roles. Secondary actions use the
-  neutral interactive backgrounds.
-- Text inputs, artwork previews, and navigation rows use the smaller surface
-  radii. Rounded controls do not require every surface to become a pill.
-- Lyrics and artist search use the shared `SearchField` and `SearchFeedback`
-  components. Search uses the standard text input and secondary button in one
-  aligned row, at the same control height as dialog actions and source selectors.
-  The search button uses background feedback without movement. Empty results, provider failures, and partial
-  results have distinct inline states; provider details expand on demand.
-- Search dialogs use the shared `search-dialog` styles. Lyrics search is
-  28rem wide and artist editing is 32rem, bounded by the viewport. The separate
-  LRC editor is 44rem. Keep the heading and actions visible while the body
-  scrolls. Source and online search stay together, separated by one rule.
-- Lyrics results open a full text preview before Use Lyrics commits the
-  selection. Artist image results use circular previews with provider names
-  underneath; choosing one opens a crop view with Back and Use Image. Image
-  and Biography use the existing segmented control and save independently.
+| Role                      | Token                                           |
+| ------------------------- | ----------------------------------------------- |
+| Text                      | `--color-accent-content`                        |
+| Icons and indicators      | `--color-accent-graphic`                        |
+| Filled actions            | `--color-accent-fill` and hover/active variants |
+| Text/icons on accent fill | `--color-on-accent-fill`                        |
+| Selection                 | `--color-accent-subtle`                         |
+| Keyboard focus            | `--color-accent-focus`                          |
 
-## Surface hierarchy
+Avoid hard-coded theme colors. Success and error states use their own roles.
 
-Use spacing and headings before adding a container. Settings has open sections
-separated by a single rule; provider, cache, and diagnostic lists use row
-dividers. Avoid a framed section around a framed list around framed rows.
+## Motion and lyrics
 
-Filled surfaces are useful when they communicate something specific: a theme
-preview, artwork, a selected option, or an editable input. Supporting text and
-save status remain plain text. A selectable preview has one background state,
-not another enclosing frame.
+| Purpose                                    | Token                    | Duration |
+| ------------------------------------------ | ------------------------ | -------- |
+| Background, color, border, shadow feedback | `--transition-feedback`  | 0 ms     |
+| Hover/press transforms                     | `--transition-transform` | 220 ms   |
+| Opacity feedback                           | `--motion-duration-fast` | 140 ms   |
+| Menus and notifications                    | `--motion-duration-base` | 220 ms   |
+| Page/section entrance                      | `--motion-duration-slow` | 360 ms   |
 
-Light mode uses a white canvas and neutral near-white surfaces, with solid gray
-hover fills. Shadows stay small and soft; home artwork shadows must fit within
-the hero padding, including on hover. The light player bar is opaque white with
-a thin divider and no cast shadow or play-button glow. Dark mode retains its
-existing surfaces, translucency, and shadows.
+Use `--motion-ease-standard` for interaction and `--motion-ease-enter` for
+entrances. Entrances use opacity or a small zoom and release their transform on
+completion. Toasts dismiss immediately. Progress tracks and scrollbars keep a
+constant hover size.
 
-Artist, album, and Now Playing artwork backdrops follow the theme too. In light
-mode, cap the image layer at 6% opacity over white and fade the headers through
-white, so even dark artwork cannot obscure metadata. Keep dimming filters and
-dark overlays confined to dark mode. Now Playing also uses the light shadow
-scale, without a dark halo around lyrics.
+The OS reduced-motion preference and Sparkle's Reduce motion setting disable
+animations, transitions, hover/press scaling, and smooth scrolling. Keep transforms
+needed for positioning, switch state, or artwork cropping. First paint stays still
+until the preference is available.
 
-## Accent roles
+Synced lyrics use `LYRIC_TRANSITION_DURATION_MS` for both animation and playback
+anticipation. Fixed font metrics prevent active lines from rewrapping; only the
+lyric panel auto-scrolls. Reduced motion uses immediate emphasis at the timestamp.
+Blank timed cues are ignored, and the first nonempty sentence remains visible
+during the intro. **Adjust** applies the offset to timestamps and resets it;
+**Save** preserves the offset; **Export** does not change the library.
 
-Appearance offers System, Light, and Dark. System is the default and follows
-live OS changes; an explicit mode overrides the OS until System is selected
-again. Save the preference with settings and restore its validated cache before
-first paint. Both modes retain the same semantic accent and interaction roles.
+## Layout and accessibility
 
-The selected accent is a seed, not a component color. Consume its semantic
-roles:
-
-- `--color-accent-content` for accent text.
-- `--color-accent-graphic` for icons and indicators.
-- `--color-accent-fill` and its hover/active roles for filled actions.
-- `--color-on-accent-fill` for text and icons inside filled actions.
-- `--color-accent-subtle` for selected surfaces.
-- `--color-accent-focus` for keyboard focus.
-
-Do not add hard-coded theme colors to product UI. Success and error states use
-their own semantic colors.
-
-## Motion
-
-- `--transition-feedback` (0 ms): background, text, border, and shadow feedback.
-- `--transition-transform` (220 ms): gradual zoom and control state transforms.
-- `--motion-duration-fast` (140 ms): opacity feedback.
-- `--motion-duration-base` (220 ms): menus and notification entrances.
-- `--motion-duration-slow` (360 ms): page and section entrance.
-- `--motion-ease-standard`: interactive movement.
-- `--motion-ease-enter`: entrance and reveal movement.
-
-Entrances use opacity or a small zoom, with no vertical translation. Toasts
-dismiss immediately. Entrance animations release their transform on completion
-so they do not override hover states. Progress tracks and scrollbars keep a
-constant size when hovered.
-
-The OS reduced-motion preference and Sparkle's Reduce motion setting both
-disable CSS transitions and animations entirely, including entrances, stagger,
-and spinning loaders. Hover and press scales become 1 so controls do not snap
-between sizes. Navigation scrolling becomes instant. First paint also remains
-still until the saved preference is available. Preserve transforms that position
-controls, indicate a switch's state, crop artwork, or hide the mobile sidebar.
-A component must remain understandable when all motion is removed.
-
-Synchronized lyrics are a timing exception: their CSS duration comes from the
-same `LYRIC_TRANSITION_DURATION_MS` value as their playback anticipation. Lyric
-emphasis uses transforms at a fixed font size. Synced lines keep medium-weight
-glyph metrics; a subtle text stroke gives the active line its bolder appearance
-without changing glyph advances. Focus must never rewrap a line, including with
-custom lyric fonts. Auto-centering scrolls only the lyric panel and respects
-both motion preferences. In reduced motion, lines keep a constant scale and
-use immediate color and weight emphasis at the actual lyric timestamp.
-
-Blank timed LRC cues are deliberately ignored, keeping the current sentence
-visible through instrumental gaps. The first nonempty sentence is shown during
-the intro even when its timestamp is later in the song. Source selection and
-search share one popup, which contains the Edit lyrics action. Choose File is
-shown only when the Custom source is selected, for both lyrics and artist images.
-Biography search terms are editable for Default and explicit online sources.
-Adjust and LRC export live in the editor opened from the lyrics popup. In the Album and Artist
-layouts, the lyric panel's Timing toggle reveals only the offset adjustment
-controls. The Lyrics layout keeps these controls visible. Only Adjust bakes
-the current correction into the timestamps and resets the track offset to zero.
-Save keeps the written timestamps and playback offset; Export keeps the written
-timestamps and does not change the library.
-
-## Page structure
-
-Top-level content uses `.page-shell`. Major pages use `.page-header` with a
-`.page-heading` and `.page-title`. Add a subtitle only when it explains a real
-constraint or next step; do not repeat the heading in an eyebrow or tagline.
-Use `.page-enter` for the initial reveal. Settings-like subsections may replay
-the same entrance when the visible section changes.
-
-UI labels use title case and normal letter spacing, not CSS uppercase or
-widely tracked capitals. Preserve intentional acronyms (FLAC, UI, QQ Music)
-and the original casing of song, album, and artist names.
-
-The larger sidebar wordmark is optically centered in its own 4rem-high brand
-area, with a slight left/down offset. Back navigation sits one small spacing
-step below the top edge; it and the window controls are unboxed glyphs in the top chrome
-row, with soft rounded hover backgrounds. Window controls keep fixed hit areas
-flush with the top and right edges; Close includes the exact top-right corner.
-Paint matching inset rounded tiles for hover, separate from the rectangular
-hit targets. Keep the glyph sizes and stroke weights optically consistent.
-Animate glyphs only, and draw focus outlines inside the edge so they stay
-visible. Do not enclose these controls in a separate tinted title bar.
-
-Hero backdrops extend behind the chrome to the top edge using the shared
-`--content-padding-top` and `--content-padding-inline` insets. Plain pages use
-the app background without a separate decorative header band.
-
-Page scrolling remains native, with an overlay thumb instead of a reserved
-scrollbar gutter. Backgrounds reach the full right edge beneath it. The thumb
-starts below the window controls, ends above the player, and supports dragging,
-track paging, wheel input, and keyboard navigation. It disappears when the page
-does not overflow. Local scroll areas, such as lyrics and menus, keep their own
-scrollbars. Do not hide scroll affordances without an accessible replacement.
-
-Now playing fits the actual grid space above the player, not a guessed player
-height subtracted from `100vh`. Album and artist layouts anchor the artwork and
-credits at the top of their panel; the lyrics layout keeps its centered context.
-Artwork shrinks within that space, preserving
-one square composition and one crop per image. Lyrics own their scroll viewport;
-the page does not scroll. Only exceptionally long metadata needs a local scroll
-area: all credited artists must remain accessible.
-
-## Accessibility
-
-- Keep visible `:focus-visible` outlines; hover is never the only state signal.
-- Icon-only buttons need an accessible name and a tooltip or `title` when their
-  meaning is not obvious.
-- Selected controls expose `aria-pressed`, `aria-current`, or the appropriate
-  native checked state.
-- Minimum contrast is determined by semantic foreground/background roles, not
-  by assuming light or dark text on a custom accent.
+- Use `.page-shell`, `.page-header`, `.page-heading`, `.page-title`, and
+  `.page-enter`. Add subtitles only when they explain a constraint or next step.
+- Labels use title case and normal letter spacing; preserve acronyms and metadata.
+- Back and window controls are unboxed glyphs with fixed hit areas. Close includes
+  the top-right corner. Keep hover tiles and focus outlines inside those areas.
+- Hero backdrops extend behind the chrome using `--content-padding-top` and
+  `--content-padding-inline`. Plain pages use the app background.
+- Page scrolling is native with an accessible overlay thumb; local panels retain
+  their own scrollbars. Now Playing fits the grid above the player, keeps artwork
+  square, and gives lyrics their own scroll viewport. All credits stay reachable.
+- Preserve visible keyboard focus. Icon buttons need accessible names; selected
+  controls expose native checked state or appropriate ARIA state. Contrast comes
+  from semantic foreground/background pairs, including custom accents.

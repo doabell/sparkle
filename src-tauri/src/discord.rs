@@ -349,7 +349,7 @@ fn load_artwork_store(conn: &Connection) -> ArtworkStoreState {
             "event=invalid_store_setting store=catbox requested={raw_kind}"
         );
     }
-    log::info!(
+    log::debug!(
         target: "sparkle::discord::artwork",
         "event=store_selected store={}",
         kind.name()
@@ -357,7 +357,7 @@ fn load_artwork_store(conn: &Connection) -> ArtworkStoreState {
     match kind {
         ArtworkStoreKind::S3 => match S3ArtworkStore::from_settings(&settings) {
             Ok(Some(store)) => {
-                log::info!(
+                log::debug!(
                     target: "sparkle::discord::s3",
                     "event=store_configured store=s3"
                 );
@@ -405,7 +405,7 @@ fn worker(rx: Receiver<DiscordCommand>, db_path: PathBuf, image_cache_dir: PathB
     let mut client = None;
     let mut artwork_cache = match ArtworkCache::load(&conn) {
         Ok(cache) => {
-            log::info!(
+            log::debug!(
                 target: "sparkle::discord::artwork",
                 "event=cache_loaded entries={}",
                 cache.entries.len()
@@ -418,7 +418,7 @@ fn worker(rx: Receiver<DiscordCommand>, db_path: PathBuf, image_cache_dir: PathB
         }
     };
     let mut artwork_store = load_artwork_store(&conn);
-    log::info!(
+    log::debug!(
         target: "sparkle::discord::presence",
         "event=worker_started store={}",
         artwork_store.kind.name()
@@ -562,7 +562,7 @@ fn apply_playback(
                         Some(url)
                     }
                     None => {
-                        log::info!(
+                        log::debug!(
                             target: "sparkle::discord::artwork",
                             "event=upload_started store={store_name} bytes={} content_hashes={}",
                             artwork.jpeg.len(),
@@ -591,7 +591,7 @@ fn apply_playback(
                         };
                         match upload_result {
                             Ok(url) => {
-                                log::info!(
+                                log::debug!(
                                     target: "sparkle::discord::artwork",
                                     "event=upload_succeeded store={}",
                                     store_name
@@ -673,7 +673,7 @@ fn publish_fields(discord: &mut ConnectedDiscordClient, fields: PresenceFields) 
     } else {
         discord.fields = Some(fields);
         discord.last_update = Instant::now();
-        log::debug!(target: "sparkle::discord::presence", "event=activity_updated");
+        log::trace!(target: "sparkle::discord::presence", "event=activity_updated");
         true
     }
 }
@@ -1001,7 +1001,7 @@ fn upload_to_catbox(jpeg: Vec<u8>, cache_key: &str, user_hash: &str) -> Result<S
     if !user_hash.is_empty() {
         form = form.text("userhash", user_hash.to_string());
     }
-    let response = reqwest::blocking::Client::builder()
+    let response = crate::http_client::builder()
         .user_agent("Sparkle/0.1")
         .build()
         .map_err(|e| e.to_string())?

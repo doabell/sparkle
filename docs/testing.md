@@ -1,6 +1,39 @@
 # Tests and coverage
 
-Run all coverage checks from the repository root:
+Run checks from the repository root after `bun install --frozen-lockfile`:
+
+```sh
+bun run check
+bun run test
+cargo test --workspace --lib --locked --manifest-path src-tauri/Cargo.toml
+bun run format:check
+bun run version:check
+```
+
+The test scripts run `svelte-kit sync` first so `$lib` aliases resolve on a
+fresh checkout. Use `bun run test -- <file>` to select a test file.
+
+Dev/test builds retain Sparkle's debug symbols and omit dependency symbols.
+To debug dependency code, pass `--config 'profile.dev.package."*".debug=2'` to Cargo.
+
+For library, scanner, settings, database, and provider work, run the independent
+core suite without compiling Tauri, WebView2, the updater, or audio-device bindings:
+
+```sh
+cargo test -p sparkle-core --lib --locked --manifest-path src-tauri/Cargo.toml
+```
+
+The workspace command above tests both crates. `src-tauri/core` owns the core
+logic; `src-tauri/src` owns IPC, windows, playback devices, and desktop adapters.
+Both use the same database schema, settings types, and provider implementations.
+
+Use the relevant tests during development. Frontend, app, and installer builds
+are needed when validating build or packaging behavior; they are not required
+for routine code checks.
+
+## Coverage
+
+On Windows, install the coverage tools once:
 
 ```sh
 rustup component add llvm-tools-preview
@@ -8,125 +41,47 @@ cargo install cargo-llvm-cov --version 0.9.0 --locked
 bun run test:coverage
 ```
 
-Or run one language with `bun run test:coverage:ts` or `bun run test:coverage:rs`.
-For fast tests without instrumentation, use `bun test` and
-`cargo test --lib --locked --manifest-path src-tauri/Cargo.toml`.
-Routine coding validation uses relevant tests; local frontend, application, and
-installer builds are not required. Run those separately when explicitly testing
-the build or packaging process.
-
-Rust coverage is verified on Windows, matching the native CI job. The first
-instrumented build compiles into `src-tauri/target/llvm-cov-target`; later runs
-reuse it. No player window, browser, headless browser, real audio output, or live
-provider credentials are needed. The Windows taskbar-icon test uses an isolated
-hidden native window.
-
-## Gates
+Run one language with `bun run test:coverage:ts` or `bun run test:coverage:rs`.
+Rust instrumentation uses `src-tauri/target/llvm-cov-target`. LCOV reports are
+written to `coverage/typescript/lcov.info` and `coverage/rust/lcov.info`.
 
 | Scope                         | Lines | Functions | Per-file lines |
 | ----------------------------- | ----: | --------: | -------------: |
 | TypeScript production modules |   95% |       95% |            80% |
-| Rust core library             |   85% |       65% |              — |
+| Rust data and storage         |   85% |       65% |              — |
 | Rust full backend library     |   45% |       35% |              — |
 
-These are independent gates, not a blended TS/Rust score. The checker sums
-executed/total lines and functions from LCOV, rather than averaging file
-percentages. Empty reports and missing production modules fail the check.
-Threshold failures, weighting, and source-inventory checks have their own tests.
+Gates use executed/total counts, not averages of file percentages. Empty reports
+and missing production modules fail. The core Rust files also count toward the
+full backend gate; `scripts/check-coverage.mjs` defines the inventories and gates.
 
-### TypeScript scope
+## Scope and fixtures
 
-Every standalone `.ts` module under `src/`, including API orchestration, stores,
-and utilities, is imported by the inventory test. Bun only instruments loaded
-modules, so this prevents untested new modules from silently disappearing.
-Declarations, test/support code, dependencies, and developer scripts do not
-contribute to the production percentage. Native IPC, dialogs, media-session
-initialization, and SvelteKit navigation are mocked at their external boundaries;
-the app's API and stores execute normally.
+- TypeScript coverage includes every standalone production `.ts` module under
+  `src/`. The inventory test imports all modules. Native IPC, dialogs, and
+  navigation are mocked at their external boundaries.
+- Svelte component scripts, markup, CSS, and pre-paint JavaScript are outside
+  that metric. Source-contract and server-rendering tests do not provide visual
+  or browser-interaction coverage.
+- Rust coverage includes `src-tauri/src` and `src-tauri/core/src`, except the thin
+  `main.rs` entry point and the core's module-only `lib.rs`. The higher gate
+  covers data, storage, settings, analytics, and local
+  lyrics modules. Device worker loops, desktop startup, Discord, and live
+  provider integration have less coverage.
+- Tests use in-memory SQLite, temporary files, synthetic audio, fake storage,
+  and bounded loopback HTTP fixtures. They need no player window, real audio
+  output, or provider credentials. The taskbar-icon test uses a hidden native
+  window. FFmpeg is needed only to regenerate the committed FLAC fixture.
+- `test/fixtures/lrc.json` supplies the shared frontend/native lyric contract.
+  Rust unit tests live in adjacent `tests/` directories so coverage excludes
+  test code without excluding production modules.
+- Shared file fixtures live in `src-tauri/test-support`; HTTP fixtures belong
+  to the core tests. Coverage runs both workspace suites and checks both source
+  inventories, so extracting a module cannot silently remove it from the report.
 
-Playback recovery tests cover failed load/seek commands, successful retries,
-native-state reconciliation, and rejection of progress events from old tracks.
-Scan-state tests cover navigation during a scan, retained results, startup
-status recovery, delayed snapshots, duplicate requests, and listener cleanup.
+Test behavior and failure paths; do not exclude production files to pass a gate.
+Visual QA is a separate manual check.
 
-Svelte component scripts, markup, CSS, and the static pre-paint JavaScript are
-not part of this metric. Some existing tests inspect their contracts, but those
-assertions are not component-rendering or visual coverage. The lyric component
-also has server-rendering regressions for native null fields, plain text, and
-timed lyrics; these do not exercise browser interaction or visual layout.
-
-### Rust scope
-
-The overall gate includes all `src-tauri/src` production modules except the
-binary's thin `main.rs` entry point. Unit tests live in adjacent `tests/`
-directories so LLVM can exclude their source files without excluding the
-production modules they test. Third-party dependencies and vendored plugins are
-not part of Sparkle's percentage.
-
-The higher core gate covers complete modules: analytics, artwork storage,
-backup, cache, database initialization/migrations, database writer, models,
-artist normalization, settings, and local lyric dispatch/embedded/sidecar
-providers. These files also count in the overall gate. Tests use in-memory
-SQLite with the real schema and isolated temporary files, plus existing fake
-storage adapters.
-
-Scanner tests ingest a tiny, tagged synthetic FLAC through Lofty and SQLite,
-then exercise rescans, ordered NUL-separated and repeated artist tags, corrupt
-files, disabled folders, and metadata updates. Full rescans reread tags while
-reusing audio fingerprints only when file timestamps, sizes, and the fingerprint
-version still match; changed files and missing identities are fingerprinted again.
-Audio-packet fingerprints preserve
-track IDs across renames and retagging; tests also cover reconnecting missing
-files, retaining lyrics/playlists/history, and refusing ambiguous copy matches.
-Scan-controller tests verify that startup and manual requests share one worker,
-progress remains queryable, fast updates are coalesced without delaying completion,
-and failures release the worker for an explicit retry.
-Album grouping remains title/year, with deterministic album-artist credits.
-The shared `test/fixtures/lrc.json` contract checks frontend/native parsing,
-file offsets, word cues, and timing application. Separate regressions cover
-fresh local lyrics in provider order, stale request rejection, and exports that
-preserve library data. Sound Check tests decode
-synthetic FLAC/PCM files through Rodio and EBU R128, checking short signals,
-silence, attenuation, cancellation, and file-revision changes. No audio device
-is opened; FFmpeg is only needed to regenerate the committed FLAC fixture.
-
-LRCLIB, Deezer, Wikipedia image search, and Cover Art Archive tests use bounded loopback HTTP fixtures with
-provider-shaped JSON. The real request/response and decoding code runs against
-these fixtures, including HTTP errors, malformed JSON, artwork preference,
-oversized downloads, and truncated responses. They do not validate live
-service availability. Test clients disable proxies and only target localhost.
-Artist image tests preserve exact-page galleries, resolve nonexact artist names
-through Wikipedia search, and distinguish blocked providers from empty matches.
-Deezer tests also check alias queries, image-size preference, duplicate and
-placeholder filtering, API errors inside successful HTTP responses, and original
-downloaded bytes.
-
-Queue tests exercise the decision helpers used by the real command handlers:
-manual versus automatic advance, repeat modes, the previous-button restart
-threshold, shuffled traversal, and Play Next deduplication/cursor remapping.
-Source-loading recovery uses Rodio's in-memory sample iterator, not an output
-device. Playlist tests run the actual command queries against SQLite, including
-duplicate additions, ordering, transactional rollback, managed-list protection,
-and deletion that preserves library tracks and other playlists.
-
-The overall floor is intentionally lower: device lifecycle/audio worker loops,
-desktop startup, Discord connections, and live online-provider flows remain
-under-tested. **The core percentage is not whole-backend coverage.** Keep those
-gaps visible and raise the overall floor as deterministic integration seams are
-added. Rust's function count also includes generated functions and individual
-error closures, so its function gate is separate from its line gate.
-
-## Reports and review
-
-LCOV reports are written to `coverage/typescript/lcov.info` and
-`coverage/rust/lcov.info`. On `main`, CI runs the gates affected by changed paths
-and uploads the `coverage` artifact, including available reports on failure.
-Frontend changes skip Rust coverage; native changes skip TypeScript coverage.
-Shared test fixtures run both gates, as do shared dependency, workflow, script, and
-unknown configuration changes. Documentation-only changes skip both. Reports
-and instrumented builds are not committed.
-
-When adding behavior, test outcomes and failure paths rather than calling a
-function solely to raise its percentage. Keep new Rust tests in a `tests/`
-module, and do not exclude production files to make a gate pass. Visual QA
-remains a separate manual step.
+CI runs affected gates on `main` and uploads the available reports as the
+`coverage` artifact, including on failure. See [Windows releases](windows-releases.md)
+for CI path selection and packaging.

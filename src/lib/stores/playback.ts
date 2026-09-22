@@ -1,7 +1,9 @@
+import { logger } from "$lib/logger";
 import { readable, writable } from "svelte/store";
 import { listen } from "@tauri-apps/api/event";
 import {
     getPlaybackState,
+    describePlaybackError,
     play as backendPlay,
     pause as backendPause,
     stop as backendStop,
@@ -19,10 +21,13 @@ import {
     playTrack as backendPlayTrack,
     type Track as ApiTrack,
     type PlaybackState as ApiPlaybackState,
+    type PlaybackProgress,
     type PlaybackActionSource,
     type PlaybackContext,
     type RepeatMode,
     LYRICS_CHANGED_EVENT,
+    PLAYBACK_STATE_EVENT,
+    PLAYBACK_PROGRESS_EVENT,
 } from "$lib/api";
 
 export interface Track extends ApiTrack {}
@@ -32,6 +37,7 @@ export interface PlaybackState extends ApiPlaybackState {
 }
 
 const initialState: PlaybackState = {
+    revision: -1,
     is_playing: false,
     current_track: null,
     first_lyric_line: null,
@@ -53,6 +59,8 @@ export function createPlaybackStore() {
         ...initialState,
     });
     const localOffsets = new Map<number, number>();
+    let nativeRevision = -1;
+    let progressSequence = -1;
 
     function withLocalOffset(track: Track | null): Track | null {
         if (!track || !localOffsets.has(track.id)) return track;
@@ -71,54 +79,42 @@ export function createPlaybackStore() {
         });
     }
 
-    async function init() {
-        try {
-            const state = await getPlaybackState();
-            set({ ...state, error: null });
-        } catch (err) {
-            console.error("Failed to get initial playback state:", err);
-            update((s) => ({ ...s, error: String(err) }));
-        }
+    function acceptSnapshot(state: ApiPlaybackState) {
+        // Equal revisions can be an older command reply that arrives after
+        // progress for the already-published state. Do not rewind its clock.
+        if (state.revision <= nativeRevision) return;
+        nativeRevision = state.revision;
+        progressSequence = -1;
+        set({ ...state, error: null });
+    }
 
+    async function init() {
+        // Subscribe before reading the snapshot so startup cannot miss a change.
         try {
-            await listen<{
-                is_playing: boolean;
-                current_track: Track | null;
-                first_lyric_line: string | null;
-                album_art: ApiPlaybackState["album_art"];
-                position_ms: number;
-                duration_ms: number;
-                shuffle: boolean;
-                repeat_mode: RepeatMode;
-            }>("playback-state-changed", (event) => {
-                update((state) => ({
-                    ...state,
-                    is_playing: event.payload.is_playing,
-                    current_track: withLocalOffset(event.payload.current_track),
-                    first_lyric_line: event.payload.first_lyric_line,
-                    album_art: event.payload.album_art,
-                    position_ms: event.payload.position_ms,
-                    duration_ms: event.payload.duration_ms,
-                    shuffle: event.payload.shuffle,
-                    repeat_mode: event.payload.repeat_mode,
-                    error: null,
-                }));
+            await listen<ApiPlaybackState>(PLAYBACK_STATE_EVENT, (event) => {
+                acceptSnapshot(event.payload);
             });
         } catch (err) {
-            console.error("Failed to listen to playback-state-changed:", err);
+            void logger.error(
+                "playback",
+                "failed_to_listen_to_playback_state_changed",
+                err,
+            );
         }
 
         try {
-            await listen<{
-                track_id: number;
-                position_ms: number;
-                duration_ms: number;
-            }>("playback-progress", (event) => {
+            await listen<PlaybackProgress>(PLAYBACK_PROGRESS_EVENT, (event) => {
                 update((state) => {
-                    // A queued progress event can arrive after a track change
-                    // or stop. Only the current track may advance its clock.
-                    if (state.current_track?.id !== event.payload.track_id)
+                    // A track ID alone cannot distinguish a seek, restart, or
+                    // another listen to the same track. Future revisions wait
+                    // for their complete snapshot; old revisions are discarded.
+                    if (
+                        event.payload.revision !== nativeRevision ||
+                        event.payload.sequence <= progressSequence ||
+                        state.current_track?.id !== event.payload.track_id
+                    )
                         return state;
+                    progressSequence = event.payload.sequence;
                     return {
                         ...state,
                         position_ms: event.payload.position_ms,
@@ -127,7 +123,22 @@ export function createPlaybackStore() {
                 });
             });
         } catch (err) {
-            console.error("Failed to listen to playback-progress:", err);
+            void logger.error(
+                "playback",
+                "failed_to_listen_to_playback_progress",
+                err,
+            );
+        }
+
+        try {
+            acceptSnapshot(await getPlaybackState());
+        } catch (err) {
+            void logger.error(
+                "playback",
+                "failed_to_get_initial_playback_state",
+                err,
+            );
+            update((s) => ({ ...s, error: String(err) }));
         }
     }
 
@@ -143,12 +154,17 @@ export function createPlaybackStore() {
     async function callCommand(fn: () => Promise<ApiPlaybackState>) {
         try {
             const state = await fn();
-            set({ ...state, error: null });
+            acceptSnapshot(state);
+            update((s) => ({ ...s, error: null }));
             return state;
         } catch (err) {
             const message = String(err);
-            console.error("Playback command failed:", err);
-            update((s) => ({ ...s, error: message, is_playing: false }));
+            void logger.error(
+                "playback",
+                "playback_command_failed",
+                describePlaybackError(err),
+            );
+            update((s) => ({ ...s, error: message }));
             throw err;
         }
     }
@@ -199,7 +215,11 @@ export function createPlaybackStore() {
             callCommand(() => backendSetVolume(volume, source)),
         setVolumeLive: (volume: number, source: PlaybackActionSource = "ui") =>
             backendSetVolumeLive(volume, source).catch((err) => {
-                console.error("Live volume update failed:", err);
+                void logger.error(
+                    "playback",
+                    "live_volume_update_failed",
+                    describePlaybackError(err),
+                );
             }),
         setShuffle: (shuffle: boolean, source: PlaybackActionSource = "ui") =>
             callCommand(() => backendSetShuffle(shuffle, source)),

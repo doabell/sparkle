@@ -12,6 +12,7 @@
         getCacheStats,
         getCacheDir,
         getStatus,
+        capturePlaybackDiagnostics,
         getLoudnessStatus,
         scanLoudness,
         rescanLoudness,
@@ -286,6 +287,43 @@
     let cacheStats = $state<CacheStat[]>([]);
     let cacheDir = $state<string | null>(null);
     let status = $state<AppStatus | null>(null);
+    let diagnosticsBusy = $state(false);
+
+    $effect(() => {
+        if (activeCategory !== "advanced") return;
+        let disposed = false;
+        let pending = false;
+        async function refresh() {
+            if (pending) return;
+            pending = true;
+            try {
+                const next = await getStatus();
+                if (!disposed) status = next;
+            } catch {
+                if (!disposed) status = null;
+            } finally {
+                pending = false;
+            }
+        }
+        void refresh();
+        const timer = setInterval(refresh, 5000);
+        return () => {
+            disposed = true;
+            clearInterval(timer);
+        };
+    });
+
+    async function captureDiagnostics() {
+        diagnosticsBusy = true;
+        try {
+            const path = await capturePlaybackDiagnostics();
+            if (path) addToast("Playback diagnostics saved", "success");
+        } catch (error) {
+            addToast(String(error), "error");
+        } finally {
+            diagnosticsBusy = false;
+        }
+    }
     let loudnessStatus = $state<LoudnessStatus | null>(null);
     let loudnessActionBusy = $state<"scan" | "rescan" | null>(null);
     let backupBusy = $state<"export" | "inspect" | "import" | null>(null);
@@ -551,8 +589,8 @@
             if (typeof loaded.discord_artwork_s3_prefix !== "string") {
                 loaded.discord_artwork_s3_prefix = "";
             }
-            if (typeof loaded.debug_logging_enabled !== "boolean") {
-                loaded.debug_logging_enabled = false;
+            if (!loaded.log_level) {
+                loaded.log_level = "info";
             }
             if (typeof loaded.sound_check_enabled !== "boolean") {
                 loaded.sound_check_enabled = false;
@@ -2013,37 +2051,68 @@
                             <span class="debug-label">Log rotation</span>
                             <span class="debug-value">2 MiB · 3 files</span>
                         </div>
+                        <div class="debug-row">
+                            <span class="debug-label">History recorder</span>
+                            <span class="debug-value">
+                                {#if !status.writer_health.running}
+                                    Unavailable
+                                {:else if status.writer_health.consecutive_failures > 0}
+                                    Write failures
+                                {:else if status.writer_health.oldest_pending_age_ms >= 3000}
+                                    Delayed
+                                {:else}
+                                    Running
+                                {/if}
+                                · {status.writer_health.pending_writes} pending
+                            </span>
+                        </div>
+                        {#if status.writer_health.failed_writes || status.writer_health.dropped_writes}
+                            <p class="hint" role="status">
+                                {status.writer_health.failed_writes} failed writes
+                                ·
+                                {status.writer_health.dropped_writes} dropped writes
+                                this run. Capture diagnostics to inspect the failure.
+                            </p>
+                        {/if}
                         {#if settings}
-                            <div class="debug-row debug-row-toggle">
-                                <div class="debug-toggle-copy">
-                                    <span class="debug-label"
-                                        >Verbose logging</span
-                                    >
-                                </div>
-                                <label class="toggle">
-                                    <input
-                                        type="checkbox"
-                                        bind:checked={
-                                            settings.debug_logging_enabled
-                                        }
-                                        aria-label="Enable verbose logging"
-                                    />
-                                    <span
-                                        class="toggle-slider"
-                                        aria-hidden="true"
-                                    ></span>
-                                    <span
-                                        >{settings.debug_logging_enabled
-                                            ? "On"
-                                            : "Off"}</span
-                                    >
-                                </label>
+                            <div class="debug-row">
+                                <label class="debug-label" for="log-level"
+                                    >Log level</label
+                                >
+                                <select
+                                    id="log-level"
+                                    bind:value={settings.log_level}
+                                >
+                                    <option value="error">Errors only</option>
+                                    <option value="warn">Warnings</option>
+                                    <option value="info">Info (Default)</option>
+                                    <option value="debug">Debug</option>
+                                    <option value="trace">Trace</option>
+                                </select>
                             </div>
+                            <p class="hint">
+                                Debug adds troubleshooting details. Trace
+                                includes frequent playback and media events.
+                            </p>
                         {/if}
                     </div>
                 {:else}
                     <p class="hint">Unavailable</p>
                 {/if}
+                <button
+                    class="btn-pill btn-secondary"
+                    onclick={captureDiagnostics}
+                    disabled={diagnosticsBusy}
+                >
+                    {diagnosticsBusy
+                        ? "Capturing…"
+                        : "Capture playback diagnostics"}
+                </button>
+                <p class="hint">
+                    Captures this moment, recent playback events, and local
+                    logs. Review the file before sharing; logs can include local
+                    paths.
+                </p>
             </div>
 
             <div class="settings-section" hidden={activeCategory !== "about"}>
@@ -2971,18 +3040,6 @@
         word-break: break-all;
         text-align: right;
         flex: 1;
-    }
-
-    .debug-row-toggle {
-        align-items: center;
-    }
-
-    .debug-toggle-copy {
-        display: flex;
-        flex: 1;
-        flex-direction: column;
-        gap: 0.125rem;
-        min-width: 0;
     }
 
     .debug-open {

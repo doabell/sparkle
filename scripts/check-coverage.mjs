@@ -10,21 +10,30 @@ import {
 const language = process.argv[2];
 if (!["typescript", "rust"].includes(language))
     throw new Error("Usage: bun scripts/check-coverage.mjs typescript|rust");
-const root = language === "typescript" ? "src" : "src-tauri/src";
+const roots =
+    language === "typescript"
+        ? ["src"]
+        : ["src-tauri/src", "src-tauri/core/src"];
 const report =
     language === "typescript"
         ? "coverage/typescript/lcov.info"
         : "coverage/rust/lcov.info";
 const extension = language === "typescript" ? ".ts" : ".rs";
 const normalize = (path) => path.replaceAll("\\", "/");
-const expected = readdirSync(root, { recursive: true })
-    .map((path) => normalize(`${root}/${path}`))
+const expected = roots
+    .flatMap((root) =>
+        readdirSync(root, { recursive: true }).map((path) =>
+            normalize(`${root}/${path}`),
+        ),
+    )
     .filter(
         (path) =>
             path.endsWith(extension) &&
             !path.endsWith(".d.ts") &&
             !path.includes("/tests/") &&
-            path !== "src-tauri/src/main.rs",
+            path !== "src-tauri/src/main.rs" &&
+            // This crate entry contains module declarations, not executable code.
+            path !== "src-tauri/core/src/lib.rs",
     );
 const files = parseLcov(readFileSync(report, "utf8"))
     .map((file) => ({
@@ -61,12 +70,12 @@ if (language === "typescript") {
     // orchestration. These complete modules also remain in the overall gate.
     const core = files.filter(
         (file) =>
-            /^src-tauri\/src\/(analytics|artwork_store|backup|cache|db|db_writer|models|normalizer|settings)\.rs$/.test(
+            /^src-tauri\/(?:core\/)?src\/(analytics|artwork_store|backup|cache|db|db_writer|diagnostics|models|normalizer|settings)\.rs$/.test(
                 file.path,
             ) ||
-            /^src-tauri\/src\/providers\/lyrics\/(mod|embedded|lrc)\.rs$/.test(
+            /^src-tauri\/core\/src\/providers\/lyrics\/(mod|embedded|lrc)\.rs$/.test(
                 file.path,
             ),
     );
-    reportGroup("Rust core library", core, { lines: 85, functions: 65 });
+    reportGroup("Rust data and storage", core, { lines: 85, functions: 65 });
 }

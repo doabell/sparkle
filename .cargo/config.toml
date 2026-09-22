@@ -1,3 +1,23 @@
-# Keep cross-crate optimization with less link work; dev/test profiles are unchanged.
+# Keep full debug information for Sparkle while reducing dependency compile/link work.
+[profile.dev.package."*"]
+debug = 0
+
+# Avoid link-time optimization in local builds and Velopack packages. Keep the
+# hot audio loops together so disabling LTO does not slow decoding or Sound Check.
 [profile.release]
-lto = "thin"
+lto = "off"
+
+[profile.release.package.ebur128]
+codegen-units = 1
+
+[profile.release.package.rodio]
+codegen-units = 1
+
+[profile.release.package.symphonia-core]
+codegen-units = 1
+
+[profile.release.package.symphonia-bundle-flac]
+codegen-units = 1
+
+[profile.release.package.symphonia-bundle-mp3]
+codegen-units = 1

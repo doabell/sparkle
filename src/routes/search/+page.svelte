@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { logger } from "$lib/logger";
     import {
         search,
         getTracks,
@@ -82,7 +83,7 @@
                 if (requestId !== searchRequestId || query.trim() !== q) return;
                 results = nextResults;
             } catch (e) {
-                console.error("Search failed:", e);
+                void logger.error("search", "search_failed", e);
                 if (requestId !== searchRequestId || query.trim() !== q) return;
                 results = {
                     artists: [],

@@ -1,24 +1,20 @@
-mod analytics;
-mod artwork_store;
 mod audio_engine;
-mod audio_identity;
-mod backup;
-mod cache;
 mod commands;
 mod db;
-mod db_writer;
+mod diagnostics;
 mod discord;
-mod library_scan;
+mod logging;
 mod loudness;
-mod models;
-mod normalizer;
 mod online_commands;
 mod playback_commands;
-mod providers;
-mod scanner;
-mod settings;
+mod playback_observation;
 mod updates;
 mod window_icon;
+
+use sparkle_core::{
+    analytics, artwork_store, backup, cache, db_writer, http_client, library_scan, models,
+    providers, scanner, settings,
+};
 
 /// Handle installer invocations before opening windows, audio, or the library.
 pub fn initialize_updater() {
@@ -30,8 +26,12 @@ pub fn initialize_updater() {
 }
 
 #[cfg(test)]
-#[path = "tests/support.rs"]
+#[path = "../test-support/mod.rs"]
 mod test_support;
+
+#[cfg(all(test, not(dev)))]
+#[path = "tests/embedded_frontend.rs"]
+mod embedded_frontend_tests;
 
 use commands::AppState;
 use serde::Serialize;
@@ -40,20 +40,6 @@ use std::sync::{Arc, Condvar, Mutex};
 use tauri::{Manager, State};
 
 const MEDIA_SEEK_STEP_MS: i64 = 15_000;
-const LOG_MAX_FILE_SIZE_BYTES: u128 = 2 * 1024 * 1024;
-const LOG_FILE_COUNT: usize = 3;
-
-static DEBUG_LOGGING_ENABLED: AtomicBool = AtomicBool::new(false);
-
-pub(crate) fn set_debug_logging_enabled(enabled: bool) {
-    DEBUG_LOGGING_ENABLED.store(enabled, Ordering::Relaxed);
-}
-
-fn should_emit_log(level: log::Level, target: &str, verbose: bool) -> bool {
-    !matches!(level, log::Level::Debug | log::Level::Trace)
-        || (verbose && target.starts_with("sparkle"))
-}
-
 #[derive(Serialize)]
 struct AppStatus {
     db_path: String,
@@ -62,6 +48,7 @@ struct AppStatus {
     audio_backend: &'static str,
     audio_output_mode: &'static str,
     audio_precision_bits: u8,
+    writer_health: db_writer::WriterHealth,
 }
 
 #[cfg(desktop)]
@@ -247,7 +234,7 @@ pub(crate) fn sync_system_media_status(
     app.media()
         .set_playback_status(status)
         .map_err(|err| err.to_string())?;
-    log::debug!(
+    log::trace!(
         target: "sparkle::media::smtc",
         "event=status_sync_completed source=audio_state status={label}"
     );
@@ -333,7 +320,7 @@ fn get_status(state: State<'_, AppState>, app: tauri::AppHandle) -> Result<AppSt
             .path()
             .app_log_dir()
             .map_err(|e| e.to_string())?
-            .join("sparkle.log")
+            .join(format!("{}.log", logging::FILE_STEM))
             .to_string_lossy()
             .to_string(),
         schema_version: version,
@@ -348,6 +335,7 @@ fn get_status(state: State<'_, AppState>, app: tauri::AppHandle) -> Result<AppSt
             "system default"
         },
         audio_precision_bits: 64,
+        writer_health: state.audio.writer_health(),
     })
 }
 
@@ -419,51 +407,22 @@ fn enable_media_control_events() -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    http_client::initialize_tls();
     let app = tauri::Builder::default()
-        .plugin(
-            tauri_plugin_log::Builder::new()
-                .targets([
-                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout).format(
-                        |out, message, record| {
-                            let level_colour = match record.level() {
-                                log::Level::Error => "31",
-                                log::Level::Warn => "33",
-                                log::Level::Info => "36",
-                                log::Level::Debug => "90",
-                                log::Level::Trace => "90",
-                            };
-                            out.finish(format_args!(
-                                "[{}][\x1b[{level_colour}m{}\x1b[0m] {message}",
-                                record.target(),
-                                record.level()
-                            ));
-                        },
-                    ),
-                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
-                        file_name: Some("sparkle".to_string()),
-                    }),
-                ])
-                .level(log::LevelFilter::Trace)
-                .max_file_size(LOG_MAX_FILE_SIZE_BYTES)
-                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(LOG_FILE_COUNT))
-                // Verbose mode adds Sparkle's debug and trace events without
-                // allowing codec internals to drown out useful transitions.
-                .filter(|metadata| {
-                    should_emit_log(
-                        metadata.level(),
-                        metadata.target(),
-                        DEBUG_LOGGING_ENABLED.load(Ordering::Relaxed),
-                    )
-                })
-                .build(),
-        )
+        .plugin(logging::plugin())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_media::init())
         .manage(updates::UpdateState::default())
+        .manage(diagnostics::Captures::default())
         .manage(library_scan::LibraryScan::default())
         .setup(|app| {
             let (conn, fresh_db) = db::init_db(app.handle()).map_err(|e| e.to_string())?;
+            let log_level = settings::load_log_level(&conn).unwrap_or_else(|error| {
+                log::warn!(target: "sparkle::logging", "event=setting_load_failed error={error}");
+                logging::LogLevel::default()
+            });
+            logging::set_level(log_level);
             let recovered_listens =
                 db::recover_interrupted_listens(&conn).map_err(|e| e.to_string())?;
             if recovered_listens > 0 {
@@ -474,7 +433,7 @@ pub fn run() {
             }
             log::info!(
                 target: "sparkle::lifecycle",
-                "event=application_started version={} fresh_database={} recovered_listens={recovered_listens}",
+                "event=application_started version={} log_level={log_level:?} fresh_database={} recovered_listens={recovered_listens}",
                 env!("CARGO_PKG_VERSION"),
                 fresh_db
             );
@@ -489,12 +448,11 @@ pub fn run() {
                 Err(err) => {
                     log::warn!(
                         target: "sparkle::settings",
-                        "event=debug_logging_setting_unavailable error={err}"
+                        "event=settings_load_failed error={err}"
                     );
                     settings::Settings::default()
                 }
             };
-            set_debug_logging_enabled(startup_settings.debug_logging_enabled);
             window_icon::apply_accent(app.handle(), &startup_settings.accent_color);
             let app_data_dir = db::data_dir(app.handle());
             let cache_dir = app_data_dir.join("cache");
@@ -549,10 +507,8 @@ pub fn run() {
             std::thread::spawn(move || {
                 if let Some(run) = startup_scan {
                     log::debug!(target: "sparkle::scanner", "event=startup_scan_started");
-                    match commands::run_library_scan(&app_handle, run, false) {
-                        Ok(_) => log::info!(target: "sparkle::scanner", "event=startup_scan_completed"),
-                        Err(e) => log::warn!(target: "sparkle::scanner", "event=startup_scan_failed error={e}"),
-                    }
+                    // The scan controller logs the result for startup and manual scans.
+                    let _ = commands::run_library_scan(&app_handle, run, false);
                 } else {
                     log::debug!(target: "sparkle::scanner", "event=startup_scan_skipped reason=disabled");
                 }
@@ -640,6 +596,9 @@ pub fn run() {
             updates::download_update,
             updates::install_update,
             get_status,
+            logging::log_frontend,
+            diagnostics::capture_playback_diagnostics,
+            diagnostics::export_playback_diagnostics,
             enable_media_control_events,
             commands::pick_folder,
             commands::add_folder,
@@ -729,7 +688,7 @@ pub fn run() {
             online_commands::get_cache_stats,
             online_commands::get_cache_dir,
         ])
-        .build(tauri::generate_context!())
+        .build(tauri::tauri_build_context!())
         .expect("error while building tauri application");
 
     app.run(|app_handle, event| {

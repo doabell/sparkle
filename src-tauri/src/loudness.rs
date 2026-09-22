@@ -273,21 +273,12 @@ fn worker_loop(inner: Arc<Inner>) {
         emit_status(&inner);
         let prioritized = priority.contains(&candidate.track_id);
         let started_at = Instant::now();
-        if prioritized {
-            log::info!(
-                target: "sparkle::loudness",
-                "event=analysis_started track_id={} prioritized=true file_size_bytes={}",
-                candidate.track_id,
-                candidate.file_size_bytes.unwrap_or(-1)
-            );
-        } else {
-            log::debug!(
-                target: "sparkle::loudness",
-                "event=analysis_started track_id={} prioritized=false file_size_bytes={}",
-                candidate.track_id,
-                candidate.file_size_bytes.unwrap_or(-1)
-            );
-        }
+        log::debug!(
+            target: "sparkle::loudness",
+            "event=analysis_started track_id={} prioritized={prioritized} file_size_bytes={}",
+            candidate.track_id,
+            candidate.file_size_bytes.unwrap_or(-1)
+        );
 
         let result = analyze_candidate(&candidate, || {
             let scheduler = lock_scheduler(&inner);
@@ -307,7 +298,7 @@ fn worker_loop(inner: Arc<Inner>) {
                         candidate.track_id
                     );
                 } else {
-                    log::info!(
+                    log::debug!(
                         target: "sparkle::loudness",
                         "event=analysis_completed track_id={} elapsed_ms={elapsed_ms}",
                         candidate.track_id,

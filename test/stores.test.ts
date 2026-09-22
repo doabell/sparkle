@@ -10,9 +10,22 @@ import {
     interpolatedPositionMs,
     createPlaybackStore,
 } from "../src/lib/stores/playback";
-import { invoke, initializeMedia, listen } from "./support/platform";
+import {
+    invoke,
+    logFrontend,
+    initializeMedia,
+    listen,
+} from "./support/platform";
 import { initializeMediaSessionOnce } from "../src/lib/utils/mediaSession";
 import { LYRICS_CHANGED_EVENT } from "../src/lib/api";
+
+function commandReply(state, commandId = "test-command", outcome = "applied") {
+    return { state, command_id: commandId, outcome };
+}
+function nativeState(state) {
+    return async (_command, payload) =>
+        payload?.commandId ? commandReply(state, payload.commandId) : state;
+}
 
 test("UI preferences default without a window and persist falsy values and updates", () => {
     expect(get(uiPref("server", "fallback"))).toBe("fallback");
@@ -88,6 +101,7 @@ test("toasts have distinct IDs, expire independently and tolerate manual dismiss
 });
 
 const state = {
+    revision: 1,
     is_playing: true,
     current_track: { id: 7, title: "Song" },
     first_lyric_line: null,
@@ -99,12 +113,148 @@ const state = {
     repeat_mode: "off",
 };
 
+test("playback subscribes before its snapshot and rejects stale snapshots and progress", async () => {
+    const handlers = new Map();
+    let resolveInitial;
+    globalThis.window = {};
+    listen.mockImplementation(async (name, handler) => {
+        handlers.set(name, handler);
+        return () => {};
+    });
+    invoke.mockImplementation(async () => {
+        expect(handlers.has("playback-state-changed")).toBe(true);
+        expect(handlers.has("playback-progress")).toBe(true);
+        return new Promise((resolve) => (resolveInitial = resolve));
+    });
+    try {
+        const store = createPlaybackStore();
+        for (let i = 0; i < 10; i++) await Promise.resolve();
+        const changed = handlers.get("playback-state-changed");
+        const progress = handlers.get("playback-progress");
+        const newer = { ...state, revision: 2, position_ms: 200 };
+        changed({ payload: newer });
+        resolveInitial(state);
+        for (let i = 0; i < 10; i++) await Promise.resolve();
+        expect(get(store).position_ms).toBe(200);
+        progress({
+            payload: {
+                revision: 2,
+                sequence: 10,
+                track_id: 7,
+                position_ms: 250,
+                duration_ms: 1000,
+            },
+        });
+        progress({
+            payload: {
+                revision: 2,
+                sequence: 9,
+                track_id: 7,
+                position_ms: 220,
+                duration_ms: 1000,
+            },
+        });
+        changed({ payload: newer });
+        expect(get(store).position_ms).toBe(250);
+        // A partial future update cannot hide the full state it belongs to.
+        progress({
+            payload: {
+                revision: 3,
+                sequence: 11,
+                track_id: 7,
+                position_ms: 850,
+                duration_ms: 1000,
+            },
+        });
+        expect(get(store).position_ms).toBe(250);
+        changed({
+            payload: {
+                ...state,
+                revision: 3,
+                is_playing: false,
+                position_ms: 800,
+            },
+        });
+        expect(get(store).is_playing).toBe(false);
+        expect(get(store).position_ms).toBe(800);
+    } finally {
+        delete globalThis.window;
+        invoke.mockReset();
+        listen.mockReset();
+    }
+});
+
+test("a seek or same-track restart cannot be overwritten by an older event or reply", async () => {
+    const handlers = new Map();
+    globalThis.window = {};
+    listen.mockImplementation(async (name, handler) => {
+        handlers.set(name, handler);
+        return () => {};
+    });
+    invoke.mockImplementation(
+        nativeState({ ...state, duration_ms: 180000, position_ms: 10000 }),
+    );
+    try {
+        const store = createPlaybackStore();
+        for (let i = 0; i < 10; i++) await Promise.resolve();
+        invoke.mockResolvedValueOnce(
+            commandReply({
+                ...state,
+                revision: 2,
+                duration_ms: 180000,
+                position_ms: 80000,
+            }),
+        );
+        await store.seek(80000);
+        const progress = handlers.get("playback-progress");
+        progress({
+            payload: {
+                revision: 1,
+                sequence: 99,
+                track_id: 7,
+                position_ms: 11000,
+                duration_ms: 180000,
+            },
+        });
+        expect(get(store).position_ms).toBe(80000);
+        let reply;
+        invoke.mockImplementationOnce(
+            () => new Promise((resolve) => (reply = resolve)),
+        );
+        const pending = store.previousTrack();
+        handlers.get("playback-state-changed")({
+            payload: { ...state, revision: 3, position_ms: 0 },
+        });
+        progress({
+            payload: {
+                revision: 3,
+                sequence: 100,
+                track_id: 7,
+                position_ms: 100,
+                duration_ms: 1000,
+            },
+        });
+        reply(commandReply({ ...state, revision: 2, position_ms: 80000 }));
+        await pending;
+        expect(get(store).position_ms).toBe(100);
+        invoke.mockResolvedValueOnce(
+            commandReply({ ...state, revision: 3, position_ms: 0 }),
+        );
+        await store.play();
+        expect(get(store).position_ms).toBe(100);
+    } finally {
+        delete globalThis.window;
+        invoke.mockReset();
+        listen.mockReset();
+    }
+});
+
 test("lyric timing edits are immediate, survive stale playback replies, and reset after replacement", async () => {
     const handlers = new Map();
     globalThis.window = {
         addEventListener: (name, handler) => handlers.set(name, handler),
     };
-    invoke.mockResolvedValue(state);
+    invoke.mockImplementation(nativeState(state));
     listen.mockResolvedValue(() => {});
     try {
         const store = createPlaybackStore();
@@ -138,6 +288,7 @@ test("lyric timing edits are immediate, survive stale playback replies, and rese
         expect(get(store).current_track.lrc_offset_ms).toBe(350);
         await store.seekLyrics(8, 180_000);
         expect(invoke).toHaveBeenLastCalledWith("seek_lyrics", {
+            commandId: expect.any(String),
             trackId: 8,
             positionMs: 180_000,
         });
@@ -148,10 +299,10 @@ test("lyric timing edits are immediate, survive stale playback replies, and rese
     }
 });
 
-test("playback initializes from native state and merges events without losing volume", async () => {
+test("playback initializes from native state and accepts complete versioned state events", async () => {
     const handlers = new Map();
     globalThis.window = {};
-    invoke.mockResolvedValue(state);
+    invoke.mockImplementation(nativeState(state));
     listen.mockImplementation(async (name, handler) => {
         handlers.set(name, handler);
         return () => {};
@@ -161,12 +312,18 @@ test("playback initializes from native state and merges events without losing vo
         for (let i = 0; i < 10; i++) await Promise.resolve();
         expect(get(store)).toEqual({ ...state, error: null });
         handlers.get("playback-state-changed")({
-            payload: { ...state, is_playing: false, volume: 0.1 },
+            payload: { ...state, revision: 2, is_playing: false, volume: 0.1 },
         });
         expect(get(store).is_playing).toBe(false);
-        expect(get(store).volume).toBe(0.5);
+        expect(get(store).volume).toBe(0.1);
         handlers.get("playback-progress")({
-            payload: { track_id: 7, position_ms: 400, duration_ms: 1200 },
+            payload: {
+                revision: 2,
+                sequence: 1,
+                track_id: 7,
+                position_ms: 400,
+                duration_ms: 1200,
+            },
         });
         expect(get(store).position_ms).toBe(400);
         expect(get(store).duration_ms).toBe(1200);
@@ -179,25 +336,25 @@ test("playback initializes from native state and merges events without losing vo
 
 test("playback initialization failures stay observable without unhandled rejections", async () => {
     globalThis.window = {};
-    const log = spyOn(console, "error").mockImplementation(() => {});
+    logFrontend.mockReset();
     invoke.mockRejectedValue(Error("unavailable"));
     listen.mockRejectedValue(Error("events unavailable"));
     try {
         const store = createPlaybackStore();
         for (let i = 0; i < 10; i++) await Promise.resolve();
         expect(get(store).error).toBe("Error: unavailable");
-        expect(log).toHaveBeenCalledTimes(3);
+        expect(logFrontend).toHaveBeenCalledTimes(3);
     } finally {
         delete globalThis.window;
         invoke.mockReset();
         listen.mockReset();
-        log.mockRestore();
+        logFrontend.mockReset();
     }
 });
 
 test("playback commands preserve intent, return canonical state, and recover from errors", async () => {
-    const errorLog = spyOn(console, "error").mockImplementation(() => {});
-    invoke.mockImplementation(async () => state);
+    logFrontend.mockReset();
+    invoke.mockImplementation(nativeState(state));
     try {
         for (const [method, args, command, payload] of [
             ["play", [], "play", { source: "ui" }],
@@ -253,7 +410,10 @@ test("playback commands preserve intent, return canonical state, and recover fro
             ],
         ]) {
             expect(await playback[method](...args)).toBe(state);
-            expect(invoke).toHaveBeenLastCalledWith(command, payload);
+            expect(invoke).toHaveBeenLastCalledWith(command, {
+                ...payload,
+                commandId: expect.any(String),
+            });
             expect(get(playback)).toEqual({ ...state, error: null });
         }
         playback.updateCurrentTrackLrcOffset(99, -50);
@@ -270,30 +430,35 @@ test("playback commands preserve intent, return canonical state, and recover fro
             throw error;
         });
         await expect(playback.play()).rejects.toBe(error);
-        expect(get(playback).is_playing).toBe(false);
+        expect(get(playback).is_playing).toBe(state.is_playing);
         expect(get(playback).error).toBe("Error: offline");
         await playback.setVolumeLive(0.2);
-        expect(errorLog).toHaveBeenLastCalledWith(
-            "Live volume update failed:",
-            error,
-        );
-        invoke.mockImplementation(async () => state);
+        expect(logFrontend).toHaveBeenLastCalledWith({
+            level: "error",
+            scope: "playback",
+            event: "live_volume_update_failed",
+            message: expect.stringMatching(
+                /^command=set_volume command_id=.+ stage=bridge track_id=none error=offline$/,
+            ),
+        });
+        invoke.mockImplementation(nativeState(state));
         await playback.play();
         expect(get(playback).error).toBe(null);
         await playback.setVolumeLive(0.4, "keyboard");
         expect(invoke).toHaveBeenLastCalledWith("set_volume", {
+            commandId: expect.any(String),
             volume: 0.4,
             source: "keyboard",
         });
     } finally {
         invoke.mockReset();
-        errorLog.mockRestore();
+        logFrontend.mockReset();
     }
 });
 
 test("failed queue loads preserve the last metadata and a retry accepts the new canonical state", async () => {
     const store = createPlaybackStore();
-    const log = spyOn(console, "error").mockImplementation(() => {});
+    logFrontend.mockReset();
     store.set({ ...state, error: null });
     const failure = Error("track not found");
     try {
@@ -301,11 +466,11 @@ test("failed queue loads preserve the last metadata and a retry accepts the new 
         await expect(store.loadQueue([999], 0, true)).rejects.toBe(failure);
         expect(get(store)).toEqual({
             ...state,
-            is_playing: false,
             error: String(failure),
         });
         const recovered = {
             ...state,
+            revision: 2,
             current_track: { id: 8, title: "Recovered" },
             first_lyric_line: "New lyric",
             album_art: { file_path: "new-cover.jpg", mime_type: "image/jpeg" },
@@ -313,20 +478,20 @@ test("failed queue loads preserve the last metadata and a retry accepts the new 
             duration_ms: 2000,
             shuffle: true,
         };
-        invoke.mockResolvedValueOnce(recovered);
+        invoke.mockResolvedValueOnce(commandReply(recovered));
         expect(await store.loadQueue([7, 8], 1, true)).toBe(recovered);
         expect(get(store)).toEqual({ ...recovered, error: null });
     } finally {
         invoke.mockReset();
-        log.mockRestore();
+        logFrontend.mockReset();
     }
 });
 
 test("failed seeks preserve position and recover through native state events or a retry", async () => {
     const handlers = new Map();
-    const log = spyOn(console, "error").mockImplementation(() => {});
+    logFrontend.mockReset();
     globalThis.window = {};
-    invoke.mockResolvedValue(state);
+    invoke.mockImplementation(nativeState(state));
     listen.mockImplementation(async (name, handler) => {
         handlers.set(name, handler);
         return () => {};
@@ -340,17 +505,19 @@ test("failed seeks preserve position and recover through native state events or 
         expect(get(store).current_track.id).toBe(7);
         expect(get(store).error).toBe("Error: seek unavailable");
         // The worker is authoritative even if the original command failed.
-        const resumed = { ...state, position_ms: 300 };
+        const resumed = { ...state, revision: 2, position_ms: 300 };
         handlers.get("playback-state-changed")({ payload: resumed });
         expect(get(store)).toEqual({ ...resumed, error: null });
         const clamped = {
             ...state,
+            revision: 3,
             is_playing: false,
             position_ms: state.duration_ms,
         };
-        invoke.mockResolvedValueOnce(clamped);
+        invoke.mockResolvedValueOnce(commandReply(clamped));
         await store.seek(9999, "keyboard");
         expect(invoke).toHaveBeenLastCalledWith("seek", {
+            commandId: expect.any(String),
             positionMs: 9999,
             source: "keyboard",
         });
@@ -359,14 +526,14 @@ test("failed seeks preserve position and recover through native state events or 
         delete globalThis.window;
         invoke.mockReset();
         listen.mockReset();
-        log.mockRestore();
+        logFrontend.mockReset();
     }
 });
 
 test("late progress from an old track cannot corrupt a recovered track or a stopped player", async () => {
     const handlers = new Map();
     globalThis.window = {};
-    invoke.mockResolvedValue(state);
+    invoke.mockImplementation(nativeState(state));
     listen.mockImplementation(async (name, handler) => {
         handlers.set(name, handler);
         return () => {};
@@ -376,6 +543,7 @@ test("late progress from an old track cannot corrupt a recovered track or a stop
         for (let i = 0; i < 10; i++) await Promise.resolve();
         const recovered = {
             ...state,
+            revision: 2,
             current_track: { id: 8, title: "Next" },
             position_ms: 0,
             duration_ms: 2000,
@@ -383,15 +551,28 @@ test("late progress from an old track cannot corrupt a recovered track or a stop
         handlers.get("playback-state-changed")({ payload: recovered });
         const progress = handlers.get("playback-progress");
         progress({
-            payload: { track_id: 7, position_ms: 900, duration_ms: 1000 },
+            payload: {
+                revision: 2,
+                sequence: 1,
+                track_id: 7,
+                position_ms: 900,
+                duration_ms: 1000,
+            },
         });
         expect(get(store)).toEqual({ ...recovered, error: null });
         progress({
-            payload: { track_id: 8, position_ms: 250, duration_ms: 2000 },
+            payload: {
+                revision: 2,
+                sequence: 2,
+                track_id: 8,
+                position_ms: 250,
+                duration_ms: 2000,
+            },
         });
         expect(get(store).position_ms).toBe(250);
         const stopped = {
             ...state,
+            revision: 3,
             current_track: null,
             is_playing: false,
             position_ms: 0,
@@ -399,7 +580,13 @@ test("late progress from an old track cannot corrupt a recovered track or a stop
         };
         handlers.get("playback-state-changed")({ payload: stopped });
         progress({
-            payload: { track_id: 8, position_ms: 500, duration_ms: 2000 },
+            payload: {
+                revision: 3,
+                sequence: 3,
+                track_id: 8,
+                position_ms: 500,
+                duration_ms: 2000,
+            },
         });
         expect(get(store)).toEqual({ ...stopped, error: null });
     } finally {

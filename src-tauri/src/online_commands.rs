@@ -553,7 +553,7 @@ fn cacheable_image(image: Option<ImageData>) -> ImageData {
         Err(error) => {
             // Cache a negative result rather than retrying an unsupported or
             // oversized provider response for every visible card.
-            log::debug!(target: "sparkle::image_cache", "image_validation_failed error={error}");
+            log::debug!(target: "sparkle::image_cache", "event=image_validation_failed error={error}");
             empty_image()
         }
     }
@@ -620,7 +620,7 @@ pub async fn get_artist_image(
                         &settings_for_fetch,
                     );
                     cacheable_image(fetched.unwrap_or_else(|error| {
-                        log::debug!(target: "sparkle::artist_image", "provider={provider} fetch_failed error={error}");
+                        log::debug!(target: "sparkle::artist_image", "event=fetch_failed provider={provider} error={error}");
                         None
                     }))
                 })
@@ -653,7 +653,7 @@ pub async fn get_artist_image(
                     &settings_for_fetch,
                 );
                 cacheable_image(fetched.unwrap_or_else(|error| {
-                    log::debug!(target: "sparkle::artist_image", "fetch_failed error={error}");
+                    log::debug!(target: "sparkle::artist_image", "event=fetch_failed error={error}");
                     None
                 }))
             })
@@ -984,7 +984,7 @@ pub async fn download_artist_image_candidate(
 ) -> Result<ImageData, String> {
     let log_source = source.clone();
     let result = tokio::task::spawn_blocking(move || -> Result<ImageData, String> {
-        let client = reqwest::blocking::Client::builder()
+        let client = crate::http_client::builder()
             .timeout(std::time::Duration::from_secs(20))
             .user_agent("SparkleMusicPlayer/0.1.0 (local desktop music player)")
             .build()
@@ -1146,7 +1146,7 @@ pub async fn get_album_art(
             let fetched =
                 crate::providers::album_art::fetch_album_art_online(&lookup, &settings_for_fetch);
             cacheable_image(fetched.unwrap_or_else(|error| {
-                log::debug!(target: "sparkle::album_art", "fetch_failed error={error}");
+                log::debug!(target: "sparkle::album_art", "event=fetch_failed error={error}");
                 None
             }))
         })
@@ -1226,7 +1226,7 @@ pub fn get_online_settings(state: State<'_, AppState>) -> Result<OnlineSettings,
         discord_artwork_s3_session_token: settings.discord_artwork_s3_session_token,
         discord_artwork_s3_region: settings.discord_artwork_s3_region,
         discord_artwork_s3_prefix: settings.discord_artwork_s3_prefix,
-        debug_logging_enabled: settings.debug_logging_enabled,
+        log_level: settings.log_level,
     })
 }
 
@@ -1239,7 +1239,6 @@ pub fn set_online_settings(
 ) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let mut full = settings::load_settings(&conn)?;
-    let debug_logging_changed = full.debug_logging_enabled != settings.debug_logging_enabled;
     let sound_check_changed = full.sound_check_enabled != settings.sound_check_enabled;
     let accent_changed =
         full.accent_color != settings::normalize_accent_color(&settings.accent_color);
@@ -1269,19 +1268,12 @@ pub fn set_online_settings(
     full.discord_artwork_s3_session_token = settings.discord_artwork_s3_session_token;
     full.discord_artwork_s3_region = settings.discord_artwork_s3_region;
     full.discord_artwork_s3_prefix = settings.discord_artwork_s3_prefix;
-    full.debug_logging_enabled = settings.debug_logging_enabled;
+    full.log_level = settings.log_level;
     settings::save_settings(&conn, &full)?;
     drop(conn);
-    crate::set_debug_logging_enabled(settings.debug_logging_enabled);
+    crate::logging::set_level(settings.log_level);
     if accent_changed {
         crate::window_icon::apply_accent(&app, &full.accent_color);
-    }
-    if debug_logging_changed {
-        log::info!(
-            target: "sparkle::settings",
-            "event=verbose_logging_changed enabled={}",
-            settings.debug_logging_enabled
-        );
     }
     if sound_check_changed {
         state

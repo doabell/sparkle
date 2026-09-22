@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { logger } from "$lib/logger";
     import { page } from "$app/stores";
     import {
         getArtist,
@@ -169,15 +170,19 @@
 
         const [albumsData, tracksData, relatedData] = await Promise.all([
             getAlbums(id).catch((e) => {
-                console.error("Failed to load albums:", e);
+                void logger.error("artist", "failed_to_load_albums", e);
                 return [];
             }),
             getTracksByArtist(id).catch((e) => {
-                console.error("Failed to load tracks:", e);
+                void logger.error("artist", "failed_to_load_tracks", e);
                 return [];
             }),
             getRelatedArtists(id).catch((e) => {
-                console.error("Failed to load related artists:", e);
+                void logger.error(
+                    "artist",
+                    "failed_to_load_related_artists",
+                    e,
+                );
                 return [];
             }),
         ]);
@@ -193,14 +198,14 @@
         getArtistInfo(artistId)
             .then((info) => (artistInfo = info))
             .catch((e) => {
-                console.error("Artist info not available:", e);
+                void logger.debug("artist", "artist_info_not_available", e);
                 artistInfo = null;
             });
 
         getArtistImage(artistId)
             .then((image) => (artistImage = image))
             .catch((e) => {
-                console.error("Artist image not available:", e);
+                void logger.debug("artist", "artist_image_not_available", e);
                 artistImage = null;
             });
     }

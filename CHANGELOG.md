@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Fix seeks at both ends of the progress bar by enabling random access for audio files and keeping targets inside the decoded duration.
+- Define typed playback event payloads, command-linked failures, accurate queue/output transitions, and crash-recovery listen endings.
+- Prevent delayed playback events and command replies from rewinding seeks or overwriting newer state.
+- Report playback command outcomes and failures with correlation IDs, loading timings, and device recovery diagnostics.
+- Add local playback diagnostic captures and history-recorder health in Settings.
+- Keep listening history without an automatic retention limit; expire diagnostic events after seven days and omit them from new library backups.
+
 ## 0.5.0 — 2026-09-10
 
 - Replace the Windows MSI with a Velopack setup that creates a Start menu shortcut and no desktop shortcut.

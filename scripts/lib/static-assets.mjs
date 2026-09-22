@@ -42,7 +42,7 @@ function readTree(root) {
 /**
  * Publish a complete generated asset tree, retaining unchanged files and mtimes.
  * Cargo tracks the embedded frontend files, so rewriting identical bytes would
- * needlessly recompile and link the native app. Every build still runs Vite.
+ * needlessly recompile and link the native app when Vite runs.
  * @param {string} source
  * @param {string} destination
  */

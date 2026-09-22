@@ -1,6 +1,54 @@
 use super::*;
 
 #[test]
+fn playback_file_seeking_can_rewind_to_zero_after_reading() {
+    let root = crate::test_support::TestDir::new();
+    let path = root.audio("tone.flac");
+    let mut source = decode_playback_file(File::open(path).unwrap()).unwrap();
+    let duration_ms = source.total_duration().unwrap().as_millis() as i64;
+    for requested in [125, -100, 0, i64::MIN] {
+        let target = clamp_seek_position(requested, duration_ms);
+        source
+            .try_seek(Duration::from_millis(target as u64))
+            .unwrap_or_else(|error| panic!("seek {requested} -> {target} failed: {error:?}"));
+        assert!(source.by_ref().take(200).any(|sample| sample.abs() > 0.001));
+    }
+}
+
+#[test]
+fn playback_file_seeking_caps_the_end_before_eof() {
+    let root = crate::test_support::TestDir::new();
+    let path = root.audio("tone.flac");
+    let mut source = decode_playback_file(File::open(path).unwrap()).unwrap();
+    let duration_ms = source.total_duration().unwrap().as_millis() as i64;
+    for requested in [duration_ms, duration_ms + 1000, i64::MAX] {
+        let target = clamp_seek_position(requested, duration_ms);
+        source
+            .try_seek(Duration::from_millis(target as u64))
+            .unwrap_or_else(|error| panic!("seek {requested} -> {target} failed: {error:?}"));
+        assert_eq!(target, duration_ms - 1);
+        assert!(source.next().is_some());
+    }
+}
+
+#[test]
+fn seek_limits_use_decoded_duration_and_handle_short_or_unknown_tracks() {
+    let root = crate::test_support::TestDir::new();
+    let path = root.audio("tone.flac");
+    let source = decode_playback_file(File::open(path).unwrap()).unwrap();
+    let duration_ms = decoded_duration_ms(&source, 1000);
+    assert_eq!(duration_ms, 250);
+    assert_eq!(clamp_seek_position(1000, duration_ms), 249);
+    assert_eq!(clamp_seek_position(i64::MAX, 1), 0);
+    assert_eq!(clamp_seek_position(i64::MIN, 1), 0);
+    assert_eq!(clamp_seek_position(50, 0), 50);
+    assert_eq!(clamp_seek_position(-50, 0), 0);
+    let unknown = rodio::source::SineWave::new(440.0);
+    assert_eq!(decoded_duration_ms(&unknown, 1000), 1000);
+    assert_eq!(decoded_duration_ms(&unknown, -1), 0);
+}
+
+#[test]
 fn lyric_seek_caps_and_pauses_at_end_without_touching_a_new_track() {
     assert_eq!(
         lyric_seek_target(Some(1), 1, 180_000, 120_000),
@@ -147,7 +195,8 @@ fn play_next_moves_existing_entries_without_losing_current_song_or_other_orderin
                 }
                 let mut next_order = order.clone();
                 let (index, next_pos) =
-                    queue_track_next(&mut queue, &mut next_order, current_index, pos, requested);
+                    queue_track_next(&mut queue, &mut next_order, current_index, pos, requested)
+                        .unwrap_or((current_index, pos));
                 assert_eq!(queue[index], current_id);
                 assert_eq!(next_order[next_pos], index);
                 assert!(is_valid_play_order(&next_order, queue.len()));
@@ -158,9 +207,11 @@ fn play_next_moves_existing_entries_without_losing_current_song_or_other_orderin
                 assert_eq!(queue.iter().filter(|&&id| id == requested).count(), 1);
                 // Repeating Play Next has no further effect on queue or cursors.
                 let snapshot = (queue.clone(), next_order.clone(), index, next_pos);
-                let cursors =
-                    queue_track_next(&mut queue, &mut next_order, index, next_pos, requested);
-                assert_eq!((queue, next_order, cursors.0, cursors.1), snapshot);
+                assert_eq!(
+                    queue_track_next(&mut queue, &mut next_order, index, next_pos, requested),
+                    None
+                );
+                assert_eq!((queue, next_order, index, next_pos), snapshot);
             }
         }
     }
@@ -183,12 +234,14 @@ fn a_failed_source_load_can_recover_without_opening_an_output_device() {
     let (player, mut samples) = Player::new();
     for missing_or_corrupt in [root.join("missing.flac"), corrupt] {
         track.file_path = missing_or_corrupt.to_string_lossy().into_owned();
-        assert!(!load_source_into_player(&player, &track));
+        let failure = load_source_into_player(&player, &track).unwrap_err();
+        assert_eq!(failure.track_id, Some(1));
+        assert!(matches!(failure.stage.as_str(), "file_open" | "decode"));
         assert!(player.empty());
     }
     track.file_path = path.to_string_lossy().into_owned();
     player.set_volume(0.4);
-    assert!(load_source_into_player(&player, &track));
+    assert_eq!(load_source_into_player(&player, &track).unwrap(), 250);
     assert_eq!(player.len(), 1);
     assert_eq!(player.volume(), 0.4);
     assert!(player.is_paused());
@@ -199,9 +252,112 @@ fn a_failed_source_load_can_recover_without_opening_an_output_device() {
     assert!(decoded.iter().any(|sample| sample.abs() > 0.001));
     assert!(player.empty());
     // Loading again after completion is reusable and remains silent until Play.
-    assert!(load_source_into_player(&player, &track));
+    assert!(load_source_into_player(&player, &track).is_ok());
     assert!(player.is_paused());
     assert_eq!(player.len(), 1);
+}
+
+#[test]
+fn a_reload_that_cannot_seek_reports_failure_and_keeps_a_paused_player_paused() {
+    let root = crate::test_support::TestDir::new();
+    let path = root.audio("tone.flac");
+    let conn = crate::db::test_connection();
+    conn.execute(
+        "INSERT INTO tracks(id,file_path) VALUES(1,?)",
+        [path.to_string_lossy().as_ref()],
+    )
+    .unwrap();
+    let track = load_track_from_db(&Arc::new(Mutex::new(conn)), 1).unwrap();
+    let (player, _samples) = Player::new();
+    player.pause();
+    let error = reload_source_at_position(&player, &track, 0.4, 123, |_player, position| {
+        assert_eq!(position.as_millis(), 123);
+        Err("codec cannot seek".into())
+    })
+    .unwrap_err();
+    assert_eq!(error.stage, "seek_after_reload");
+    assert_eq!(error.track_id, Some(1));
+    assert_eq!(error.message, "codec cannot seek");
+    assert!(player.is_paused());
+    assert_eq!(player.volume(), 0.4);
+    let (recovered, _samples) = Player::new();
+    recovered.pause();
+    assert!(
+        reload_source_at_position(&recovered, &track, 0.6, 0, |_, _| {
+            panic!("a fresh source must not need a decoder seek to reach zero")
+        })
+        .is_ok()
+    );
+    assert!(recovered.is_paused());
+    assert_eq!(recovered.volume(), 0.6);
+}
+
+#[test]
+fn failed_load_replies_preserve_the_failure_instead_of_returning_a_state_read() {
+    let root = crate::test_support::TestDir::new();
+    let path = root.join("corrupt.flac");
+    std::fs::write(&path, b"not audio").unwrap();
+    let conn = crate::db::test_connection();
+    conn.execute(
+        "INSERT INTO tracks(id,file_path) VALUES(7,?)",
+        [path.to_string_lossy().as_ref()],
+    )
+    .unwrap();
+    let track = load_track_from_db(&Arc::new(Mutex::new(conn)), 7).unwrap();
+    let (tx, rx) = mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        let AudioCommand::Execute(request) = rx.recv().unwrap() else {
+            panic!("expected an observed command")
+        };
+        assert!(matches!(
+            request.command,
+            AudioCommand::PlayTrack(7, PlaybackSource::Ui, _)
+        ));
+        let (player, _samples) = Player::new();
+        let failure = load_source_into_player(&player, &track)
+            .unwrap_err()
+            .for_command(&request.operation.id, request.operation.name);
+        request.reply.send(Err(failure)).unwrap();
+        assert!(rx.recv_timeout(Duration::from_secs(1)).is_err());
+    });
+    let failure = send_command(
+        &tx,
+        AudioCommand::PlayTrack(7, PlaybackSource::Ui, PlaybackContext::default()),
+        Some("click-7".into()),
+        Duration::from_secs(1),
+    )
+    .unwrap_err();
+    assert_eq!(failure.stage, "decode");
+    assert_eq!(failure.command_id.as_deref(), Some("click-7"));
+    assert_eq!(failure.command.as_deref(), Some("play_track"));
+    assert_eq!(failure.track_id, Some(7));
+    drop(tx);
+    worker.join().unwrap();
+}
+
+#[test]
+fn command_timeouts_and_disconnections_preserve_the_operation_identity() {
+    let (tx, rx) = mpsc::channel();
+    let failure = send_command(
+        &tx,
+        AudioCommand::Pause(PlaybackSource::Ui),
+        Some("pause-1".into()),
+        Duration::ZERO,
+    )
+    .unwrap_err();
+    assert_eq!(failure.stage, "reply_timeout");
+    assert_eq!(failure.command_id.as_deref(), Some("pause-1"));
+    assert!(failure.message.contains("may still finish"));
+    drop(rx);
+    let failure = send_command(
+        &tx,
+        AudioCommand::Seek(50, PlaybackSource::Keyboard),
+        Some("seek-1".into()),
+        Duration::ZERO,
+    )
+    .unwrap_err();
+    assert_eq!(failure.stage, "dispatch");
+    assert_eq!(failure.command.as_deref(), Some("seek"));
 }
 
 #[test]
@@ -274,6 +430,43 @@ fn shuffled_order_keeps_start_first_and_is_permutation() {
     assert_eq!(pos, 0);
     assert_eq!(order[0], 3);
     assert!(is_valid_play_order(&order, 10));
+}
+
+#[test]
+fn redundant_shuffle_requests_preserve_the_exact_queue_order() {
+    let mut enabled = true;
+    let mut order = vec![3, 1, 0, 2];
+    let mut position = Some(1);
+    assert!(!change_shuffle(
+        &mut enabled,
+        true,
+        4,
+        Some(1),
+        &mut order,
+        &mut position
+    ));
+    assert_eq!(order, vec![3, 1, 0, 2]);
+    assert_eq!(position, Some(1));
+    assert!(change_shuffle(
+        &mut enabled,
+        false,
+        4,
+        Some(1),
+        &mut order,
+        &mut position
+    ));
+    assert_eq!(order, vec![0, 1, 2, 3]);
+    assert_eq!(position, Some(1));
+    assert!(change_shuffle(
+        &mut enabled,
+        true,
+        0,
+        None,
+        &mut order,
+        &mut position
+    ));
+    assert!(order.is_empty());
+    assert_eq!(position, None);
 }
 
 #[test]

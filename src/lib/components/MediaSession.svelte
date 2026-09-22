@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { logger } from "$lib/logger";
     import { onMount } from "svelte";
     import { getAlbumArtData, type Track } from "$lib/api";
     import { bytesToBase64 } from "$lib/utils/base64";
@@ -27,7 +28,11 @@
 
     function queueMedia(operation: () => Promise<void>) {
         mediaQueue = mediaQueue.then(operation).catch((error) => {
-            console.error("Failed to update native media controls:", error);
+            void logger.warn(
+                "media",
+                "failed_to_update_native_media_controls",
+                error,
+            );
         });
     }
 
@@ -202,7 +207,11 @@
                 await initializeMediaSessionOnce();
                 if (!disposed) initialized = true;
             } catch (error) {
-                console.error("Failed to initialize media controls:", error);
+                void logger.warn(
+                    "media",
+                    "failed_to_initialize_media_controls",
+                    error,
+                );
             }
         })();
 

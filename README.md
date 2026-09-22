@@ -15,7 +15,7 @@ Sparkle is a local-first Windows music player with native playback, an album-foc
 - Albums, artists, playlists, search, queue controls, and media keys.
 - Sound Check normalization, synchronized lyrics, and lyrics editing/export.
 - Listening stats, library health checks, and selective `.sparklebackup` restores.
-- Optional metadata, artwork, and [Discord presence](docs/discord-artwork.md) integrations.
+- Optional metadata, artwork, and [Discord presence](docs/discord-presence.md) integrations.
 
 ## Install
 
@@ -38,7 +38,17 @@ bun install --frozen-lockfile
 bun run tauri dev
 ```
 
-See [tests and coverage](docs/testing.md), [Windows builds and releases](docs/windows-releases.md), and the [changelog](CHANGELOG.md).
+Debug builds use a separate library and settings profile from installed builds.
+
+## Documentation
+
+- [Providers and search](docs/providers.md)
+- [Discord presence](docs/discord-presence.md) and [artwork storage](docs/discord-artwork.md)
+- [Logging and troubleshooting](docs/logging.md)
+- [Tests and coverage](docs/testing.md)
+- [Windows builds and releases](docs/windows-releases.md)
+- [Interface language](docs/design-language.md)
+- [Release notes](CHANGELOG.md)
 
 ## License
 

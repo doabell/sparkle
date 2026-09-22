@@ -1,23 +1,6 @@
 use super::*;
 use std::cell::RefCell;
 
-#[test]
-fn logging_filter_keeps_lifecycle_and_scopes_verbose_output() {
-    assert!(should_emit_log(log::Level::Info, "dependency", false));
-    assert!(should_emit_log(log::Level::Error, "sparkle::audio", false));
-    assert!(!should_emit_log(
-        log::Level::Debug,
-        "sparkle::playback",
-        false
-    ));
-    assert!(should_emit_log(
-        log::Level::Trace,
-        "sparkle::analytics::writer",
-        true
-    ));
-    assert!(!should_emit_log(log::Level::Debug, "dependency", true));
-}
-
 struct FakePlayback {
     is_playing: bool,
     position_ms: i64,
