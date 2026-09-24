@@ -456,6 +456,54 @@ test("playback commands preserve intent, return canonical state, and recover fro
     }
 });
 
+test("mute remembers the last audible volume across player subscriptions and stale replies", async () => {
+    const store = createPlaybackStore();
+    expect(store.getUnmuteVolume()).toBe(0.8);
+    const unsubscribeFullPlayer = store.subscribe(() => {});
+    try {
+        invoke.mockResolvedValueOnce(
+            commandReply({ ...state, revision: 1, volume: 0.25 }),
+        );
+        await store.setVolume(0.25);
+        invoke.mockResolvedValueOnce(
+            commandReply({ ...state, revision: 2, volume: 0 }),
+        );
+        await store.setVolume(0);
+        unsubscribeFullPlayer();
+
+        expect(store.getUnmuteVolume()).toBe(0.25);
+        invoke.mockResolvedValueOnce(
+            commandReply({ ...state, revision: 3, volume: 0.25 }),
+        );
+        await store.setVolume(store.getUnmuteVolume());
+        expect(invoke).toHaveBeenLastCalledWith("set_volume", {
+            commandId: expect.any(String),
+            volume: 0.25,
+            source: "ui",
+        });
+        expect(get(store).volume).toBe(0.25);
+
+        // A keyboard/native volume change also becomes the next unmute level.
+        invoke.mockResolvedValueOnce(
+            commandReply({ ...state, revision: 4, volume: 0.1 }),
+        );
+        await store.setVolume(0.1, "keyboard");
+        invoke.mockResolvedValueOnce(
+            commandReply({ ...state, revision: 5, volume: 0 }),
+        );
+        await store.setVolume(0);
+        invoke.mockResolvedValueOnce(
+            commandReply({ ...state, revision: 3, volume: 0.25 }),
+        );
+        await store.pause();
+        expect(get(store).volume).toBe(0);
+        expect(store.getUnmuteVolume()).toBe(0.1);
+    } finally {
+        unsubscribeFullPlayer();
+        invoke.mockReset();
+    }
+});
+
 test("failed queue loads preserve the last metadata and a retry accepts the new canonical state", async () => {
     const store = createPlaybackStore();
     logFrontend.mockReset();

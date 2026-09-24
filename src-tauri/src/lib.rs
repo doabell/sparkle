@@ -588,6 +588,26 @@ pub fn run() {
                 }
             }
 
+            // The frontend reveals the window after restoring the saved player
+            // mode. Still make it reachable if frontend startup fails entirely.
+            if let Some(window) = app.get_webview_window("main") {
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                    if matches!(window.is_visible(), Ok(false)) {
+                        log::warn!(
+                            target: "sparkle::lifecycle",
+                            "event=startup_window_reveal_fallback"
+                        );
+                        if let Err(error) = window.show() {
+                            log::error!(
+                                target: "sparkle::lifecycle",
+                                "event=startup_window_reveal_failed error={error}"
+                            );
+                        }
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

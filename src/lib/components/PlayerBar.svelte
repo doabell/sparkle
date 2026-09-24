@@ -8,6 +8,7 @@
         previousTrack,
         setVolume,
         setVolumeLive,
+        getUnmuteVolume,
         seek,
         setShuffle,
         cycleRepeatMode,
@@ -26,6 +27,7 @@
     import { onMount } from "svelte";
     import QueuePanel from "$lib/components/QueuePanel.svelte";
     import ArtistLinks from "$lib/components/ArtistLinks.svelte";
+    import { miniPlayer } from "$lib/stores/miniPlayer";
 
     let art = $state<CachedImage | null>(null);
     let lastAlbumId = $state<number | null>(null);
@@ -146,11 +148,6 @@
     let pendingVolume = $state<number | null>(null);
     let isDraggingVolume = $state(false);
     let lastLiveVolumeSent = $state(0);
-    // Mute is "volume 0 with memory": the speaker icon toggles between 0 and
-    // the last non-zero volume. Any manual volume above 0 unmutes implicitly.
-    let lastNonZeroVolume = $state(
-        $playback.volume > 0 ? $playback.volume : 0.8,
-    );
 
     $effect(() => {
         const storeVolume = $playback.volume;
@@ -167,20 +164,13 @@
         }
     });
 
-    function recordNonZero(value: number) {
-        if (value > 0) {
-            lastNonZeroVolume = value;
-        }
-    }
-
     function toggleMute() {
         if (volumeInput > 0) {
-            lastNonZeroVolume = volumeInput;
             volumeInput = 0;
             pendingVolume = 0;
             setVolume(0);
         } else {
-            const target = Math.max(0.01, lastNonZeroVolume);
+            const target = getUnmuteVolume();
             volumeInput = target;
             pendingVolume = target;
             setVolume(target);
@@ -188,7 +178,6 @@
     }
 
     function commitLiveVolume(value: number) {
-        recordNonZero(value);
         const now = Date.now();
         if (now - lastLiveVolumeSent >= 50) {
             lastLiveVolumeSent = now;
@@ -220,7 +209,6 @@
 
     function handleVolumeMouseUp() {
         if (!isDraggingVolume) return;
-        recordNonZero(volumeInput);
         pendingVolume = volumeInput;
         isDraggingVolume = false;
         setVolume(volumeInput);
@@ -233,7 +221,6 @@
             0,
             Math.min(1, Math.round((volumeInput + delta) * 100) / 100),
         );
-        recordNonZero(value);
         pendingVolume = value;
         volumeInput = value;
         setVolume(value);
@@ -598,6 +585,34 @@
             </svg>
         </button>
 
+        <button
+            class="mode-btn"
+            onclick={() => miniPlayer.toggle()}
+            disabled={$miniPlayer.busy}
+            aria-label="Open mini player"
+            title="Mini Player (Ctrl+Shift+M)"
+        >
+            <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+            >
+                <rect x="3" y="4" width="18" height="16" rx="2" />
+                <rect
+                    x="12"
+                    y="11"
+                    width="7"
+                    height="6"
+                    rx="1"
+                    fill="currentColor"
+                    stroke="none"
+                />
+            </svg>
+        </button>
         <div class="volume">
             <button
                 class="volume-icon"

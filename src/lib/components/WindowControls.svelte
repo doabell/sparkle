@@ -4,6 +4,7 @@
         getCurrentWindow,
         type Window as TauriWindow,
     } from "@tauri-apps/api/window";
+    import { miniPlayer } from "$lib/stores/miniPlayer";
 
     let appWindow: TauriWindow | null = null;
     let maximized = $state(false);
@@ -27,6 +28,10 @@
     }
 
     async function toggleMaximize() {
+        if ($miniPlayer.active) {
+            await miniPlayer.toggle();
+            return;
+        }
         await withWindow((window) => window.toggleMaximize());
         await syncMaximized();
     }
@@ -59,7 +64,28 @@
 </script>
 
 <div class="window-drag-region" data-tauri-drag-region></div>
-<div class="window-controls" aria-label="Window controls">
+<div
+    class="window-controls"
+    class:compact={$miniPlayer.active}
+    aria-label="Window controls"
+>
+    {#if $miniPlayer.active}
+        <button
+            type="button"
+            class="window-control pin"
+            class:active={$miniPlayer.pinned}
+            aria-label="Always on top"
+            aria-pressed={$miniPlayer.pinned}
+            title={$miniPlayer.pinned ? "Unpin window" : "Keep window on top"}
+            disabled={$miniPlayer.busy}
+            onclick={() => miniPlayer.togglePinned()}
+        >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M6 2h4l-.5 4L12 9H4l2.5-3L6 2Zm2 7v5" />
+                {#if !$miniPlayer.pinned}<path d="m2 2 12 12" />{/if}
+            </svg>
+        </button>
+    {/if}
     <button
         type="button"
         class="window-control"
@@ -74,12 +100,23 @@
     <button
         type="button"
         class="window-control"
-        aria-label={maximized ? "Restore" : "Maximize"}
-        title={maximized ? "Restore" : "Maximize"}
+        aria-label={$miniPlayer.active
+            ? "Return to full player"
+            : maximized
+              ? "Restore"
+              : "Maximize"}
+        title={$miniPlayer.active
+            ? "Return to full player"
+            : maximized
+              ? "Restore"
+              : "Maximize"}
+        disabled={$miniPlayer.busy}
         onclick={() => void toggleMaximize()}
     >
         <svg viewBox="0 0 16 16" aria-hidden="true">
-            {#if maximized}
+            {#if $miniPlayer.active}
+                <path d="M9 3h4v4m0-4L8 8M6 4H3v9h9v-3" />
+            {:else if maximized}
                 <path d="M6 5V3h7v7h-2" />
                 <rect x="3" y="5" width="8" height="8" rx="1.5" />
             {:else}
@@ -128,6 +165,21 @@
         background: transparent;
         color: inherit;
         transition: color var(--transition-feedback);
+    }
+
+    .compact .window-control::before {
+        inset: 2px;
+        border-radius: var(--radius-sm);
+    }
+    .compact .window-control svg {
+        width: 14px;
+        height: 14px;
+    }
+    .window-control.pin.active {
+        color: var(--color-accent-graphic);
+    }
+    .window-control.pin.active::before {
+        background: var(--color-accent-subtle);
     }
 
     /* The visible tile is inset; the invisible rectangular target still
