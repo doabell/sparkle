@@ -3,6 +3,9 @@ export function dialogFocus(node: HTMLElement, onClose: () => void) {
     const previous = document.activeElement;
     node.focus();
     function handleKeydown(event: KeyboardEvent) {
+        // The full player remains mounted while Mini Player hides it. Hidden
+        // dialogs must not capture keys or pull focus away from that window UI.
+        if (node.getClientRects().length === 0) return;
         if (event.key === "Escape" && !event.defaultPrevented) {
             onClose();
             return;

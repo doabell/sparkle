@@ -45,8 +45,9 @@
         color: var(--color-text);
         border: 1px solid var(--color-border);
         box-shadow: var(--shadow-md);
-        min-width: 240px;
-        max-width: 360px;
+        min-width: min(240px, calc(100vw - 2 * var(--spacing-lg)));
+        max-width: min(360px, calc(100vw - 2 * var(--spacing-lg)));
+        overflow-wrap: anywhere;
         font-size: var(--font-size-sm);
     }
 

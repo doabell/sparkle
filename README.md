@@ -13,6 +13,10 @@ Sparkle is a local-first Windows music player with native playback, an album-foc
 ## Highlights
 
 - Albums, artists, playlists, search, queue controls, and media keys.
+- Compact Mini Player with lyrics, shuffle/repeat, seeking, volume, and an optional
+  always-on-top pin. Open it from the player bar or with `Ctrl+Shift+M`; use the
+  return button to expand the full window. Sparkle remembers the player mode and
+  pin setting across launches, starting with the full window on first launch.
 - Sound Check normalization, synchronized lyrics, and lyrics editing/export.
 - Listening stats, library health checks, and selective `.sparklebackup` restores.
 - Optional metadata, artwork, and [Discord presence](docs/discord-presence.md) integrations.

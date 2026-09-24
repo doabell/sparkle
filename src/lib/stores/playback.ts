@@ -61,6 +61,8 @@ export function createPlaybackStore() {
     const localOffsets = new Map<number, number>();
     let nativeRevision = -1;
     let progressSequence = -1;
+    // Both player layouts share mute memory, including while either is unmounted.
+    let lastAudibleVolume = initialState.volume;
 
     function withLocalOffset(track: Track | null): Track | null {
         if (!track || !localOffsets.has(track.id)) return track;
@@ -73,6 +75,7 @@ export function createPlaybackStore() {
     }
 
     function set(state: PlaybackState) {
+        if (state.volume > 0) lastAudibleVolume = state.volume;
         setState({
             ...state,
             current_track: withLocalOffset(state.current_track),
@@ -197,6 +200,7 @@ export function createPlaybackStore() {
     return {
         subscribe,
         set,
+        getUnmuteVolume: () => lastAudibleVolume,
         play: (source: PlaybackActionSource = "ui") =>
             callCommand(() => backendPlay(source)),
         pause: (source: PlaybackActionSource = "ui") =>
@@ -302,6 +306,7 @@ export const interpolatedPositionMs = readable(0, (set) => {
 });
 
 export const {
+    getUnmuteVolume,
     play,
     pause,
     stop,

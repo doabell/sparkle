@@ -100,6 +100,24 @@ test("modal keyboard navigation wraps visible controls and returns to its trigge
     }
 });
 
+test("hidden full-player dialogs release keyboard navigation until visible again", () => {
+    const f = fixture();
+    try {
+        f.dialog.visible = false;
+        f.trigger.focus();
+        expect(f.key("Tab")).toBe(false);
+        expect(f.key("Tab", true)).toBe(false);
+        expect(f.doc.activeElement).toBe(f.trigger);
+        f.key("Escape");
+        expect(f.dismissed()).toBe(0);
+        f.dialog.visible = true;
+        expect(f.key("Tab")).toBe(true);
+        expect(f.doc.activeElement).toBe(f.first);
+    } finally {
+        f.cleanup();
+    }
+});
+
 test("modal keeps focus contained after switching content or disabling every control", () => {
     const f = fixture();
     try {

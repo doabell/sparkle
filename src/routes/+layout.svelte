@@ -6,6 +6,8 @@
     import { afterNavigate, beforeNavigate } from "$app/navigation";
     import Sidebar from "$lib/components/Sidebar.svelte";
     import PlayerBar from "$lib/components/PlayerBar.svelte";
+    import MiniPlayer from "$lib/components/MiniPlayer.svelte";
+    import { miniPlayer } from "$lib/stores/miniPlayer";
     import Toaster from "$lib/components/Toaster.svelte";
     import MediaSession from "$lib/components/MediaSession.svelte";
     import CommandPalette from "$lib/components/CommandPalette.svelte";
@@ -253,16 +255,27 @@
     }
 
     function handleKeydown(event: KeyboardEvent) {
+        if (event.defaultPrevented) return;
+        if (
+            (event.ctrlKey || event.metaKey) &&
+            event.shiftKey &&
+            !event.altKey &&
+            event.key.toLowerCase() === "m"
+        ) {
+            event.preventDefault();
+            if (!event.repeat && !$miniPlayer.active) void miniPlayer.toggle();
+            return;
+        }
         if (
             (event.ctrlKey || event.metaKey) &&
             event.key.toLowerCase() === "k"
         ) {
             event.preventDefault();
+            if ($miniPlayer.active) return;
             paletteOpen = !paletteOpen;
             return;
         }
-        if (event.defaultPrevented || isInteractiveElement(event.target))
-            return;
+        if (isInteractiveElement(event.target)) return;
 
         const key = event.key;
 
@@ -316,6 +329,7 @@
     onMount(() => installErrorLogging(window));
 
     onMount(() => {
+        void miniPlayer.restoreMode();
         loadUiSettings();
         const disconnectScan = libraryScan.connect();
 
@@ -376,53 +390,70 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<WindowControls />
-<div class="app">
-    <Sidebar />
-    <main
-        id="page-content"
-        bind:this={contentElement}
-        class="content"
-        class:now-playing-content={$page.url.pathname === "/now-playing"}
+<div class:mini-player-active={$miniPlayer.active}>
+    <WindowControls />
+    <div
+        class="app"
+        class:mini-hidden={$miniPlayer.active}
+        inert={$miniPlayer.active}
     >
-        {#if canGoBack}
-            <button
-                class="back-fab"
-                onclick={goBack}
-                aria-label="Go back"
-                title="Back"
-            >
-                <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
+        <Sidebar />
+        <main
+            id="page-content"
+            bind:this={contentElement}
+            class="content"
+            class:now-playing-content={$page.url.pathname === "/now-playing"}
+        >
+            {#if canGoBack}
+                <button
+                    class="back-fab"
+                    onclick={goBack}
+                    aria-label="Go back"
+                    title="Back"
                 >
-                    <path d="m15 18-6-6 6-6" />
-                </svg>
-            </button>
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                    >
+                        <path d="m15 18-6-6 6-6" />
+                    </svg>
+                </button>
+            {/if}
+            {@render children()}
+        </main>
+        <PageScrollbar
+            target={contentElement}
+            enabled={overlayScrollbarSupported &&
+                $page.url.pathname !== "/now-playing"}
+        />
+        <div class="player-wrapper">
+            <PlayerBar />
+        </div>
+        {#if paletteOpen && !$miniPlayer.active}
+            <CommandPalette onClose={() => (paletteOpen = false)} />
         {/if}
-        {@render children()}
-    </main>
-    <PageScrollbar
-        target={contentElement}
-        enabled={overlayScrollbarSupported &&
-            $page.url.pathname !== "/now-playing"}
-    />
-    <div class="player-wrapper">
-        <PlayerBar />
     </div>
+    {#if $miniPlayer.active}
+        <MiniPlayer />
+    {/if}
     <Toaster />
     <MediaSession />
-    {#if paletteOpen}
-        <CommandPalette onClose={() => (paletteOpen = false)} />
-    {/if}
 </div>
 
 <style>
+    .mini-player-active {
+        --window-chrome-height: 1.5rem;
+    }
+
+    .app.mini-hidden {
+        display: none;
+    }
+
     .app {
         display: grid;
         grid-template-columns: var(--sidebar-width) 1fr;
