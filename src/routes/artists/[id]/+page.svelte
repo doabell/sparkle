@@ -38,10 +38,18 @@
     import SearchField from "$lib/components/SearchField.svelte";
     import SearchFeedback from "$lib/components/SearchFeedback.svelte";
     import { dialogFocus } from "$lib/utils/dialogFocus";
-    import { onMount } from "svelte";
+    import { onDestroy, onMount } from "svelte";
+    import { createLatestRequest } from "$lib/utils/latestRequest";
     import { addToast } from "$lib/stores/toast";
     import { windowPageTitle } from "$lib/stores/windowPageTitle";
     import { openUrl } from "@tauri-apps/plugin-opener";
+
+    const requests = createLatestRequest();
+    const metadataRequests = createLatestRequest();
+    onDestroy(() => {
+        requests.invalidate();
+        metadataRequests.invalidate();
+    });
 
     let artist = $state<Artist | null>(null);
     let albums = $state<Album[]>([]);
@@ -146,10 +154,16 @@
     // Reload when the id changes — artist-to-artist navigation reuses this
     // component, so onMount alone would leave stale content behind.
     $effect(() => {
-        load(artistId);
+        void load(artistId);
+        return () => {
+            requests.invalidate();
+            metadataRequests.invalidate();
+        };
     });
 
     async function load(id: number) {
+        const isCurrent = requests.start();
+        metadataRequests.invalidate();
         imageSearchRequest += 1;
         editOpen = false;
         loading = true;
@@ -161,8 +175,11 @@
         artistInfo = null;
         artistImage = null;
         try {
-            artist = await getArtist(id);
+            const next = await getArtist(id);
+            if (!isCurrent()) return;
+            artist = next;
         } catch (e) {
+            if (!isCurrent()) return;
             error = String(e);
             loading = false;
             return;
@@ -186,6 +203,7 @@
                 return [];
             }),
         ]);
+        if (!isCurrent()) return;
         albums = albumsData;
         topTracks = tracksData;
         relatedArtists = relatedData;
@@ -195,18 +213,23 @@
     }
 
     function refreshMetadata() {
+        const isCurrent = metadataRequests.start();
         getArtistInfo(artistId)
-            .then((info) => (artistInfo = info))
+            .then((info) => {
+                if (isCurrent()) artistInfo = info;
+            })
             .catch((e) => {
                 void logger.debug("artist", "artist_info_not_available", e);
-                artistInfo = null;
+                if (isCurrent()) artistInfo = null;
             });
 
         getArtistImage(artistId)
-            .then((image) => (artistImage = image))
+            .then((image) => {
+                if (isCurrent()) artistImage = image;
+            })
             .catch((e) => {
                 void logger.debug("artist", "artist_image_not_available", e);
-                artistImage = null;
+                if (isCurrent()) artistImage = null;
             });
     }
 

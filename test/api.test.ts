@@ -110,7 +110,6 @@ test("read-only bridge commands preserve native results", async () => {
         ["pickFolder", "pick_folder"],
         ["getArtists", "get_artists"],
         ["getGenres", "get_genres"],
-        ["getQueue", "get_queue"],
         ["getPlaybackState", "get_playback_state"],
         ["getCacheDir", "get_cache_dir"],
         ["getDiscoveryTracks", "get_discovery_tracks"],
@@ -642,4 +641,75 @@ test("media artwork reads bytes only when a cached file exists", async () => {
         source: "embedded",
     });
     await flush();
+});
+
+test("settings writes preserve edit order, snapshot values, and reads wait for pending saves", async () => {
+    const first = deferred(),
+        second = deferred();
+    const saved = { theme_mode: "dark" };
+    invoke.mockImplementation((command, payload) => {
+        if (command === "set_online_settings")
+            return payload.settings.theme_mode === "dark"
+                ? first.promise
+                : second.promise;
+        return { theme_mode: "light" };
+    });
+    const a = api.setOnlineSettings(saved);
+    saved.theme_mode = "system";
+    const b = api.setOnlineSettings({ theme_mode: "light" });
+    const read = api.getOnlineSettings();
+    await flush();
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(invoke.mock.calls[0][1].settings.theme_mode).toBe("dark");
+    first.resolve();
+    await a;
+    await flush();
+    expect(invoke).toHaveBeenCalledTimes(2);
+    second.resolve();
+    await b;
+    expect(await read).toEqual({ theme_mode: "light" });
+    expect(invoke.mock.calls[2][0]).toBe("get_online_settings");
+});
+
+test("a failed settings write does not block later writes or reads", async () => {
+    const failure = deferred();
+    invoke.mockImplementationOnce(() => failure.promise);
+    invoke.mockResolvedValue({ theme_mode: "system" });
+    const failed = api
+        .setOnlineSettings({ theme_mode: "dark" })
+        .catch(() => {});
+    const next = api.setOnlineSettings({ theme_mode: "light" });
+    failure.reject(Error("cannot save"));
+    await failed;
+    await next;
+    expect(await api.getOnlineSettings()).toEqual({ theme_mode: "system" });
+    const last = deferred();
+    invoke.mockImplementationOnce(() => last.promise);
+    const rejected = api
+        .setOnlineSettings({ theme_mode: "dark" })
+        .catch(() => {});
+    const read = api.getOnlineSettings();
+    last.reject(Error("cannot save"));
+    await rejected;
+    expect(await read).toEqual({ theme_mode: "system" });
+});
+
+test("queue requests carry explicit pagination parameters", async () => {
+    invoke.mockResolvedValue({
+        tracks: [],
+        total: 0,
+        offset: 0,
+        revision: 8,
+        current_pos: null,
+    });
+    await api.getQueue();
+    expect(invoke).toHaveBeenLastCalledWith("get_queue", {
+        offset: undefined,
+        limit: 100,
+    });
+    await api.getQueue(300, 50);
+    expect(invoke).toHaveBeenLastCalledWith("get_queue", {
+        offset: 300,
+        limit: 50,
+    });
 });

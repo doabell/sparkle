@@ -1,88 +1,31 @@
 <script lang="ts">
-    import { logger } from "$lib/logger";
-    import { getQueue, type QueueView, type Track } from "$lib/api";
+    import { createQueueStore, QUEUE_PAGE_SIZE } from "$lib/stores/queue";
     import { playQueueIndex } from "$lib/stores/playback";
     import { formatTime } from "$lib/utils/formatTime";
     import Artwork from "$lib/components/Artwork.svelte";
-    import { listen } from "@tauri-apps/api/event";
-    import { onMount, tick } from "svelte";
+    import VirtualList from "$lib/components/VirtualList.svelte";
     import { addToast } from "$lib/stores/toast";
 
-    interface Props {
-        onClose: () => void;
-    }
-
-    let { onClose }: Props = $props();
-
-    let queue = $state<QueueView | null>(null);
+    let { onClose }: { onClose: () => void } = $props();
+    const queueStore = createQueueStore();
+    let queue = $derived($queueStore.queue);
     let panelRef = $state<HTMLDivElement | null>(null);
-    let scrollRef = $state<HTMLDivElement | null>(null);
-    let currentRowRef = $state<HTMLDivElement | null>(null);
-
-    let currentTrack = $derived.by<Track | null>(() => {
-        if (!queue || queue.current_pos === null) return null;
-        return queue.tracks[queue.current_pos] ?? null;
-    });
-
-    let history = $derived.by<{ track: Track; pos: number }[]>(() => {
-        if (!queue || queue.current_pos === null) return [];
-        return queue.tracks
-            .slice(0, queue.current_pos)
-            .map((track, i) => ({ track, pos: i }));
-    });
-
-    let upNext = $derived.by<{ track: Track; pos: number }[]>(() => {
-        if (!queue || queue.current_pos === null) return [];
-        const start = queue.current_pos + 1;
-        return queue.tracks
-            .slice(start)
-            .map((track, i) => ({ track, pos: start + i }));
-    });
-
-    async function refresh(scrollToCurrent = false) {
-        try {
-            queue = await getQueue();
-            if (scrollToCurrent) {
-                await tick();
-                currentRowRef?.scrollIntoView({ block: "center" });
-            }
-        } catch (e) {
-            void logger.error("queue", "failed_to_load_queue", e);
-        }
-    }
-
-    onMount(() => {
-        refresh(true);
-        const unlisteners: Array<() => void> = [];
-        (async () => {
-            unlisteners.push(await listen("queue-changed", () => refresh()));
-            unlisteners.push(
-                await listen("playback-state-changed", () => refresh()),
-            );
-        })();
-        return () => {
-            for (const unlisten of unlisteners) unlisten();
-        };
-    });
 
     function handleWindowClick(e: MouseEvent) {
-        if (panelRef && !panelRef.contains(e.target as Node)) {
-            onClose();
-        }
+        if (panelRef && !panelRef.contains(e.target as Node)) onClose();
     }
-
     function handleKeydown(e: KeyboardEvent) {
         if (e.key === "Escape") {
             e.stopPropagation();
             onClose();
         }
     }
-
-    async function jumpTo(pos: number) {
+    async function jumpTo(pos: number, revision: number) {
         try {
-            await playQueueIndex(pos);
+            await playQueueIndex(pos, "ui", revision);
         } catch (e) {
             addToast(String(e), "error");
+            queueStore.retry();
         }
     }
 </script>
@@ -113,113 +56,76 @@
         </button>
     </div>
 
+    {#if $queueStore.error}
+        <p class="queue-status" role="alert">
+            {$queueStore.error}
+            <button onclick={queueStore.retry}>Retry</button>
+        </p>
+    {/if}
     {#if queue === null}
-        <p class="queue-status">Loading...</p>
-    {:else if !currentTrack}
+        {#if !$queueStore.error}<p class="queue-status">Loading...</p>{/if}
+    {:else if queue.total === 0}
         <p class="queue-status">
             The queue is empty. Play a song, album, or playlist to build it.
         </p>
     {:else}
-        <div class="queue-scroll" bind:this={scrollRef}>
-            {#if history.length > 0}
-                <div class="queue-section-label">History</div>
-                <ul class="queue-list">
-                    {#each history as item (item.pos)}
-                        <li>
-                            <button
-                                class="queue-row played"
-                                onclick={() => jumpTo(item.pos)}
-                            >
-                                <span class="row-cover"
-                                    ><Artwork
-                                        albumId={item.track.album_id}
-                                        alt=""
-                                        class="cover-img"
-                                    /></span
-                                >
-                                <span class="row-text">
-                                    <span class="row-title ellipsis"
-                                        >{item.track.title ?? "Unknown"}</span
-                                    >
-                                    <span class="row-artist ellipsis"
-                                        >{item.track.artist_names?.join(", ") ??
-                                            ""}</span
-                                    >
-                                </span>
-                                <span class="row-duration"
-                                    >{formatTime(
-                                        item.track.duration_ms ?? 0,
-                                    )}</span
-                                >
-                            </button>
-                        </li>
-                    {/each}
-                </ul>
-            {/if}
-
-            <div class="queue-section-label">Now Playing</div>
-            <div class="queue-row current" bind:this={currentRowRef}>
-                <span class="row-cover"
-                    ><Artwork
-                        albumId={currentTrack.album_id}
-                        alt=""
-                        class="cover-img"
-                    /></span
-                >
-                <span class="row-text">
-                    <span class="row-title ellipsis"
-                        >{currentTrack.title ?? "Unknown"}</span
+        <div class="queue-section-label">
+            {queue.total} tracks · {queue.current_pos === null
+                ? queue.total
+                : queue.total - queue.current_pos - 1} up next
+        </div>
+        <div class="queue-scroll" data-virtual-scroll>
+            <VirtualList
+                count={queue.total}
+                initialIndex={queue.current_pos ?? 0}
+                rowHeight={3}
+                ariaLabel="Play queue tracks"
+                onRange={queueStore.setRange}
+            >
+                {#snippet children(pos)}
+                    {@const offset =
+                        Math.floor(pos / QUEUE_PAGE_SIZE) * QUEUE_PAGE_SIZE}
+                    {@const track =
+                        $queueStore.pages.get(offset)?.[pos - offset]}
+                    <button
+                        class="queue-row"
+                        class:played={queue.current_pos !== null &&
+                            pos < queue.current_pos}
+                        class:current={pos === queue.current_pos}
+                        aria-disabled={!track}
+                        aria-current={pos === queue.current_pos
+                            ? "true"
+                            : undefined}
+                        onclick={() => track && jumpTo(pos, queue.revision)}
                     >
-                    <span class="row-artist ellipsis"
-                        >{currentTrack.artist_names?.join(", ") ?? ""}</span
-                    >
-                </span>
-                <span class="row-eq" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="currentColor">
-                        <path
-                            d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"
-                        />
-                    </svg>
-                </span>
-            </div>
-
-            {#if upNext.length > 0}
-                <div class="queue-section-label">Up Next · {upNext.length}</div>
-                <ul class="queue-list">
-                    {#each upNext as item (item.pos)}
-                        <li>
-                            <button
-                                class="queue-row"
-                                onclick={() => jumpTo(item.pos)}
+                        <span class="row-cover"
+                            >{#if track}<Artwork
+                                    albumId={track.album_id}
+                                    alt=""
+                                    class="cover-img"
+                                />{/if}</span
+                        >
+                        <span class="row-text">
+                            <span class="row-title ellipsis"
+                                >{track
+                                    ? (track.title ?? "Unknown")
+                                    : track === null
+                                      ? "Unavailable track"
+                                      : "Loading..."}</span
                             >
-                                <span class="row-cover"
-                                    ><Artwork
-                                        albumId={item.track.album_id}
-                                        alt=""
-                                        class="cover-img"
-                                    /></span
-                                >
-                                <span class="row-text">
-                                    <span class="row-title ellipsis"
-                                        >{item.track.title ?? "Unknown"}</span
-                                    >
-                                    <span class="row-artist ellipsis"
-                                        >{item.track.artist_names?.join(", ") ??
-                                            ""}</span
-                                    >
-                                </span>
-                                <span class="row-duration"
-                                    >{formatTime(
-                                        item.track.duration_ms ?? 0,
-                                    )}</span
-                                >
-                            </button>
-                        </li>
-                    {/each}
-                </ul>
-            {:else}
-                <p class="queue-status">End of queue.</p>
-            {/if}
+                            <span class="row-artist ellipsis"
+                                >{pos === queue.current_pos
+                                    ? "Now playing · "
+                                    : ""}{track?.artist_names?.join(", ") ??
+                                    ""}</span
+                            >
+                        </span>
+                        {#if track}<span class="row-duration"
+                                >{formatTime(track.duration_ms ?? 0)}</span
+                            >{/if}
+                    </button>
+                {/snippet}
+            </VirtualList>
         </div>
     {/if}
 </div>
@@ -281,6 +187,8 @@
     }
 
     .queue-scroll {
+        min-height: 0;
+        height: 20rem;
         overflow-y: auto;
         padding: 0 var(--spacing-sm) var(--spacing-sm);
     }
@@ -293,12 +201,8 @@
         color: var(--color-text-muted);
     }
 
-    .queue-list {
-        display: flex;
-        flex-direction: column;
-    }
-
     .queue-row {
+        height: 100%;
         display: flex;
         align-items: center;
         gap: var(--spacing-sm);
@@ -313,6 +217,10 @@
 
     button.queue-row {
         cursor: pointer;
+    }
+
+    button.queue-row[aria-disabled="true"] {
+        cursor: default;
     }
 
     button.queue-row:hover {
@@ -333,21 +241,6 @@
             var(--color-accent-subtle) 42%,
             transparent
         );
-    }
-
-    .row-eq {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 1rem;
-        height: 1rem;
-        flex-shrink: 0;
-        color: var(--color-accent-graphic);
-    }
-
-    .row-eq svg {
-        width: 100%;
-        height: 100%;
     }
 
     .row-cover {

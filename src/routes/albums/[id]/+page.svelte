@@ -23,6 +23,15 @@
     import { addToast } from "$lib/stores/toast";
     import { windowPageTitle } from "$lib/stores/windowPageTitle";
 
+    import { onDestroy } from "svelte";
+    import { createLatestRequest } from "$lib/utils/latestRequest";
+
+    const requests = createLatestRequest();
+    const artRequests = createLatestRequest();
+    onDestroy(() => {
+        requests.invalidate();
+        artRequests.invalidate();
+    });
     let album = $state<Album | null>(null);
     let tracks = $state<ApiTrack[]>([]);
     let moreAlbums = $state<Album[]>([]);
@@ -40,10 +49,17 @@
     // Reload when the id changes — album-to-album navigation reuses this
     // component, so onMount alone would leave stale content behind.
     $effect(() => {
-        load(albumId);
+        void load(albumId);
+        return () => {
+            requests.invalidate();
+            artRequests.invalidate();
+        };
     });
 
     async function load(id: number) {
+        const isCurrent = requests.start();
+        artRequests.invalidate();
+        artDialogOpen = false;
         loading = true;
         error = null;
         album = null;
@@ -51,31 +67,36 @@
         moreAlbums = [];
         albumArt = null;
         try {
-            const [albumData, albumTracks, art] = await Promise.all([
+            const [albumData, albumTracks] = await Promise.all([
                 getAlbum(id),
                 getTracks(id),
-                getAlbumArt(id),
             ]);
+            if (!isCurrent()) return;
             album = albumData;
             tracks = albumTracks;
-            albumArt = art;
-            loadMoreFromArtists(albumData);
+            void refreshArt(id, false);
+            void loadMoreFromArtists(albumData, isCurrent);
         } catch (e) {
-            error = String(e);
+            if (isCurrent()) error = String(e);
         } finally {
-            loading = false;
+            if (isCurrent()) loading = false;
         }
     }
 
     // Other albums by this album's artist(s) — "More from X".
-    async function loadMoreFromArtists(current: Album) {
+    async function loadMoreFromArtists(
+        current: Album,
+        isCurrent: () => boolean,
+    ) {
         const artistIds = current.artist_ids ?? [];
         if (artistIds.length === 0) return;
         const seen = new Set<number>([current.id]);
         const collected: Album[] = [];
         for (const id of artistIds) {
             try {
-                for (const other of await getAlbums(id)) {
+                const others = await getAlbums(id);
+                if (!isCurrent()) return;
+                for (const other of others) {
                     if (!seen.has(other.id)) {
                         seen.add(other.id);
                         collected.push(other);
@@ -85,6 +106,7 @@
                 // skip this artist
             }
         }
+        if (!isCurrent()) return;
         moreAlbums = collected
             .sort(
                 (a, b) =>
@@ -136,34 +158,44 @@
         );
     }
 
-    async function refreshArt() {
-        invalidateAlbumArt(albumId);
+    async function refreshArt(id: number, invalidate = true) {
+        const isCurrent = artRequests.start();
+        if (invalidate) invalidateAlbumArt(id);
         try {
-            albumArt = await getAlbumArt(albumId);
+            const art = await getAlbumArt(id);
+            if (isCurrent()) albumArt = art;
         } catch {
-            albumArt = null;
+            if (isCurrent()) albumArt = null;
         }
     }
 
     async function handlePickArt() {
-        const path = await pickImageFile();
-        if (!path) return;
+        const id = albumId;
         try {
-            await setAlbumArtFile(albumId, path);
-            await refreshArt();
+            const path = await pickImageFile();
+            if (!path) return;
+            await setAlbumArtFile(id, path);
+            invalidateAlbumArt(id);
+            if (albumId === id) {
+                await refreshArt(id);
+                if (albumId === id) artDialogOpen = false;
+            }
             addToast("Album artwork updated", "success");
-            artDialogOpen = false;
         } catch (e) {
             addToast(String(e), "error");
         }
     }
 
     async function handleClearArt() {
+        const id = albumId;
         try {
-            await clearAlbumCustomArt(albumId);
-            await refreshArt();
+            await clearAlbumCustomArt(id);
+            invalidateAlbumArt(id);
+            if (albumId === id) {
+                await refreshArt(id);
+                if (albumId === id) artDialogOpen = false;
+            }
             addToast("Custom artwork removed", "success");
-            artDialogOpen = false;
         } catch (e) {
             addToast(String(e), "error");
         }

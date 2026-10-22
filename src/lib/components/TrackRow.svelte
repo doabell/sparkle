@@ -35,6 +35,7 @@
         showAddToPlaylist?: boolean;
         snippet?: string;
         anchorId?: string;
+        as?: "li" | "div";
     }
 
     let {
@@ -45,6 +46,7 @@
         showAddToPlaylist = false,
         snippet,
         anchorId,
+        as = "li",
     }: Props = $props();
 
     let isCurrent = $derived($playback.current_track?.id === track.id);
@@ -55,8 +57,6 @@
     let playlistsLoading = $state(false);
     let menuButtonRef: HTMLButtonElement | undefined = $state();
     let menuRef: HTMLDivElement | undefined = $state();
-
-    let playlistsPromise: Promise<Playlist[]> | null = null;
 
     function formatDuration(ms = 0): string {
         const totalSeconds = Math.round(ms / 1000);
@@ -69,21 +69,14 @@
         event.stopPropagation();
     }
 
-    function loadManualPlaylists() {
-        if (!playlistsPromise) {
-            playlistsPromise = getPlaylists().then((all) =>
-                all.filter((p) => !p.folder_path && !p.live_mix),
-            );
-        }
-        return playlistsPromise;
-    }
-
     async function openMenu() {
         menuOpen = true;
-        if (playlists.length === 0 && !playlistsLoading) {
+        if (!playlistsLoading) {
             playlistsLoading = true;
             try {
-                playlists = await loadManualPlaylists();
+                playlists = (await getPlaylists()).filter(
+                    (p) => !p.folder_path && !p.live_mix,
+                );
             } catch (e) {
                 addToast(String(e), "error");
             } finally {
@@ -175,11 +168,19 @@
             menuOpen = false;
         }
     }
+    $effect(() => {
+        if (!menuOpen) return;
+        window.addEventListener("click", handleWindowClick);
+        window.addEventListener("keydown", handleKeydown);
+        return () => {
+            window.removeEventListener("click", handleWindowClick);
+            window.removeEventListener("keydown", handleKeydown);
+        };
+    });
 </script>
 
-<svelte:window onclick={handleWindowClick} onkeydown={handleKeydown} />
-
-<li
+<svelte:element
+    this={as}
     class="track-row"
     class:current={isCurrent}
     class:playing={isPlaying}
@@ -385,7 +386,7 @@
     {/if}
 
     <span class="track-duration">{formatDuration(track.duration_ms ?? 0)}</span>
-</li>
+</svelte:element>
 
 <style>
     .row-hit-area {

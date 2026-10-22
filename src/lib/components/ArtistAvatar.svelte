@@ -1,5 +1,6 @@
 <script lang="ts">
     import { getArtistImage } from "$lib/api";
+    import { onceVisible } from "$lib/utils/onceVisible";
     import { cachedImageToUrl } from "$lib/utils/base64";
 
     interface Props {
@@ -9,9 +10,13 @@
     }
 
     let { artistId, alt = "", class: cls = "" }: Props = $props();
+    let visible = $state(false);
+    let request = $derived(
+        visible ? getArtistImage(artistId, "background") : null,
+    );
 </script>
 
-{#await getArtistImage(artistId, "background")}
+{#await request}
     <div class="{cls} avatar-fallback" aria-hidden="true">
         <svg
             viewBox="0 0 24 24"
@@ -26,7 +31,7 @@
         </svg>
     </div>
 {:then image}
-    {#if image.file_path}
+    {#if image?.file_path}
         <img
             class={cls}
             src={cachedImageToUrl(image, "")}
@@ -35,7 +40,11 @@
             {alt}
         />
     {:else}
-        <div class="{cls} avatar-fallback" aria-hidden="true">
+        <div
+            class="{cls} avatar-fallback"
+            aria-hidden="true"
+            use:onceVisible={() => (visible = true)}
+        >
             <svg
                 viewBox="0 0 24 24"
                 fill="none"

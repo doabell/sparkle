@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount } from "svelte";
+    import { onDestroy, onMount } from "svelte";
     import { listen } from "@tauri-apps/api/event";
     import {
         getOnlineSettings,
@@ -360,21 +360,39 @@
     let saveState = $state<"clean" | "dirty" | "saving" | "saved">("clean");
     let saveTimer: ReturnType<typeof setTimeout> | null = null;
     let lastSavedJson = "";
+    let pendingSaveJson: string | null = null;
+    let savingJson: string | null = null;
     let artworkStorageTestBusy = $state(false);
     let artworkStorageTestUrl = $state<string | null>(null);
 
     $effect(() => {
+        if (saveTimer) clearTimeout(saveTimer);
+        saveTimer = null;
+        pendingSaveJson = null;
         if (!settings) return;
         const json = JSON.stringify(settings);
-        if (json === lastSavedJson) return;
+        if (json === (savingJson ?? lastSavedJson)) {
+            if (savingJson === null) saveState = "clean";
+            return;
+        }
         saveState = "dirty";
+        pendingSaveJson = json;
+        saveTimer = setTimeout(() => {
+            saveTimer = null;
+            pendingSaveJson = null;
+            void autosave(json);
+        }, 800);
+    });
+
+    onDestroy(() => {
         if (saveTimer) clearTimeout(saveTimer);
-        saveTimer = setTimeout(() => void autosave(json), 800);
+        if (pendingSaveJson !== null) void autosave(pendingSaveJson);
     });
 
     async function autosave(json: string) {
         if (!settings) return;
         saveState = "saving";
+        savingJson = json;
         try {
             const snapshot: OnlineSettings = JSON.parse(json);
             await setOnlineSettings(snapshot);
@@ -384,10 +402,12 @@
                 snapshot.accent_foreground_preference,
             );
             lastSavedJson = json;
-            saveState = "saved";
+            saveState = JSON.stringify(settings) === json ? "saved" : "dirty";
         } catch (e) {
             saveState = "dirty";
             addToast(String(e), "error");
+        } finally {
+            if (savingJson === json) savingJson = null;
         }
     }
 

@@ -1,5 +1,6 @@
 <script lang="ts">
     import { getAlbumArt } from "$lib/api";
+    import { onceVisible } from "$lib/utils/onceVisible";
     import { cachedImageToUrl } from "$lib/utils/base64";
 
     interface Props {
@@ -9,9 +10,10 @@
     }
 
     let { albumId, alt = "", class: cls = "" }: Props = $props();
+    let visible = $state(false);
 </script>
 
-{#if albumId}
+{#if albumId && visible}
     {#await getAlbumArt(albumId, "background")}
         <div class="{cls} artwork-fallback" aria-hidden="true">
             <svg
@@ -69,7 +71,11 @@
         </div>
     {/await}
 {:else}
-    <div class="{cls} artwork-fallback" aria-hidden="true">
+    <div
+        class="{cls} artwork-fallback"
+        aria-hidden="true"
+        use:onceVisible={() => (visible = true)}
+    >
         <svg
             viewBox="0 0 24 24"
             fill="none"

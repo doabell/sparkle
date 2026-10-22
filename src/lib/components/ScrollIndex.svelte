@@ -13,6 +13,7 @@
     interface Props {
         entries: readonly ScrollIndexEntry[];
         anchorIdForEntry: (entry: ScrollIndexEntry) => string;
+        anchorTopForEntry?: (entry: ScrollIndexEntry) => number | null;
         ariaLabel?: string;
         onSelect?: (entry: ScrollIndexEntry) => void | Promise<void>;
     }
@@ -20,6 +21,7 @@
     let {
         entries,
         anchorIdForEntry,
+        anchorTopForEntry,
         ariaLabel = "List index",
         onSelect,
     }: Props = $props();
@@ -31,13 +33,18 @@
         root: HTMLElement,
         currentEntries: readonly ScrollIndexEntry[],
         getAnchorId: (entry: ScrollIndexEntry) => string,
+        getAnchorTop?: (entry: ScrollIndexEntry) => number | null,
     ) {
         const threshold = root.getBoundingClientRect().top + 24;
         let active = currentEntries[0];
 
         for (const entry of currentEntries) {
-            const anchor = document.getElementById(getAnchorId(entry));
-            if (anchor && anchor.getBoundingClientRect().top <= threshold) {
+            const top = getAnchorTop
+                ? getAnchorTop(entry)
+                : document
+                      .getElementById(getAnchorId(entry))
+                      ?.getBoundingClientRect().top;
+            if (top != null && top <= threshold) {
                 active = entry;
             }
         }
@@ -63,6 +70,7 @@
     $effect(() => {
         const currentEntries = entries;
         const getAnchorId = anchorIdForEntry;
+        const getAnchorTop = anchorTopForEntry;
         const indexNav = nav;
         if (!indexNav || typeof window === "undefined") return;
 
@@ -72,7 +80,12 @@
         let frame = 0;
         const update = () => {
             frame = 0;
-            updateSelectedEntry(root, currentEntries, getAnchorId);
+            updateSelectedEntry(
+                root,
+                currentEntries,
+                getAnchorId,
+                getAnchorTop,
+            );
         };
         const scheduleUpdate = () => {
             if (frame) return;
@@ -112,6 +125,20 @@
         selectedKey = entry.key;
         await onSelect?.(entry);
 
+        if (anchorTopForEntry) {
+            const top = anchorTopForEntry(entry);
+            const root = nav?.closest<HTMLElement>(".content");
+            if (top != null && root)
+                root.scrollTo({
+                    top:
+                        root.scrollTop +
+                        top -
+                        root.getBoundingClientRect().top -
+                        16,
+                    behavior: motionScrollBehavior(),
+                });
+            return;
+        }
         const anchor = await findAnchor(entry);
         const root = anchor?.closest<HTMLElement>(".content");
         if (!anchor || !root) {

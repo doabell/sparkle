@@ -52,10 +52,14 @@ jobs:
               if: steps.changes.outputs.frontend == 'true'
               run: bun run test
 
-            # Main packaging builds and validates the frontend once inside package:windows.
+            - name: Run browser regressions
+              if: steps.changes.outputs.frontend == 'true'
+              run: bun scripts/test-browser.mjs
+
+            # Packaging builds and validates the frontend once inside package:windows.
             - name: Build frontend
               id: frontend
-              if: steps.changes.outputs.frontend == 'true' && (github.event_name != 'push' || steps.changes.outputs.package != 'true')
+              if: steps.changes.outputs.frontend == 'true' && steps.changes.outputs.package != 'true'
               run: bun run build
 
             - name: Check dependency licenses
@@ -63,12 +67,12 @@ jobs:
               run: bun run licenses:check ${{ steps.frontend.outcome == 'success' && '--built' || '' }}
 
             - name: Set up Rust and cache builds
-              if: steps.changes.outputs.rust == 'true' || (github.event_name == 'push' && steps.changes.outputs.package == 'true')
+              if: steps.changes.outputs.rust == 'true' || steps.changes.outputs.package == 'true'
               uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
               with:
                   cache-workspaces: ./src-tauri -> target
-                  # Keep packaged release builds separate from PR/dev test artifacts.
-                  cache-shared-key: ${{ github.event_name == 'push' && steps.changes.outputs.package == 'true' && 'release' || 'verify' }}
+                  # Keep packaged release builds separate from dev test artifacts.
+                  cache-shared-key: ${{ steps.changes.outputs.package == 'true' && 'release' || 'verify' }}
                   cache-on-failure: false
                   rustflags: ""
 
@@ -77,12 +81,12 @@ jobs:
               run: cargo fmt --check --manifest-path src-tauri/Cargo.toml
 
             - name: Run Rust tests
-              if: steps.changes.outputs.rust == 'true' && (github.event_name != 'push' || steps.changes.outputs.package != 'true')
-              # Main packaging compiles the app and both library test suites below.
+              if: steps.changes.outputs.rust == 'true' && steps.changes.outputs.package != 'true'
+              # Packaging compiles the app and both library test suites below.
               run: cargo test --workspace --lib --locked --manifest-path src-tauri/Cargo.toml --timings
 
             - name: Find installed .NET SDK
-              if: github.event_name == 'push' && steps.changes.outputs.package == 'true'
+              if: steps.changes.outputs.package == 'true'
               id: dotnet
               shell: pwsh
               run: |
@@ -93,21 +97,21 @@ jobs:
                   "installed=$($installed.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
 
             - name: Install missing .NET SDK
-              if: github.event_name == 'push' && steps.changes.outputs.package == 'true' && steps.dotnet.outputs.installed != 'true'
+              if: steps.changes.outputs.package == 'true' && steps.dotnet.outputs.installed != 'true'
               uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
               with:
                   dotnet-version: 8.0.x
 
             - name: Restore pinned Velopack CLI
-              if: github.event_name == 'push' && steps.changes.outputs.package == 'true'
+              if: steps.changes.outputs.package == 'true'
               run: dotnet tool restore
 
             - name: Build and verify Windows setup and update feed
-              if: github.event_name == 'push' && steps.changes.outputs.package == 'true'
+              if: steps.changes.outputs.package == 'true'
               run: bun run package:windows ${{ steps.changes.outputs.rust == 'true' && '--test' || '' }}
 
             - name: Upload Windows packages for testing
-              if: github.event_name == 'push' && steps.changes.outputs.package == 'true'
+              if: steps.changes.outputs.package == 'true'
               uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
               with:
                   name: sparkle-windows-x64
@@ -116,7 +120,7 @@ jobs:
                   retention-days: 30
 
             - name: Upload Rust build timings
-              if: always() && (steps.changes.outputs.rust == 'true' || (github.event_name == 'push' && steps.changes.outputs.package == 'true'))
+              if: always() && (steps.changes.outputs.rust == 'true' || steps.changes.outputs.package == 'true')
               uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
               with:
                   name: rust-build-timings

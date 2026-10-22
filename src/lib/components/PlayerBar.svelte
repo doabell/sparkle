@@ -107,6 +107,7 @@
     onMount(() => {
         updateArt($playback.current_track?.album_id);
         updateLyrics($playback.current_track?.id);
+        let disposed = false;
         let unlisten: (() => void) | undefined;
         const handleLyricsChanged = (event: Event) => {
             const trackId = (event as CustomEvent<{ trackId: number }>).detail
@@ -116,14 +117,22 @@
             updateLyrics(trackId);
         };
         window.addEventListener(LYRICS_CHANGED_EVENT, handleLyricsChanged);
-        (async () => {
-            unlisten = await listen("online-settings-changed", () => {
-                // Bias or source list changed — refetch the ticker lyrics.
-                lyricTrackId = null;
-                updateLyrics($playback.current_track?.id);
+        void listen("online-settings-changed", () => {
+            if (disposed) return;
+            lyricTrackId = null;
+            void updateLyrics($playback.current_track?.id);
+        })
+            .then((stop) => {
+                if (disposed) stop();
+                else unlisten = stop;
+            })
+            .catch(() => {
+                /* Native events are unavailable in a web preview. */
             });
-        })();
         return () => {
+            disposed = true;
+            lyricRequest++;
+            lastAlbumId = null;
             unlisten?.();
             window.removeEventListener(
                 LYRICS_CHANGED_EVENT,
@@ -148,6 +157,22 @@
     let pendingVolume = $state<number | null>(null);
     let isDraggingVolume = $state(false);
     let lastLiveVolumeSent = $state(0);
+    let volumeRequest = 0;
+
+    async function commitVolume(value: number) {
+        const request = ++volumeRequest;
+        pendingVolume = value;
+        try {
+            await setVolume(value);
+        } catch {
+            /* The playback store exposes the error. */
+        } finally {
+            if (request === volumeRequest) {
+                pendingVolume = null;
+                volumeInput = $playback.volume;
+            }
+        }
+    }
 
     $effect(() => {
         const storeVolume = $playback.volume;
@@ -168,12 +193,12 @@
         if (volumeInput > 0) {
             volumeInput = 0;
             pendingVolume = 0;
-            setVolume(0);
+            void commitVolume(0);
         } else {
             const target = getUnmuteVolume();
             volumeInput = target;
             pendingVolume = target;
-            setVolume(target);
+            void commitVolume(target);
         }
     }
 
@@ -187,6 +212,7 @@
 
     function handleVolumeMouseDown(e: MouseEvent) {
         if (!volumeBar) return;
+        volumeRequest++;
         isDraggingVolume = true;
         pendingVolume = null;
         const fraction = getBarFraction(volumeBar, e.clientX);
@@ -211,7 +237,7 @@
         if (!isDraggingVolume) return;
         pendingVolume = volumeInput;
         isDraggingVolume = false;
-        setVolume(volumeInput);
+        void commitVolume(volumeInput);
     }
 
     function handleVolumeWheel(e: WheelEvent) {
@@ -223,7 +249,7 @@
         );
         pendingVolume = value;
         volumeInput = value;
-        setVolume(value);
+        void commitVolume(value);
     }
 
     // --- Progress ------------------------------------------------------------
@@ -232,6 +258,13 @@
     let pendingSeekMs = $state<number | null>(null);
     let pendingSeekTrackId = $state<number | null>(null);
     let progressSeekRequest = 0;
+    let progressTrackId = $derived($playback.current_track?.id);
+    $effect(() => {
+        progressTrackId;
+        progressSeekRequest++;
+        isDraggingProgress = false;
+        pendingSeekMs = null;
+    });
 
     let progressPercent = $derived.by(() => {
         if (isDraggingProgress) {
