@@ -1,5 +1,8 @@
 <script lang="ts">
-    import { onMount } from "svelte";
+    import { onDestroy, onMount } from "svelte";
+    import { createLatestRequest } from "$lib/utils/latestRequest";
+    const requests = createLatestRequest();
+    onDestroy(requests.invalidate);
     import {
         getListeningStats,
         type ListeningStats,
@@ -25,14 +28,16 @@
     let error = $state<string | null>(null);
 
     async function load(days: number) {
+        const isCurrent = requests.start();
         loading = true;
         error = null;
         try {
-            stats = await getListeningStats(days > 0 ? days : undefined);
+            const next = await getListeningStats(days > 0 ? days : undefined);
+            if (isCurrent()) stats = next;
         } catch (e) {
-            error = String(e);
+            if (isCurrent()) error = String(e);
         } finally {
-            loading = false;
+            if (isCurrent()) loading = false;
         }
     }
 

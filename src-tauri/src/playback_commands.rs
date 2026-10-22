@@ -200,8 +200,27 @@ pub fn play_next(
 }
 
 #[tauri::command]
-pub fn get_queue(state: State<'_, AppState>) -> Result<QueueView, String> {
-    state.audio.get_queue()
+pub async fn get_queue(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    offset: Option<usize>,
+    limit: Option<usize>,
+) -> Result<QueueView, String> {
+    let audio = state.audio.clone();
+    let path = crate::db::db_path(&app);
+    tauri::async_runtime::spawn_blocking(move || {
+        let snapshot = audio.queue_snapshot(offset, limit.unwrap_or(100));
+        // A separate read-only connection avoids contending for the audio
+        // worker's database mutex. WAL readers do not block the writer.
+        let conn =
+            rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+                .map_err(|e| e.to_string())?;
+        conn.busy_timeout(std::time::Duration::from_secs(2))
+            .map_err(|e| e.to_string())?;
+        snapshot.load(&conn)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -209,11 +228,16 @@ pub fn get_queue(state: State<'_, AppState>) -> Result<QueueView, String> {
 pub fn play_queue_index(
     state: State<'_, AppState>,
     orderPos: usize,
+    queueRevision: Option<u64>,
     source: Option<PlaybackSource>,
     commandId: Option<String>,
 ) -> Result<CommandReply, PlaybackFailure> {
     state.audio.execute_with_id(
-        AudioCommand::PlayAt(orderPos, source.unwrap_or(PlaybackSource::Ui)),
+        AudioCommand::PlayAt(
+            orderPos,
+            queueRevision,
+            source.unwrap_or(PlaybackSource::Ui),
+        ),
         commandId,
     )
 }

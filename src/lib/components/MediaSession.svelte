@@ -217,6 +217,7 @@
 
         return () => {
             disposed = true;
+            initialized = false;
             metadataRequest += 1;
             if (positionTimer) clearTimeout(positionTimer);
         };
@@ -259,7 +260,10 @@
             const currentTrack = $playback.current_track;
             if (!initialized || currentTrack?.id !== trackId) return;
             await mediaControls.updateNowPlaying(
-                metadataFor(currentTrack),
+                metadataFor(
+                    currentTrack,
+                    artworkTrackId === trackId ? artworkData : undefined,
+                ),
                 currentPlaybackInfo(),
             );
         });

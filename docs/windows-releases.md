@@ -41,8 +41,8 @@ use one code generation unit to preserve decoding and Sound Check throughput.
 - Frontend changes run frontend checks; native changes run Rust tests. Shared
   fixtures run both. Docs-only changes skip compilation. Unknown paths, shared
   configuration, scripts, workflows, or missing history select all checks.
-- Main builds the installer for changes to app code, embedded frontend, release
-  notes, or packaged licenses. Test-only and docs-only changes skip packaging
+- PRs and main pushes build the installer for changes to app code, embedded
+  frontend, release notes, or packaged licenses. Test-only and docs-only changes skip packaging
   when no earlier work is outstanding. Packaging builds the frontend once;
   standalone native unit tests and coverage do not require frontend assets.
   `sparkle-windows-x64` artifacts last 30 days, and `rust-build-timings` reports
@@ -50,9 +50,9 @@ use one code generation unit to preserve decoding and Sound Check throughput.
 - Tags reuse only a successful main CI artifact from the exact tagged commit in
   this repository, then verify it against the tagged source. Missing or expired
   artifacts trigger a source build; invalid packages fail verification.
-- Main packaging uses `--test` when native tests are required, running both the
-  desktop and core suites, including a check of embedded frontend assets. PRs
-  and test-only changes use the dev profile and test the full workspace.
+- Packaging uses `--test` when native tests are required, running both the
+  desktop and core suites, including a check of embedded frontend assets.
+  Test-only changes use the dev profile and test the full workspace.
   Release, dev, and coverage caches are separate and save after successful runs.
 - CI and releases reuse an installed .NET SDK 8, installing it only when missing.
   Coverage downloads the pinned, checksum-verified `cargo-llvm-cov` Windows binary

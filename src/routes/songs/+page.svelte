@@ -3,9 +3,7 @@
     import { loadQueue } from "$lib/stores/playback";
     import { uiPref } from "$lib/stores/uiPrefs";
     import Loading from "$lib/components/Loading.svelte";
-    import ScrollIndex, {
-        type ScrollIndexEntry,
-    } from "$lib/components/ScrollIndex.svelte";
+    import { type ScrollIndexEntry } from "$lib/components/ScrollIndex.svelte";
     import TrackRow from "$lib/components/TrackRow.svelte";
     import Select from "$lib/components/Select.svelte";
     import SortDirButton from "$lib/components/SortDirButton.svelte";
@@ -16,7 +14,7 @@
         createGroupScrollIndexEntries,
         resolveScrollIndexMode,
     } from "$lib/utils/songIndex";
-    import { intersect } from "$lib/utils/intersect";
+    import VirtualTrackList from "$lib/components/VirtualTrackList.svelte";
     import { onMount } from "svelte";
 
     const SORT_OPTIONS = [
@@ -34,8 +32,6 @@
         { value: "year", label: "Year" },
     ];
 
-    const PAGE_SIZE = 150;
-
     let tracks = $state<ApiTrack[]>([]);
     let loading = $state(true);
     let error = $state<string | null>(null);
@@ -43,27 +39,19 @@
     const sortAsc = uiPref("songs.sortAsc", true);
     const groupBy = uiPref<string>("songs.groupBy", "none");
     const groupAsc = uiPref("songs.groupAsc", true);
-    let visibleCount = $state(PAGE_SIZE);
     let collator = $derived(getSongCollator($songIndexLanguage));
-
-    function resetVisibleCount() {
-        visibleCount = PAGE_SIZE;
-    }
 
     function chooseGroup(v: string) {
         // Direction is the user's choice — switching fields never touches it.
         $groupBy = v;
-        resetVisibleCount();
     }
 
     function toggleSortDirection() {
         $sortAsc = !$sortAsc;
-        resetVisibleCount();
     }
 
     function toggleGroupDirection() {
         $groupAsc = !$groupAsc;
-        resetVisibleCount();
     }
 
     function getTrackSortValue(track: ApiTrack): string | number {
@@ -155,23 +143,6 @@
         });
     });
 
-    // Progressive rendering: only the first `visibleCount` tracks are mounted.
-    // Group offsets come from the full list so playback order is preserved.
-    let visibleGroups = $derived.by<TrackGroup[]>(() => {
-        let remaining = visibleCount;
-        const out: TrackGroup[] = [];
-        for (const group of groupedTracks) {
-            if (remaining <= 0) break;
-            out.push({
-                key: group.key,
-                items: group.items.slice(0, remaining),
-                offset: group.offset,
-            });
-            remaining -= group.items.length;
-        }
-        return out;
-    });
-
     let orderedTracks = $derived(groupedTracks.flatMap((g) => g.items));
 
     function getScrollIndexValue(track: ApiTrack): string | null {
@@ -196,25 +167,6 @@
             mode,
         );
     });
-
-    let scrollAnchorIndices = $derived(
-        new Set(scrollEntries.map((entry) => entry.index)),
-    );
-
-    function scrollAnchorId(index: number): string {
-        return `song-scroll-${index}`;
-    }
-
-    function scrollToEntry(entry: ScrollIndexEntry) {
-        if (visibleCount < entry.index + 1) {
-            visibleCount = Math.min(
-                tracks.length,
-                Math.ceil((entry.index + 1) / PAGE_SIZE) * PAGE_SIZE,
-            );
-        }
-    }
-
-    let hasMore = $derived(visibleCount < tracks.length);
 
     onMount(async () => {
         loading = true;
@@ -271,7 +223,6 @@
                     value={$sortBy}
                     onchange={(v) => {
                         $sortBy = v;
-                        resetVisibleCount();
                     }}
                     ariaLabel="Sort songs"
                 />
@@ -360,12 +311,6 @@
             </p>
         </div>
     {:else}
-        <ScrollIndex
-            entries={scrollEntries}
-            anchorIdForEntry={(entry) => scrollAnchorId(entry.index)}
-            ariaLabel="Songs index"
-            onSelect={scrollToEntry}
-        />
         <div class="track-section">
             <div class="track-header songs">
                 <span class="header-cover"></span>
@@ -386,36 +331,22 @@
                     </svg>
                 </span>
             </div>
-            {#each visibleGroups as group (group.key)}
-                {#if group.key}
-                    <h2 id={scrollAnchorId(group.offset)} class="group-header">
-                        {group.key}
-                    </h2>
-                {/if}
-                <ul class="track-list">
-                    {#each group.items as track, index (track.id)}
-                        <TrackRow
-                            {track}
-                            index={group.offset + index}
-                            anchorId={$groupBy === "none" &&
-                            scrollAnchorIndices.has(group.offset + index)
-                                ? scrollAnchorId(group.offset + index)
-                                : undefined}
-                            variant="songs"
-                            onPlay={playTrack}
-                            showAddToPlaylist={true}
-                        />
-                    {/each}
-                </ul>
-            {/each}
-            {#if hasMore}
-                <div
-                    class="lazy-sentinel"
-                    use:intersect={() => (visibleCount += PAGE_SIZE)}
-                >
-                    <Loading variant="inline" />
-                </div>
-            {/if}
+            <VirtualTrackList
+                groups={groupedTracks}
+                entries={scrollEntries}
+                ariaLabel="Songs index"
+            >
+                {#snippet children(track, index)}
+                    <TrackRow
+                        {track}
+                        {index}
+                        as="div"
+                        variant="songs"
+                        onPlay={playTrack}
+                        showAddToPlaylist={true}
+                    />
+                {/snippet}
+            </VirtualTrackList>
         </div>
     {/if}
 </div>
@@ -472,12 +403,6 @@
         display: flex;
         flex-direction: column;
         gap: var(--spacing-md);
-    }
-
-    .lazy-sentinel {
-        display: flex;
-        justify-content: center;
-        padding: var(--spacing-md);
     }
 
     @media (max-width: 767px) {

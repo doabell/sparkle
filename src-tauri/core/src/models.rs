@@ -94,10 +94,23 @@ pub struct PlaybackState {
 }
 
 #[derive(Serialize, Clone, Debug)]
+pub struct QueuedTrack {
+    pub id: i64,
+    pub title: Option<String>,
+    pub album_id: Option<i64>,
+    pub duration_ms: Option<i64>,
+    pub artist_names: Vec<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
 pub struct QueueView {
-    /// Tracks in effective playback order (shuffle applied).
-    pub tracks: Vec<Track>,
-    /// Position within `tracks` of the currently loaded track.
+    /// Changes only when queue membership or effective order changes.
+    pub revision: u64,
+    pub total: usize,
+    pub offset: usize,
+    /// Missing tracks retain their effective playback position.
+    pub tracks: Vec<Option<QueuedTrack>>,
+    /// Absolute position in effective playback order, not within this page.
     pub current_pos: Option<usize>,
 }
 

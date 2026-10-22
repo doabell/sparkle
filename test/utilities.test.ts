@@ -87,6 +87,7 @@ test("intersection action only triggers for visible entries and disconnects", ()
         observe(node) {
             observed = node;
         }
+        unobserve() {}
         disconnect() {
             disconnected = true;
         }

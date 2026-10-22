@@ -379,6 +379,12 @@ test("playback commands preserve intent, return canonical state, and recover fro
                 { orderPos: 2, source: "ui" },
             ],
             [
+                "playQueueIndex",
+                [99, "ui", 17],
+                "play_queue_index",
+                { orderPos: 99, source: "ui", queueRevision: 17 },
+            ],
+            [
                 "loadQueue",
                 [[7, 8]],
                 "load_queue",
@@ -716,4 +722,34 @@ test("media initialization deduplicates concurrent requests and retries failed s
     );
     expect(invoke).toHaveBeenLastCalledWith("enable_media_control_events");
     invoke.mockReset();
+});
+
+test("late playback replies cannot replace the latest command's error state", async () => {
+    const store = createPlaybackStore();
+    const quiet = spyOn(console, "error").mockImplementation(() => {});
+    let resolveOld;
+    invoke.mockImplementationOnce(
+        () => new Promise((resolve) => (resolveOld = resolve)),
+    );
+    const older = store.play();
+    invoke.mockRejectedValueOnce(Error("latest failed"));
+    try {
+        await expect(store.pause()).rejects.toThrow("latest failed");
+        resolveOld(commandReply({ ...state, revision: 10 }));
+        await older;
+        expect(get(store).error).toContain("latest failed");
+        let rejectOld;
+        invoke.mockImplementationOnce(
+            () => new Promise((_, reject) => (rejectOld = reject)),
+        );
+        const oldFailure = store.seek(10).catch(() => {});
+        invoke.mockResolvedValueOnce(commandReply({ ...state, revision: 11 }));
+        await store.play();
+        rejectOld(Error("obsolete failure"));
+        await oldFailure;
+        expect(get(store).error).toBe(null);
+    } finally {
+        quiet.mockRestore();
+        invoke.mockReset();
+    }
 });

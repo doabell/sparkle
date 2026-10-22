@@ -541,3 +541,78 @@ fn command_reply_reports_a_stopped_worker() {
 
     assert!(error.contains("stopped before replying with test reply"));
 }
+
+#[test]
+fn queue_pages_preserve_shuffled_positions_and_missing_entries() {
+    let conn = crate::db::test_connection();
+    conn.execute_batch("INSERT INTO tracks (id,file_path,title) VALUES (1,'one.flac','One'), (3,'three.flac','Three');").unwrap();
+    let view = queue_snapshot_from_order(&[1, 2, 3], &[1, 2, 99, 0], Some(1), 7, Some(1), 3)
+        .load(&conn)
+        .unwrap();
+    assert_eq!(view.revision, 7);
+    assert_eq!(view.total, 4);
+    assert_eq!(view.offset, 1);
+    assert_eq!(view.current_pos, Some(1));
+    assert_eq!(
+        view.tracks
+            .iter()
+            .map(|t| t.as_ref().map(|t| t.id))
+            .collect::<Vec<_>>(),
+        vec![Some(3), None, Some(1)]
+    );
+    let missing = queue_snapshot_from_order(&[1, 2, 3], &[0, 1, 2], Some(1), 8, None, 100)
+        .load(&conn)
+        .unwrap();
+    assert!(missing.tracks[1].is_none());
+    assert_eq!(missing.current_pos, Some(1));
+    let payload = serde_json::to_value(&missing).unwrap();
+    assert!(payload["tracks"][0].get("embedded_lyrics").is_none());
+    assert!(payload["tracks"][0].get("file_path").is_none());
+}
+
+#[test]
+fn queue_snapshot_is_bounded_and_starts_near_the_current_track() {
+    let ids: Vec<i64> = (0..100_000).collect();
+    let order: Vec<usize> = (0..100_000).rev().collect();
+    let page = queue_snapshot_from_order(&ids, &order, Some(82_342), 1, None, usize::MAX);
+    assert_eq!(page.offset, 82_300);
+    assert_eq!(page.ids.len(), 100);
+    assert_eq!(page.ids[0], Some(17_699));
+    assert_eq!(
+        queue_snapshot_from_order(&ids, &order, None, 0, Some(99_999), 100)
+            .ids
+            .len(),
+        1
+    );
+    assert!(
+        queue_snapshot_from_order(&ids, &order, None, 0, Some(usize::MAX), 100)
+            .ids
+            .is_empty()
+    );
+    assert_eq!(
+        queue_snapshot_from_order(&ids, &order, None, 0, None, 0)
+            .ids
+            .len(),
+        1
+    );
+    assert!(queue_snapshot_from_order(&[], &[], None, 0, None, 100)
+        .ids
+        .is_empty());
+}
+
+#[test]
+fn stale_queue_jumps_are_rejected_before_playback_changes() {
+    assert!(queue_jump_is_valid(100, 5, 99, Some(5)));
+    assert!(!queue_jump_is_valid(100, 6, 99, Some(5)));
+    assert!(!queue_jump_is_valid(100, 5, 100, Some(5)));
+    assert!(!queue_jump_is_valid(0, 5, 0, None));
+    assert!(queue_jump_is_valid(100, 5, 0, None));
+}
+
+#[test]
+fn queue_page_database_failures_are_reported() {
+    let conn = rusqlite::Connection::open_in_memory().unwrap();
+    assert!(queue_snapshot_from_order(&[1], &[0], None, 0, None, 100)
+        .load(&conn)
+        .is_err());
+}

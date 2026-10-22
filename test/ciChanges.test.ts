@@ -182,7 +182,8 @@ test("empty baseline history runs all checks", async () => {
     ).toBeNull();
 });
 
-// Real Git subprocesses need more time on busy Windows runners.
+// This fixture launches about 20 real subprocesses. Windows startup overhead
+// can take over a minute even when every Git command completes successfully.
 test("diffs preserve renames, deleted paths and native work before a later docs push", async () => {
     const cwd = mkdtempSync(join(tmpdir(), "sparkle-ci-paths-"));
     const git = (...args: string[]) => {
@@ -292,4 +293,4 @@ test("diffs preserve renames, deleted paths and native work before a later docs 
     } finally {
         rmSync(cwd, { recursive: true, force: true });
     }
-}, 30_000);
+}, 90_000);
