@@ -801,6 +801,18 @@ export async function getArtistInfo(artistId: number): Promise<ArtistInfo> {
 
 export type ImageRequestPriority = "foreground" | "background";
 
+// Recycled rows can render a completed image immediately, without waiting for
+// another visibility event or promise. These reads never start provider work.
+export function getCachedArtistImage(
+    artistId: number,
+): CachedImage | undefined {
+    return readCachedImage(`artist-image:${artistId}`);
+}
+
+export function getCachedAlbumArt(albumId: number): CachedImage | undefined {
+    return readCachedImage(`album-art:${albumId}`);
+}
+
 export async function getArtistImage(
     artistId: number,
     priority: ImageRequestPriority = "foreground",
@@ -915,13 +927,8 @@ function memoizedImage(
     fetcher: () => Promise<CachedImage>,
     priority: ImageRequestPriority,
 ): Promise<CachedImage> {
-    const cached = imageMemo.get(key);
-    if (cached) {
-        // Refresh recency on read so frequently visible artwork stays warm.
-        imageMemo.delete(key);
-        imageMemo.set(key, cached);
-        return Promise.resolve(cached);
-    }
+    const cached = readCachedImage(key);
+    if (cached) return Promise.resolve(cached);
 
     const inFlight = inFlightImageMemo.get(key);
     if (inFlight) {
@@ -949,6 +956,16 @@ function memoizedImage(
     );
     inFlightImageMemo.set(key, request);
     return request;
+}
+
+function readCachedImage(key: string): CachedImage | undefined {
+    const cached = imageMemo.get(key);
+    if (cached) {
+        // Refresh recency on read so frequently visible artwork stays warm.
+        imageMemo.delete(key);
+        imageMemo.set(key, cached);
+    }
+    return cached;
 }
 
 function trimImageMemo(): void {

@@ -1,8 +1,10 @@
 // @ts-nocheck — this fixture runs in the browser, outside the Bun test runner.
-import { mount, unmount, tick } from "svelte";
+import { mount, unmount, tick, flushSync } from "svelte";
 import Lists from "./Lists.svelte";
+import ArtworkRows from "./ArtworkRows.svelte";
 import Playlist from "../../src/routes/playlists/[id]/+page.svelte";
 import { navigate, navigations } from "./router";
+import { getAlbumArt, getArtistImage } from "../../src/lib/api";
 
 const target = document.querySelector("#app");
 const result = { passed: 0, failures: [] };
@@ -56,6 +58,12 @@ const playlist = (id, count = 3) => ({
 const reads = [];
 let removal;
 let deletion;
+const imageReads = [];
+const imageUrl =
+    "data:image/svg+xml," +
+    encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect width="48" height="48" fill="#399"/></svg>',
+    );
 window.__TAURI_INTERNALS__ = {
     invoke: async (command, args) => {
         if (command === "get_playlist") {
@@ -66,11 +74,18 @@ window.__TAURI_INTERNALS__ = {
         if (command === "remove_track_from_playlist") return removal.promise;
         if (command === "delete_playlist") return deletion.promise;
         if (command === "get_playlists") return [];
-        if (command === "get_album_art") return { source: "none" };
+        if (command === "get_album_art" || command === "get_artist_image") {
+            imageReads.push({ command, args });
+            return {
+                source: "embedded",
+                file_path: imageUrl,
+                mime_type: "image/svg+xml",
+            };
+        }
         if (command === "log_frontend") return;
         throw Error(`Unexpected IPC ${command}`);
     },
-    convertFileSrc: () => "",
+    convertFileSrc: (path) => path,
 };
 window.addEventListener("error", (event) =>
     result.failures.push(event.message),
@@ -200,11 +215,49 @@ async function playlistTeardown() {
     }
 }
 
+async function artworkRecycling() {
+    const originalObserver = window.IntersectionObserver;
+    // Hold visibility notifications so a warm row must render from its cache.
+    window.IntersectionObserver = class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+    };
+    try {
+        await Promise.all([getAlbumArt(8000), getArtistImage(8000)]);
+        const before = imageReads.length;
+        for (let visit = 0; visit < 2; visit++) {
+            const app = mount(ArtworkRows, { target });
+            flushSync();
+            check(
+                `Cached album is present immediately on visit ${visit}`,
+                !!target.querySelector('img[alt="Album 0"]'),
+                true,
+            );
+            check(
+                `Cached artist is present immediately on visit ${visit}`,
+                !!target.querySelector('img[alt="Artist 0"]'),
+                true,
+            );
+            await settle();
+            check(
+                "Cold offscreen artwork waits for visibility",
+                imageReads.length,
+                before,
+            );
+            await unmount(app);
+        }
+    } finally {
+        window.IntersectionObserver = originalObserver;
+    }
+}
+
 try {
     await lists();
     await overlappingPlaylistRead(false);
     await overlappingPlaylistRead(true);
     await playlistTeardown();
+    await artworkRecycling();
 } catch (error) {
     result.failures.push(String(error.stack ?? error));
 } finally {

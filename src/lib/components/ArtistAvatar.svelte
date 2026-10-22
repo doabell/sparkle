@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { getArtistImage } from "$lib/api";
+    import { getArtistImage, getCachedArtistImage } from "$lib/api";
     import { onceVisible } from "$lib/utils/onceVisible";
     import { cachedImageToUrl } from "$lib/utils/base64";
 
@@ -12,7 +12,8 @@
     let { artistId, alt = "", class: cls = "" }: Props = $props();
     let visible = $state(false);
     let request = $derived(
-        visible ? getArtistImage(artistId, "background") : null,
+        getCachedArtistImage(artistId) ??
+            (visible ? getArtistImage(artistId, "background") : null),
     );
 </script>
 
@@ -35,7 +36,6 @@
         <img
             class={cls}
             src={cachedImageToUrl(image, "")}
-            loading="lazy"
             decoding="async"
             {alt}
         />
