@@ -261,9 +261,16 @@ async function artworkRecycling() {
 
 async function miniPlayerArtwork() {
     const original = get(playback);
+    const originalDecode = HTMLImageElement.prototype.decode;
+    const decoding = new Map();
+    HTMLImageElement.prototype.decode = async function () {
+        await originalDecode.call(this);
+        const gate = decoding.get(this.getAttribute("src"));
+        if (gate) await gate.promise;
+    };
     const cover = (id) => ({
         source: "embedded",
-        file_path: `${imageUrl}#album-${id}`,
+        file_path: `${imageUrl.replaceAll("%2248%22", "%222048%22")}#album-${id}`,
         mime_type: "image/svg+xml",
     });
     const showTrack = (id, albumArt = null) => {
@@ -286,7 +293,8 @@ async function miniPlayerArtwork() {
         });
         flushSync();
     };
-    const image = () => target.querySelector(".artwork img");
+    const image = () =>
+        target.querySelector('.artwork img:not([aria-hidden="true"])');
     const warm = await getAlbumArt(9100);
     showTrack(9100, warm);
     const app = mount(MiniPlayer, { target });
@@ -298,7 +306,7 @@ async function miniPlayerArtwork() {
             firstImage?.getAttribute("src"),
             warm.file_path,
         );
-        for (const id of [9101, 9102, 9103, 9104, 9105])
+        for (const id of [9101, 9102, 9103, 9104, 9105, 9106, 9107])
             pendingImages.set(id, deferred());
         showTrack(9101);
         check(
@@ -312,31 +320,75 @@ async function miniPlayerArtwork() {
             warm.file_path,
         );
         await settle();
+        const nextDecoded = deferred();
+        decoding.set(cover(9101).file_path, nextDecoded);
         pendingImages.get(9101).resolve(cover(9101));
+        await settle();
+        check(
+            "Mini player keeps the old cover until the new image is decoded",
+            image()?.getAttribute("src"),
+            warm.file_path,
+        );
+        check(
+            "Decoding keeps only the displayed and incoming image mounted",
+            target.querySelectorAll(".artwork img").length,
+            2,
+        );
+        nextDecoded.resolve();
         await settle();
         check(
             "Mini player swaps directly to the loaded cover",
             image()?.getAttribute("src"),
             cover(9101).file_path,
         );
+        check("Displayed image has decoded pixels", image().naturalWidth, 2048);
+        check(
+            "Large covers stay within the mini player",
+            image().clientWidth,
+            68,
+        );
+        check(
+            "Large covers keep the mini player height",
+            image().clientHeight,
+            68,
+        );
+        check(
+            "The previous image is released after the swap",
+            target.querySelectorAll(".artwork img").length,
+            1,
+        );
 
         showTrack(9102);
+        await settle();
+        const skippedDecoded = deferred();
+        decoding.set(cover(9102).file_path, skippedDecoded);
+        pendingImages.get(9102).resolve(cover(9102));
         await settle();
         showTrack(9103);
         await settle();
         pendingImages.get(9103).resolve(cover(9103));
         await settle();
-        pendingImages.get(9102).resolve(cover(9102));
+        skippedDecoded.resolve();
         await settle();
         check(
-            "A slow skipped cover cannot replace the current cover",
+            "A slow skipped image decode cannot replace the current cover",
             image()?.getAttribute("src"),
             cover(9103).file_path,
         );
 
+        const snapshotDecoded = deferred();
+        decoding.set(cover(9104).file_path, snapshotDecoded);
         showTrack(9104, cover(9104));
+        await settle();
         check(
-            "Mini player uses artwork from the playback snapshot immediately",
+            "Snapshot artwork also waits for decoding before replacing the cover",
+            image()?.getAttribute("src"),
+            cover(9103).file_path,
+        );
+        snapshotDecoded.resolve();
+        await settle();
+        check(
+            "Mini player shows decoded snapshot artwork without waiting for IPC",
             image()?.getAttribute("src"),
             cover(9104).file_path,
         );
@@ -353,9 +405,32 @@ async function miniPlayerArtwork() {
             null,
         );
         showTrack(9104, cover(9104));
+        await settle();
+        showTrack(9106);
+        pendingImages.get(9106).resolve({
+            ...cover(9106),
+            file_path: "data:image/png;base64,invalid",
+        });
+        await settle();
+        check("An unreadable image shows the fallback", image(), null);
+        check(
+            "An unreadable image does not leave a broken image element",
+            target.querySelectorAll(".artwork img").length,
+            0,
+        );
+
+        const stoppedDecode = deferred();
+        decoding.set(cover(9107).file_path, stoppedDecode);
+        showTrack(9107, cover(9107));
+        await settle();
         showTrack(null);
         check("Stopping playback clears the artwork", image(), null);
+        stoppedDecode.resolve();
+        await settle();
+        check("A late decode cannot restore stopped artwork", image(), null);
     } finally {
+        HTMLImageElement.prototype.decode = originalDecode;
+        for (const gate of decoding.values()) gate.resolve();
         await unmount(app);
         for (const [id, request] of pendingImages) request.resolve(cover(id));
         pendingImages.clear();

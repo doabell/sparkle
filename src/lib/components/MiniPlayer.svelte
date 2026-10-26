@@ -1,7 +1,7 @@
 <script lang="ts">
     import MiniLyrics from "$lib/components/MiniLyrics.svelte";
+    import PlayerArtwork from "$lib/components/PlayerArtwork.svelte";
     import { playbackArtwork } from "$lib/stores/playbackArtwork";
-    import { cachedImageToUrl } from "$lib/utils/base64";
     import {
         playback,
         interpolatedPositionMs,
@@ -100,13 +100,10 @@
 <section class="mini-player" aria-label="Mini player">
     <div class="track">
         <div class="artwork">
-            {#if $playbackArtwork?.file_path}
-                <img
-                    src={cachedImageToUrl($playbackArtwork, "")}
-                    decoding="async"
-                    alt={track?.album_title ?? "Album art"}
-                />
-            {:else}
+            <PlayerArtwork
+                image={$playbackArtwork}
+                alt={track?.album_title ?? "Album art"}
+            >
                 <svg
                     viewBox="0 0 24 24"
                     fill="none"
@@ -120,7 +117,7 @@
                     <circle cx="6" cy="18" r="3" />
                     <circle cx="18" cy="16" r="3" />
                 </svg>
-            {/if}
+            </PlayerArtwork>
         </div>
         <div class="track-details">
             <div
@@ -357,12 +354,7 @@
         align-items: center;
         justify-content: center;
     }
-    .artwork img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-    }
-    .artwork > svg {
+    .artwork svg {
         width: 40%;
         height: 40%;
         color: var(--color-text-muted);

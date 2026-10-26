@@ -17,7 +17,7 @@
     import { smartGo } from "$lib/utils/nav";
     import { getLyrics, LYRICS_CHANGED_EVENT } from "$lib/api";
     import { playbackArtwork } from "$lib/stores/playbackArtwork";
-    import { cachedImageToUrl } from "$lib/utils/base64";
+    import PlayerArtwork from "$lib/components/PlayerArtwork.svelte";
     import { parseLrc, activeLineIndex, type LrcLine } from "$lib/utils/lrc";
     import { listen } from "@tauri-apps/api/event";
     import { onMount } from "svelte";
@@ -355,13 +355,10 @@
             onclick={() => smartGo("/now-playing")}
             aria-label="Open now playing"
         >
-            {#if art?.file_path}
-                <img
-                    src={cachedImageToUrl(art, "")}
-                    decoding="async"
-                    alt={$playback.current_track?.album_title ?? "Album art"}
-                />
-            {:else}
+            <PlayerArtwork
+                image={art}
+                alt={$playback.current_track?.album_title ?? "Album art"}
+            >
                 <svg
                     viewBox="0 0 24 24"
                     fill="none"
@@ -375,7 +372,7 @@
                     <circle cx="6" cy="18" r="3" />
                     <circle cx="18" cy="16" r="3" />
                 </svg>
-            {/if}
+            </PlayerArtwork>
         </button>
 
         <div class="track-info">
@@ -705,12 +702,6 @@
     .art:hover {
         box-shadow: var(--shadow-sm);
         transform: scale(var(--motion-hover-scale));
-    }
-
-    .art img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
     }
 
     .art svg {
