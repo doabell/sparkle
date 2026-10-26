@@ -1,10 +1,13 @@
 // @ts-nocheck — this fixture runs in the browser, outside the Bun test runner.
 import { mount, unmount, tick, flushSync } from "svelte";
+import { get } from "svelte/store";
 import Lists from "./Lists.svelte";
 import ArtworkRows from "./ArtworkRows.svelte";
+import MiniPlayer from "../../src/lib/components/MiniPlayer.svelte";
 import Playlist from "../../src/routes/playlists/[id]/+page.svelte";
 import { navigate, navigations } from "./router";
 import { getAlbumArt, getArtistImage } from "../../src/lib/api";
+import { playback } from "../../src/lib/stores/playback";
 
 const target = document.querySelector("#app");
 const result = { passed: 0, failures: [] };
@@ -59,6 +62,7 @@ const reads = [];
 let removal;
 let deletion;
 const imageReads = [];
+const pendingImages = new Map();
 const imageUrl =
     "data:image/svg+xml," +
     encodeURIComponent(
@@ -74,8 +78,11 @@ window.__TAURI_INTERNALS__ = {
         if (command === "remove_track_from_playlist") return removal.promise;
         if (command === "delete_playlist") return deletion.promise;
         if (command === "get_playlists") return [];
+        if (command === "get_lyrics") return { source: "none" };
         if (command === "get_album_art" || command === "get_artist_image") {
             imageReads.push({ command, args });
+            if (command === "get_album_art" && pendingImages.has(args.albumId))
+                return pendingImages.get(args.albumId).promise;
             return {
                 source: "embedded",
                 file_path: imageUrl,
@@ -252,12 +259,117 @@ async function artworkRecycling() {
     }
 }
 
+async function miniPlayerArtwork() {
+    const original = get(playback);
+    const cover = (id) => ({
+        source: "embedded",
+        file_path: `${imageUrl}#album-${id}`,
+        mime_type: "image/svg+xml",
+    });
+    const showTrack = (id, albumArt = null) => {
+        playback.set({
+            ...original,
+            is_playing: false,
+            error: null,
+            current_track:
+                id === null
+                    ? null
+                    : {
+                          id,
+                          title: `Track ${id}`,
+                          album_id: id,
+                          album_title: `Album ${id}`,
+                          artist_names: ["Artist"],
+                          duration_ms: 1000,
+                      },
+            album_art: albumArt,
+        });
+        flushSync();
+    };
+    const image = () => target.querySelector(".artwork img");
+    const warm = await getAlbumArt(9100);
+    showTrack(9100, warm);
+    const app = mount(MiniPlayer, { target });
+    try {
+        await settle();
+        const firstImage = image();
+        check(
+            "Mini player starts with the current cover",
+            firstImage?.getAttribute("src"),
+            warm.file_path,
+        );
+        for (const id of [9101, 9102, 9103, 9104, 9105])
+            pendingImages.set(id, deferred());
+        showTrack(9101);
+        check(
+            "Mini player keeps its image element while the next cover loads",
+            image(),
+            firstImage,
+        );
+        check(
+            "Mini player keeps the current cover during a cold request",
+            image()?.getAttribute("src"),
+            warm.file_path,
+        );
+        await settle();
+        pendingImages.get(9101).resolve(cover(9101));
+        await settle();
+        check(
+            "Mini player swaps directly to the loaded cover",
+            image()?.getAttribute("src"),
+            cover(9101).file_path,
+        );
+
+        showTrack(9102);
+        await settle();
+        showTrack(9103);
+        await settle();
+        pendingImages.get(9103).resolve(cover(9103));
+        await settle();
+        pendingImages.get(9102).resolve(cover(9102));
+        await settle();
+        check(
+            "A slow skipped cover cannot replace the current cover",
+            image()?.getAttribute("src"),
+            cover(9103).file_path,
+        );
+
+        showTrack(9104, cover(9104));
+        check(
+            "Mini player uses artwork from the playback snapshot immediately",
+            image()?.getAttribute("src"),
+            cover(9104).file_path,
+        );
+        await settle();
+        pendingImages.get(9104).resolve(cover(9104));
+        await settle();
+        showTrack(9105);
+        await settle();
+        pendingImages.get(9105).resolve({ source: "none" });
+        await settle();
+        check(
+            "A confirmed missing cover clears the previous album",
+            image(),
+            null,
+        );
+        showTrack(9104, cover(9104));
+        showTrack(null);
+        check("Stopping playback clears the artwork", image(), null);
+    } finally {
+        await unmount(app);
+        for (const [id, request] of pendingImages) request.resolve(cover(id));
+        pendingImages.clear();
+        playback.set(original);
+    }
+}
+
 try {
     await lists();
     await overlappingPlaylistRead(false);
     await overlappingPlaylistRead(true);
     await playlistTeardown();
     await artworkRecycling();
+    await miniPlayerArtwork();
 } catch (error) {
     result.failures.push(String(error.stack ?? error));
 } finally {

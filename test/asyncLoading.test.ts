@@ -1,7 +1,9 @@
 // @ts-nocheck
 import { afterEach, expect, mock, test } from "bun:test";
+import { writable } from "svelte/store";
 import { createLatestRequest } from "../src/lib/utils/latestRequest";
 import { createQueueStore } from "../src/lib/stores/queue";
+import { createPlaybackArtwork } from "../src/lib/stores/playbackArtwork";
 import { onceVisible } from "../src/lib/utils/onceVisible";
 import { intersect } from "../src/lib/utils/intersect";
 import { invoke, listen } from "./support/platform";
@@ -45,6 +47,77 @@ test("only the latest route load can publish after A to B to A navigation or unm
     requests.invalidate();
     expect(currentA()).toBe(false);
     expect(requests.start()()).toBe(true);
+});
+
+const playerImage = (id) => ({
+    source: "embedded",
+    file_path: `/cache/player-${id}.jpg`,
+    mime_type: "image/jpeg",
+});
+const playerState = (id, art = null) => ({
+    current_track: id === null ? null : { id, album_id: id },
+    album_art: art,
+});
+
+test("player layouts share artwork and retain it until the latest cover is ready", async () => {
+    const first = deferred(),
+        next = deferred();
+    invoke.mockImplementation((_command, { albumId }) =>
+        albumId === 8801 ? first.promise : next.promise,
+    );
+    const source = writable(playerState(8801, playerImage(8801)));
+    const artwork = createPlaybackArtwork(source);
+    let main, mini;
+    cleanups.push(artwork.subscribe((value) => (main = value)));
+    cleanups.push(artwork.subscribe((value) => (mini = value)));
+    expect(main).toEqual(playerImage(8801));
+    expect(mini).toEqual(main);
+    await flush();
+    expect(invoke).toHaveBeenCalledTimes(1);
+    source.update((state) => ({ ...state, position_ms: 1000, volume: 0.5 }));
+    await flush();
+    expect(invoke).toHaveBeenCalledTimes(1);
+
+    source.set(playerState(8802));
+    expect(main).toEqual(playerImage(8801));
+    expect(mini).toEqual(main);
+    await flush();
+    next.resolve(playerImage(8802));
+    await flush();
+    expect(main).toEqual(playerImage(8802));
+    expect(mini).toEqual(main);
+    first.reject(Error("late provider failure"));
+    await flush();
+    expect(main).toEqual(playerImage(8802));
+    expect(invoke).toHaveBeenCalledTimes(2);
+});
+
+test("player artwork ignores disposed requests and keeps a valid snapshot on fetch failure", async () => {
+    const old = deferred(),
+        current = deferred();
+    invoke.mockImplementation((_command, { albumId }) =>
+        albumId === 8803 ? old.promise : current.promise,
+    );
+    const source = writable(playerState(8803, playerImage(8803)));
+    const artwork = createPlaybackArtwork(source);
+    const stop = artwork.subscribe(() => {});
+    await flush();
+    stop();
+    source.set(playerState(8804, playerImage(8804)));
+    await flush();
+    expect(invoke).toHaveBeenCalledTimes(1);
+    let image;
+    cleanups.push(artwork.subscribe((value) => (image = value)));
+    expect(image).toEqual(playerImage(8804));
+    await flush();
+    old.resolve(playerImage(8803));
+    await flush();
+    expect(image).toEqual(playerImage(8804));
+    current.reject(Error("provider unavailable"));
+    await flush();
+    expect(image).toEqual(playerImage(8804));
+    source.set(playerState(null));
+    expect(image).toBeNull();
 });
 
 test("queue subscribes before reading and disposes late subscriptions without starting a read", async () => {

@@ -15,12 +15,8 @@
     } from "$lib/stores/playback";
     import { formatTime } from "$lib/utils/formatTime";
     import { smartGo } from "$lib/utils/nav";
-    import {
-        getAlbumArt,
-        getLyrics,
-        LYRICS_CHANGED_EVENT,
-        type CachedImage,
-    } from "$lib/api";
+    import { getLyrics, LYRICS_CHANGED_EVENT } from "$lib/api";
+    import { playbackArtwork } from "$lib/stores/playbackArtwork";
     import { cachedImageToUrl } from "$lib/utils/base64";
     import { parseLrc, activeLineIndex, type LrcLine } from "$lib/utils/lrc";
     import { listen } from "@tauri-apps/api/event";
@@ -29,8 +25,7 @@
     import ArtistLinks from "$lib/components/ArtistLinks.svelte";
     import { miniPlayer } from "$lib/stores/miniPlayer";
 
-    let art = $state<CachedImage | null>(null);
-    let lastAlbumId = $state<number | null>(null);
+    let art = $derived($playbackArtwork);
     let queueOpen = $state(false);
 
     // --- Lyrics ticker -------------------------------------------------------
@@ -64,8 +59,6 @@
         if (trackId === displayedTrackId) return;
 
         displayedTrackId = trackId;
-        art = $playback.album_art;
-        lastAlbumId = null;
         lyricRequest += 1;
         lyricTrackId = null;
         lyricLines = [];
@@ -86,26 +79,7 @@
         return index >= 0 ? lyricLines[index].text : "";
     });
 
-    async function updateArt(albumId: number | null | undefined) {
-        if (albumId === lastAlbumId) return;
-        lastAlbumId = albumId ?? null;
-        if (!albumId) {
-            art = null;
-            return;
-        }
-        const requestedAlbumId = albumId;
-        try {
-            const fetched = await getAlbumArt(requestedAlbumId);
-            if (requestedAlbumId !== lastAlbumId) return;
-            art = fetched;
-        } catch {
-            if (requestedAlbumId !== lastAlbumId) return;
-            art = null;
-        }
-    }
-
     onMount(() => {
-        updateArt($playback.current_track?.album_id);
         updateLyrics($playback.current_track?.id);
         let disposed = false;
         let unlisten: (() => void) | undefined;
@@ -132,17 +106,12 @@
         return () => {
             disposed = true;
             lyricRequest++;
-            lastAlbumId = null;
             unlisten?.();
             window.removeEventListener(
                 LYRICS_CHANGED_EVENT,
                 handleLyricsChanged,
             );
         };
-    });
-
-    $effect(() => {
-        updateArt($playback.current_track?.album_id);
     });
 
     $effect(() => {

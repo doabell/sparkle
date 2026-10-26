@@ -1,6 +1,7 @@
 <script lang="ts">
-    import Artwork from "$lib/components/Artwork.svelte";
     import MiniLyrics from "$lib/components/MiniLyrics.svelte";
+    import { playbackArtwork } from "$lib/stores/playbackArtwork";
+    import { cachedImageToUrl } from "$lib/utils/base64";
     import {
         playback,
         interpolatedPositionMs,
@@ -99,10 +100,27 @@
 <section class="mini-player" aria-label="Mini player">
     <div class="track">
         <div class="artwork">
-            <Artwork
-                albumId={track?.album_id}
-                alt={track?.album_title ?? "Album art"}
-            />
+            {#if $playbackArtwork?.file_path}
+                <img
+                    src={cachedImageToUrl($playbackArtwork, "")}
+                    decoding="async"
+                    alt={track?.album_title ?? "Album art"}
+                />
+            {:else}
+                <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                >
+                    <path d="M9 18V5l12-2v13" />
+                    <circle cx="6" cy="18" r="3" />
+                    <circle cx="18" cy="16" r="3" />
+                </svg>
+            {/if}
         </div>
         <div class="track-details">
             <div
@@ -335,12 +353,19 @@
         overflow: hidden;
         border-radius: var(--radius-sm);
         background: var(--color-surface-elevated);
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
-    .artwork :global(img),
-    .artwork :global(.artwork-fallback) {
+    .artwork img {
         width: 100%;
         height: 100%;
         object-fit: cover;
+    }
+    .artwork > svg {
+        width: 40%;
+        height: 40%;
+        color: var(--color-text-muted);
     }
     .track-details {
         display: flex;
