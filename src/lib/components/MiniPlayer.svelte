@@ -86,6 +86,16 @@
         }
     }
 
+    function handleVolumeWheel(event: WheelEvent) {
+        event.preventDefault();
+        const delta = event.deltaY > 0 ? -0.05 : 0.05;
+        const value = Math.max(
+            0,
+            Math.min(1, Math.round((volume + delta) * 100) / 100),
+        );
+        void changeVolume(value);
+    }
+
     function previewVolume(value: number) {
         volumeRequest++;
         volumePreview = value;
@@ -243,6 +253,7 @@
             <button
                 class="icon-button mute"
                 onclick={() => changeVolume(volume > 0 ? 0 : getUnmuteVolume())}
+                onwheel={handleVolumeWheel}
                 aria-label={volume > 0 ? "Mute" : "Unmute"}
                 title={volume > 0 ? "Mute" : "Unmute"}
             >
@@ -275,6 +286,7 @@
                 onchange={(event) =>
                     changeVolume(Number(event.currentTarget.value))}
                 onpointercancel={() => changeVolume(volume)}
+                onwheel={handleVolumeWheel}
             />
         </div>
     </div>
