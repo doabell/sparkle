@@ -110,7 +110,6 @@ test("read-only bridge commands preserve native results", async () => {
         ["pickFolder", "pick_folder"],
         ["getArtists", "get_artists"],
         ["getGenres", "get_genres"],
-        ["getQueue", "get_queue"],
         ["getPlaybackState", "get_playback_state"],
         ["getCacheDir", "get_cache_dir"],
         ["getDiscoveryTracks", "get_discovery_tracks"],
@@ -609,7 +608,7 @@ test("artwork cache is LRU-bounded and cache clears invalidate completed referen
     await api.clearAllCaches();
     invoke.mockImplementation(async (command, args) => image(args.albumId));
     for (let id = 400; id < 528; id++) await api.getAlbumArt(id);
-    await api.getAlbumArt(400); // Refresh the oldest entry.
+    expect(api.getCachedAlbumArt(400)).toEqual(image(400)); // Keep a revisited row warm.
     await api.getAlbumArt(528);
     const calls = invoke.mock.calls.length;
     await api.getAlbumArt(400);
@@ -619,9 +618,36 @@ test("artwork cache is LRU-bounded and cache clears invalidate completed referen
     for (const clear of [api.clearImagesCache, api.clearAllCaches]) {
         invoke.mockResolvedValue(undefined);
         await clear();
+        expect(api.getCachedAlbumArt(400)).toBeUndefined();
         invoke.mockResolvedValue(image("fresh"));
         expect(await api.getAlbumArt(400)).toEqual(image("fresh"));
     }
+    await flush();
+});
+
+test("synchronous artwork reads reuse completed images without starting cold or invalidated requests", async () => {
+    const album = 701,
+        artist = 702;
+    expect(api.getCachedAlbumArt(album)).toBeUndefined();
+    expect(api.getCachedArtistImage(artist)).toBeUndefined();
+    expect(invoke).not.toHaveBeenCalled();
+    const pending = deferred();
+    invoke.mockImplementation(() => pending.promise);
+    const albumRequest = api.getAlbumArt(album);
+    await flush();
+    expect(api.getCachedAlbumArt(album)).toBeUndefined();
+    expect(invoke).toHaveBeenCalledTimes(1);
+    pending.resolve(image(album));
+    await albumRequest;
+    invoke.mockResolvedValue(image(artist));
+    await api.getArtistImage(artist);
+    expect(api.getCachedAlbumArt(album)).toEqual(image(album));
+    expect(api.getCachedArtistImage(artist)).toEqual(image(artist));
+    api.invalidateAlbumArt(album);
+    api.invalidateArtistImage(artist);
+    expect(api.getCachedAlbumArt(album)).toBeUndefined();
+    expect(api.getCachedArtistImage(artist)).toBeUndefined();
+    expect(invoke).toHaveBeenCalledTimes(2);
     await flush();
 });
 
@@ -642,4 +668,75 @@ test("media artwork reads bytes only when a cached file exists", async () => {
         source: "embedded",
     });
     await flush();
+});
+
+test("settings writes preserve edit order, snapshot values, and reads wait for pending saves", async () => {
+    const first = deferred(),
+        second = deferred();
+    const saved = { theme_mode: "dark" };
+    invoke.mockImplementation((command, payload) => {
+        if (command === "set_online_settings")
+            return payload.settings.theme_mode === "dark"
+                ? first.promise
+                : second.promise;
+        return { theme_mode: "light" };
+    });
+    const a = api.setOnlineSettings(saved);
+    saved.theme_mode = "system";
+    const b = api.setOnlineSettings({ theme_mode: "light" });
+    const read = api.getOnlineSettings();
+    await flush();
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(invoke.mock.calls[0][1].settings.theme_mode).toBe("dark");
+    first.resolve();
+    await a;
+    await flush();
+    expect(invoke).toHaveBeenCalledTimes(2);
+    second.resolve();
+    await b;
+    expect(await read).toEqual({ theme_mode: "light" });
+    expect(invoke.mock.calls[2][0]).toBe("get_online_settings");
+});
+
+test("a failed settings write does not block later writes or reads", async () => {
+    const failure = deferred();
+    invoke.mockImplementationOnce(() => failure.promise);
+    invoke.mockResolvedValue({ theme_mode: "system" });
+    const failed = api
+        .setOnlineSettings({ theme_mode: "dark" })
+        .catch(() => {});
+    const next = api.setOnlineSettings({ theme_mode: "light" });
+    failure.reject(Error("cannot save"));
+    await failed;
+    await next;
+    expect(await api.getOnlineSettings()).toEqual({ theme_mode: "system" });
+    const last = deferred();
+    invoke.mockImplementationOnce(() => last.promise);
+    const rejected = api
+        .setOnlineSettings({ theme_mode: "dark" })
+        .catch(() => {});
+    const read = api.getOnlineSettings();
+    last.reject(Error("cannot save"));
+    await rejected;
+    expect(await read).toEqual({ theme_mode: "system" });
+});
+
+test("queue requests carry explicit pagination parameters", async () => {
+    invoke.mockResolvedValue({
+        tracks: [],
+        total: 0,
+        offset: 0,
+        revision: 8,
+        current_pos: null,
+    });
+    await api.getQueue();
+    expect(invoke).toHaveBeenLastCalledWith("get_queue", {
+        offset: undefined,
+        limit: 100,
+    });
+    await api.getQueue(300, 50);
+    expect(invoke).toHaveBeenLastCalledWith("get_queue", {
+        offset: 300,
+        limit: 50,
+    });
 });

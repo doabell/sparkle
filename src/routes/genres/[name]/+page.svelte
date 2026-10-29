@@ -18,7 +18,8 @@
         resolveScrollIndexMode,
     } from "$lib/utils/songIndex";
     import { intersect } from "$lib/utils/intersect";
-    import { onMount } from "svelte";
+    import { onDestroy } from "svelte";
+    import { createLatestRequest } from "$lib/utils/latestRequest";
 
     const SORT_OPTIONS = [
         { value: "title", label: "Title" },
@@ -45,7 +46,9 @@
     const groupBy = uiPref<string>("genre-detail.groupBy", "album");
     const groupAsc = uiPref("genre-detail.groupAsc", true);
 
-    const genreName = $derived(decodeURIComponent($page.params.name || ""));
+    const genreName = $derived($page.params.name || "");
+    const requests = createLatestRequest();
+    onDestroy(requests.invalidate);
 
     $effect(() => {
         windowPageTitle.set(genreName || null);
@@ -76,15 +79,24 @@
         resetVisibleCount();
     }
 
-    onMount(async () => {
-        try {
-            loading = true;
-            tracks = await getTracksByGenre(genreName);
-        } catch (e) {
-            error = String(e);
-        } finally {
-            loading = false;
-        }
+    $effect(() => {
+        const name = genreName;
+        const isCurrent = requests.start();
+        loading = true;
+        error = null;
+        tracks = [];
+        visibleCount = PAGE_SIZE;
+        void getTracksByGenre(name)
+            .then((next) => {
+                if (isCurrent()) tracks = next;
+            })
+            .catch((e) => {
+                if (isCurrent()) error = String(e);
+            })
+            .finally(() => {
+                if (isCurrent()) loading = false;
+            });
+        return requests.invalidate;
     });
 
     function compareTracks(a: ApiTrack, b: ApiTrack, dir: number): number {

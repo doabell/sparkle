@@ -693,20 +693,36 @@ export async function playNext(
     return invokePlayback("play_next", { trackId, source });
 }
 
+export type QueuedTrack = Pick<
+    Track,
+    "id" | "title" | "album_id" | "duration_ms" | "artist_names"
+>;
+
 export interface QueueView {
-    tracks: Track[];
+    revision: number;
+    total: number;
+    offset: number;
+    tracks: (QueuedTrack | null)[];
     current_pos: number | null;
 }
 
-export async function getQueue(): Promise<QueueView> {
-    return invoke("get_queue");
+export async function getQueue(
+    offset?: number,
+    limit = 100,
+): Promise<QueueView> {
+    return invoke("get_queue", { offset, limit });
 }
 
 export async function playQueueIndex(
     orderPos: number,
     source: PlaybackActionSource = "ui",
+    queueRevision?: number,
 ): Promise<PlaybackState> {
-    return invokePlayback("play_queue_index", { orderPos, source });
+    return invokePlayback("play_queue_index", {
+        orderPos,
+        source,
+        queueRevision,
+    });
 }
 
 export async function getPlaybackState(): Promise<PlaybackState> {
@@ -784,6 +800,18 @@ export async function getArtistInfo(artistId: number): Promise<ArtistInfo> {
 }
 
 export type ImageRequestPriority = "foreground" | "background";
+
+// Recycled rows can render a completed image immediately, without waiting for
+// another visibility event or promise. These reads never start provider work.
+export function getCachedArtistImage(
+    artistId: number,
+): CachedImage | undefined {
+    return readCachedImage(`artist-image:${artistId}`);
+}
+
+export function getCachedAlbumArt(albumId: number): CachedImage | undefined {
+    return readCachedImage(`album-art:${albumId}`);
+}
 
 export async function getArtistImage(
     artistId: number,
@@ -899,13 +927,8 @@ function memoizedImage(
     fetcher: () => Promise<CachedImage>,
     priority: ImageRequestPriority,
 ): Promise<CachedImage> {
-    const cached = imageMemo.get(key);
-    if (cached) {
-        // Refresh recency on read so frequently visible artwork stays warm.
-        imageMemo.delete(key);
-        imageMemo.set(key, cached);
-        return Promise.resolve(cached);
-    }
+    const cached = readCachedImage(key);
+    if (cached) return Promise.resolve(cached);
 
     const inFlight = inFlightImageMemo.get(key);
     if (inFlight) {
@@ -933,6 +956,16 @@ function memoizedImage(
     );
     inFlightImageMemo.set(key, request);
     return request;
+}
+
+function readCachedImage(key: string): CachedImage | undefined {
+    const cached = imageMemo.get(key);
+    if (cached) {
+        // Refresh recency on read so frequently visible artwork stays warm.
+        imageMemo.delete(key);
+        imageMemo.set(key, cached);
+    }
+    return cached;
 }
 
 function trimImageMemo(): void {
@@ -1217,14 +1250,30 @@ export async function getListeningStats(
     return invoke("get_listening_stats", { days: days ?? null });
 }
 
+let settingsWrite: Promise<void> | null = null;
+
 export async function getOnlineSettings(): Promise<OnlineSettings> {
+    // A reopened Settings page must include edits flushed during navigation.
+    await settingsWrite?.catch(() => {});
     return invoke("get_online_settings");
 }
 
 export async function setOnlineSettings(
     settings: OnlineSettings,
 ): Promise<void> {
-    return invoke("set_online_settings", { settings });
+    // Writes are whole snapshots. Preserve edit order across page instances.
+    const snapshot = JSON.parse(JSON.stringify(settings)) as OnlineSettings;
+    const request = (settingsWrite ?? Promise.resolve())
+        .catch(() => {})
+        .then(() =>
+            invoke<void>("set_online_settings", { settings: snapshot }),
+        );
+    settingsWrite = request;
+    try {
+        await request;
+    } finally {
+        if (settingsWrite === request) settingsWrite = null;
+    }
 }
 
 export async function getLoudnessStatus(): Promise<LoudnessStatus> {

@@ -7,7 +7,7 @@ use crate::cache;
 use crate::db_writer::{DbWriter, WriterHealth, WriterMonitor};
 use crate::discord::DiscordPresence;
 use crate::loudness::{GainAvailability, LoudnessController, NEXT_UP_COUNT};
-use crate::models::{CachedImage, PlaybackState, QueueView, RepeatMode, Track};
+use crate::models::{CachedImage, PlaybackState, QueueView, QueuedTrack, RepeatMode, Track};
 use crate::playback_observation::{
     CommandObservation, CommandOutcome, CommandReply, Operation, PlaybackFailure,
     PlaybackObservation,
@@ -341,7 +341,6 @@ fn dedup_queue(track_ids: Vec<i64>, start_index: usize) -> (Vec<i64>, usize) {
 #[derive(Clone)]
 pub struct AudioController {
     tx: mpsc::Sender<AudioCommand>,
-    #[allow(dead_code)]
     state: Arc<Mutex<SharedState>>,
     worker: Arc<Mutex<Option<std::thread::JoinHandle<()>>>>,
     writer_monitor: WriterMonitor,
@@ -357,6 +356,7 @@ impl AudioController {
     ) -> Self {
         let (tx, rx) = mpsc::channel();
         let state = Arc::new(Mutex::new(SharedState {
+            queue_revision: 0,
             queue: Vec::new(),
             queue_index: None,
             play_order: Vec::new(),
@@ -454,12 +454,16 @@ impl AudioController {
             .map_err(|error| error.to_string())
     }
 
-    pub fn get_queue(&self) -> Result<QueueView, String> {
-        let (reply_tx, reply_rx) = mpsc::channel();
-        self.tx
-            .send(AudioCommand::GetQueue(reply_tx))
-            .map_err(|e| e.to_string())?;
-        receive_audio_reply(reply_rx, COMMAND_REPLY_TIMEOUT, "queue")
+    pub(crate) fn queue_snapshot(&self, offset: Option<usize>, limit: usize) -> QueueSnapshot {
+        let s = lock_state(&self.state);
+        queue_snapshot_from_order(
+            &s.queue,
+            &s.play_order,
+            s.order_pos,
+            s.queue_revision,
+            offset,
+            limit,
+        )
     }
 
     pub fn get_playback_state(&self) -> Result<PlaybackState, String> {
@@ -639,8 +643,7 @@ pub(crate) enum AudioCommand {
     SetShuffle(bool, PlaybackSource),
     CycleRepeatMode(PlaybackSource),
     PlayNext(i64, PlaybackSource),
-    GetQueue(mpsc::Sender<QueueView>),
-    PlayAt(usize, PlaybackSource),
+    PlayAt(usize, Option<u64>, PlaybackSource),
     GetState(mpsc::Sender<PlaybackState>),
     Shutdown(mpsc::Sender<Result<(), String>>),
 }
@@ -673,8 +676,7 @@ impl AudioCommand {
             SetShuffle(_, source) => ("set_shuffle", *source, None),
             CycleRepeatMode(source) => ("cycle_repeat_mode", *source, None),
             PlayNext(id, source) => ("play_next", *source, Some(*id)),
-            PlayAt(_, source) => ("play_queue_index", *source, None),
-            GetQueue(_) => ("get_queue", PlaybackSource::Internal, None),
+            PlayAt(_, _, source) => ("play_queue_index", *source, None),
             GetState(_) => ("get_playback_state", PlaybackSource::Internal, None),
             Shutdown(_) => ("shutdown", PlaybackSource::Internal, None),
             Execute(request) => request.command.description(),
@@ -837,6 +839,7 @@ fn timed_stage<T>(
 }
 
 struct SharedState {
+    queue_revision: u64,
     queue: Vec<i64>,
     queue_index: Option<usize>,
     play_order: Vec<usize>,
@@ -1188,6 +1191,7 @@ fn restore_session(
 
     {
         let mut s = lock_state(state);
+        s.queue_revision += 1;
         s.queue = snapshot.queue.clone();
         s.queue_index = snapshot.queue_index;
         s.volume = snapshot.volume.clamp(0.0, 1.0);
@@ -1936,6 +1940,7 @@ fn handle_command(
                 if let Some(override_value) = shuffle_override {
                     s.shuffle = override_value;
                 }
+                s.queue_revision += 1;
                 s.queue = track_ids;
                 s.queue_index = idx;
                 s.play_order = play_order;
@@ -2009,6 +2014,7 @@ fn handle_command(
             finalize_active_listen(state, writer, ListenEndReason::TrackSelected, source);
             {
                 let mut s = lock_state(state);
+                s.queue_revision += 1;
                 s.queue = vec![track_id];
                 s.queue_index = Some(0);
                 s.play_order = vec![0];
@@ -2379,14 +2385,18 @@ fn handle_command(
                     order_pos,
                     ..
                 } = &mut *s;
-                change_shuffle(
+                let changed = change_shuffle(
                     previous,
                     shuffle,
                     queue.len(),
                     *queue_index,
                     play_order,
                     order_pos,
-                )
+                );
+                if changed {
+                    s.queue_revision += 1;
+                }
+                changed
             };
             if !changed {
                 return Ok(CommandFlow::Continue(CommandOutcome::Noop));
@@ -2435,6 +2445,7 @@ fn handle_command(
                     else {
                         return Ok(CommandFlow::Continue(CommandOutcome::Noop));
                     };
+                    s.queue_revision += 1;
                     s.queue_index = Some(current_index);
                     s.order_pos = Some(order_pos);
                     false
@@ -2442,6 +2453,7 @@ fn handle_command(
                 _ => {
                     {
                         let mut s = lock_state(state);
+                        s.queue_revision += 1;
                         s.queue = vec![track_id];
                         s.play_order = vec![0];
                         s.queue_index = Some(0);
@@ -2493,17 +2505,21 @@ fn handle_command(
             emit_queue_changed(app_handle, state);
             save_session_to_db(state, writer);
         }
-        AudioCommand::GetQueue(reply) => {
-            let view = build_queue_view(state, db);
-            let _ = reply.send(view);
-        }
-        AudioCommand::PlayAt(order_pos, source) => {
-            let valid = order_pos < lock_state(state).play_order.len();
+        AudioCommand::PlayAt(order_pos, queue_revision, source) => {
+            let valid = {
+                let s = lock_state(state);
+                queue_jump_is_valid(
+                    s.play_order.len(),
+                    s.queue_revision,
+                    order_pos,
+                    queue_revision,
+                )
+            };
             if !valid {
                 return Err(PlaybackFailure::new(
                     "queue_lookup",
                     None,
-                    "The requested queue entry is unavailable.",
+                    "The queue changed or this entry is unavailable. Please try again.",
                 ));
             }
             if valid {
@@ -2836,6 +2852,9 @@ fn advance(
         );
     }
     // A manual Next at the end of the queue (repeat off) is a no-op.
+    if next_pos.is_some() {
+        emit_queue_changed(app_handle, state);
+    }
     save_session_to_db(state, writer);
     Ok(if !auto && next_pos.is_none() {
         CommandOutcome::Noop
@@ -3226,31 +3245,93 @@ fn emit_queue_changed(app_handle: &AppHandle, state: &Arc<Mutex<SharedState>>) {
     publish_event(app_handle, state, "queue-changed", ());
 }
 
-fn build_queue_view(
-    state: &Arc<Mutex<SharedState>>,
-    db: &Arc<Mutex<rusqlite::Connection>>,
-) -> QueueView {
-    let (queue_ids, play_order, order_pos) = {
-        let s = lock_state(state);
-        (s.queue.clone(), s.play_order.clone(), s.order_pos)
-    };
-    let mut tracks = Vec::with_capacity(play_order.len());
-    for pos in &play_order {
-        if let Some(id) = queue_ids.get(*pos) {
-            match load_track_from_db(db, *id) {
-                Ok(t) => tracks.push(t),
-                Err(e) => {
-                    log::error!(
-                        target: "sparkle::audio",
-                        "event=queued_track_load_failed track_id={id} error={e}"
-                    );
-                }
-            }
-        }
+const MAX_QUEUE_PAGE_SIZE: usize = 100;
+
+pub(crate) struct QueueSnapshot {
+    revision: u64,
+    total: usize,
+    offset: usize,
+    current_pos: Option<usize>,
+    ids: Vec<Option<i64>>,
+}
+
+// Copy only the requested IDs while holding the audio state lock. No database
+// work (or full-queue allocation) is performed on the playback thread.
+fn queue_snapshot_from_order(
+    queue_ids: &[i64],
+    play_order: &[usize],
+    current_pos: Option<usize>,
+    revision: u64,
+    offset: Option<usize>,
+    limit: usize,
+) -> QueueSnapshot {
+    let limit = limit.clamp(1, MAX_QUEUE_PAGE_SIZE);
+    let offset = offset
+        .unwrap_or_else(|| current_pos.unwrap_or(0) / limit * limit)
+        .min(play_order.len());
+    let ids = play_order
+        .iter()
+        .skip(offset)
+        .take(limit)
+        .map(|index| queue_ids.get(*index).copied())
+        .collect();
+    QueueSnapshot {
+        revision,
+        total: play_order.len(),
+        offset,
+        current_pos,
+        ids,
     }
-    QueueView {
-        tracks,
-        current_pos: order_pos,
+}
+
+fn queue_jump_is_valid(
+    total: usize,
+    revision: u64,
+    position: usize,
+    expected: Option<u64>,
+) -> bool {
+    position < total && expected.is_none_or(|expected| expected == revision)
+}
+
+impl QueueSnapshot {
+    pub(crate) fn load(self, conn: &rusqlite::Connection) -> Result<QueueView, String> {
+        use rusqlite::OptionalExtension;
+        // Queue rows need only display metadata, never lyrics, file paths or art.
+        let mut statement = conn
+            .prepare_cached("SELECT id, title, album_id, duration_ms FROM tracks WHERE id = ?")
+            .map_err(|e| e.to_string())?;
+        let mut tracks = Vec::with_capacity(self.ids.len());
+        for id in self.ids {
+            let track = match id {
+                None => None,
+                Some(id) => {
+                    let mut track = statement
+                        .query_row([id], |row| {
+                            Ok(QueuedTrack {
+                                id: row.get(0)?,
+                                title: row.get(1)?,
+                                album_id: row.get(2)?,
+                                duration_ms: row.get(3)?,
+                                artist_names: Vec::new(),
+                            })
+                        })
+                        .optional()
+                        .map_err(|e| e.to_string())?;
+                    if let Some(track) = &mut track {
+                        track.artist_names = load_track_artists(conn, id)?.1;
+                    }
+                    track
+                }
+            };
+            tracks.push(track);
+        }
+        Ok(QueueView {
+            revision: self.revision,
+            total: self.total,
+            offset: self.offset,
+            current_pos: self.current_pos,
+            tracks,
+        })
     }
 }
 

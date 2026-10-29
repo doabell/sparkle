@@ -15,13 +15,9 @@
     } from "$lib/stores/playback";
     import { formatTime } from "$lib/utils/formatTime";
     import { smartGo } from "$lib/utils/nav";
-    import {
-        getAlbumArt,
-        getLyrics,
-        LYRICS_CHANGED_EVENT,
-        type CachedImage,
-    } from "$lib/api";
-    import { cachedImageToUrl } from "$lib/utils/base64";
+    import { getLyrics, LYRICS_CHANGED_EVENT } from "$lib/api";
+    import { playbackArtwork } from "$lib/stores/playbackArtwork";
+    import PlayerArtwork from "$lib/components/PlayerArtwork.svelte";
     import { parseLrc, activeLineIndex, type LrcLine } from "$lib/utils/lrc";
     import { listen } from "@tauri-apps/api/event";
     import { onMount } from "svelte";
@@ -29,8 +25,7 @@
     import ArtistLinks from "$lib/components/ArtistLinks.svelte";
     import { miniPlayer } from "$lib/stores/miniPlayer";
 
-    let art = $state<CachedImage | null>(null);
-    let lastAlbumId = $state<number | null>(null);
+    let art = $derived($playbackArtwork);
     let queueOpen = $state(false);
 
     // --- Lyrics ticker -------------------------------------------------------
@@ -64,8 +59,6 @@
         if (trackId === displayedTrackId) return;
 
         displayedTrackId = trackId;
-        art = $playback.album_art;
-        lastAlbumId = null;
         lyricRequest += 1;
         lyricTrackId = null;
         lyricLines = [];
@@ -86,27 +79,9 @@
         return index >= 0 ? lyricLines[index].text : "";
     });
 
-    async function updateArt(albumId: number | null | undefined) {
-        if (albumId === lastAlbumId) return;
-        lastAlbumId = albumId ?? null;
-        if (!albumId) {
-            art = null;
-            return;
-        }
-        const requestedAlbumId = albumId;
-        try {
-            const fetched = await getAlbumArt(requestedAlbumId);
-            if (requestedAlbumId !== lastAlbumId) return;
-            art = fetched;
-        } catch {
-            if (requestedAlbumId !== lastAlbumId) return;
-            art = null;
-        }
-    }
-
     onMount(() => {
-        updateArt($playback.current_track?.album_id);
         updateLyrics($playback.current_track?.id);
+        let disposed = false;
         let unlisten: (() => void) | undefined;
         const handleLyricsChanged = (event: Event) => {
             const trackId = (event as CustomEvent<{ trackId: number }>).detail
@@ -116,24 +91,27 @@
             updateLyrics(trackId);
         };
         window.addEventListener(LYRICS_CHANGED_EVENT, handleLyricsChanged);
-        (async () => {
-            unlisten = await listen("online-settings-changed", () => {
-                // Bias or source list changed — refetch the ticker lyrics.
-                lyricTrackId = null;
-                updateLyrics($playback.current_track?.id);
+        void listen("online-settings-changed", () => {
+            if (disposed) return;
+            lyricTrackId = null;
+            void updateLyrics($playback.current_track?.id);
+        })
+            .then((stop) => {
+                if (disposed) stop();
+                else unlisten = stop;
+            })
+            .catch(() => {
+                /* Native events are unavailable in a web preview. */
             });
-        })();
         return () => {
+            disposed = true;
+            lyricRequest++;
             unlisten?.();
             window.removeEventListener(
                 LYRICS_CHANGED_EVENT,
                 handleLyricsChanged,
             );
         };
-    });
-
-    $effect(() => {
-        updateArt($playback.current_track?.album_id);
     });
 
     $effect(() => {
@@ -148,6 +126,22 @@
     let pendingVolume = $state<number | null>(null);
     let isDraggingVolume = $state(false);
     let lastLiveVolumeSent = $state(0);
+    let volumeRequest = 0;
+
+    async function commitVolume(value: number) {
+        const request = ++volumeRequest;
+        pendingVolume = value;
+        try {
+            await setVolume(value);
+        } catch {
+            /* The playback store exposes the error. */
+        } finally {
+            if (request === volumeRequest) {
+                pendingVolume = null;
+                volumeInput = $playback.volume;
+            }
+        }
+    }
 
     $effect(() => {
         const storeVolume = $playback.volume;
@@ -168,12 +162,12 @@
         if (volumeInput > 0) {
             volumeInput = 0;
             pendingVolume = 0;
-            setVolume(0);
+            void commitVolume(0);
         } else {
             const target = getUnmuteVolume();
             volumeInput = target;
             pendingVolume = target;
-            setVolume(target);
+            void commitVolume(target);
         }
     }
 
@@ -187,6 +181,7 @@
 
     function handleVolumeMouseDown(e: MouseEvent) {
         if (!volumeBar) return;
+        volumeRequest++;
         isDraggingVolume = true;
         pendingVolume = null;
         const fraction = getBarFraction(volumeBar, e.clientX);
@@ -211,7 +206,7 @@
         if (!isDraggingVolume) return;
         pendingVolume = volumeInput;
         isDraggingVolume = false;
-        setVolume(volumeInput);
+        void commitVolume(volumeInput);
     }
 
     function handleVolumeWheel(e: WheelEvent) {
@@ -223,7 +218,7 @@
         );
         pendingVolume = value;
         volumeInput = value;
-        setVolume(value);
+        void commitVolume(value);
     }
 
     // --- Progress ------------------------------------------------------------
@@ -232,6 +227,13 @@
     let pendingSeekMs = $state<number | null>(null);
     let pendingSeekTrackId = $state<number | null>(null);
     let progressSeekRequest = 0;
+    let progressTrackId = $derived($playback.current_track?.id);
+    $effect(() => {
+        progressTrackId;
+        progressSeekRequest++;
+        isDraggingProgress = false;
+        pendingSeekMs = null;
+    });
 
     let progressPercent = $derived.by(() => {
         if (isDraggingProgress) {
@@ -353,13 +355,10 @@
             onclick={() => smartGo("/now-playing")}
             aria-label="Open now playing"
         >
-            {#if art?.file_path}
-                <img
-                    src={cachedImageToUrl(art, "")}
-                    decoding="async"
-                    alt={$playback.current_track?.album_title ?? "Album art"}
-                />
-            {:else}
+            <PlayerArtwork
+                image={art}
+                alt={$playback.current_track?.album_title ?? "Album art"}
+            >
                 <svg
                     viewBox="0 0 24 24"
                     fill="none"
@@ -373,7 +372,7 @@
                     <circle cx="6" cy="18" r="3" />
                     <circle cx="18" cy="16" r="3" />
                 </svg>
-            {/if}
+            </PlayerArtwork>
         </button>
 
         <div class="track-info">
@@ -703,12 +702,6 @@
     .art:hover {
         box-shadow: var(--shadow-sm);
         transform: scale(var(--motion-hover-scale));
-    }
-
-    .art img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
     }
 
     .art svg {

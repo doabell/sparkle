@@ -19,6 +19,7 @@
     let query = $state("");
     let results = $state<SearchResults | null>(null);
     let searching = $state(false);
+    let searchError = $state<string | null>(null);
     let inputRef = $state<HTMLInputElement | null>(null);
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     let searchRequestId = 0;
@@ -67,6 +68,7 @@
     $effect(() => {
         const q = query.trim();
         const requestId = ++searchRequestId;
+        searchError = null;
         if (debounceTimer) clearTimeout(debounceTimer);
         if (!q) {
             results = null;
@@ -85,16 +87,15 @@
             } catch (e) {
                 void logger.error("search", "search_failed", e);
                 if (requestId !== searchRequestId || query.trim() !== q) return;
-                results = {
-                    artists: [],
-                    albums: [],
-                    tracks: [],
-                    lyric_tracks: [],
-                };
+                searchError = String(e);
             } finally {
                 if (requestId === searchRequestId) searching = false;
             }
         }, 250);
+        return () => {
+            if (debounceTimer) clearTimeout(debounceTimer);
+            searchRequestId++;
+        };
     });
 
     // History records deliberate searches: pressing Enter or clicking a result.
@@ -219,6 +220,8 @@
 
     {#if searching && !results}
         <Loading />
+    {:else if searchError}
+        <div class="error" role="alert">Search failed: {searchError}</div>
     {:else if results && !hasResults}
         <div class="empty-state">
             <p class="empty-title">No results for "{query.trim()}"</p>

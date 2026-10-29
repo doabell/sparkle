@@ -10,15 +10,15 @@
     import { loadQueue } from "$lib/stores/playback";
     import { uiPref } from "$lib/stores/uiPrefs";
     import Loading from "$lib/components/Loading.svelte";
-    import ScrollIndex, {
-        type ScrollIndexEntry,
-    } from "$lib/components/ScrollIndex.svelte";
+    import { type ScrollIndexEntry } from "$lib/components/ScrollIndex.svelte";
     import TrackRow from "$lib/components/TrackRow.svelte";
     import CoverCollage from "$lib/components/CoverCollage.svelte";
     import Select from "$lib/components/Select.svelte";
     import SortDirButton from "$lib/components/SortDirButton.svelte";
     import { goto } from "$app/navigation";
-    import { onMount } from "svelte";
+    import { onDestroy } from "svelte";
+    import { createLatestRequest } from "$lib/utils/latestRequest";
+    import VirtualTrackList from "$lib/components/VirtualTrackList.svelte";
     import { addToast } from "$lib/stores/toast";
     import { windowPageTitle } from "$lib/stores/windowPageTitle";
     import { songIndexLanguage } from "$lib/stores/songIndex";
@@ -56,27 +56,47 @@
     const groupAsc = uiPref("playlist-detail.groupAsc", true);
 
     const playlistId = $derived(Number($page.params.id));
+    const requests = createLatestRequest();
+    let disposed = false;
+    onDestroy(() => {
+        disposed = true;
+        requests.invalidate();
+    });
+
+    function isViewing(id: number) {
+        return !disposed && playlistId === id;
+    }
 
     $effect(() => {
         windowPageTitle.set(playlist?.name ?? null);
     });
 
-    onMount(async () => {
-        try {
-            loading = true;
-            playlist = await getPlaylist(playlistId);
-        } catch (e) {
-            error = String(e);
-        } finally {
-            loading = false;
-        }
+    $effect(() => {
+        void load(playlistId);
+        return requests.invalidate;
     });
 
-    async function refresh() {
+    async function load(id: number, refresh = false) {
+        const isCurrent = requests.start();
+        error = null;
+        if (!refresh) {
+            loading = true;
+            playlist = null;
+            deleting = false;
+            deletingTrack = null;
+        }
         try {
-            playlist = await getPlaylist(playlistId);
+            const next = await getPlaylist(id);
+            if (isCurrent()) playlist = next;
         } catch (e) {
-            addToast(String(e), "error");
+            if (isCurrent()) {
+                if (playlist) addToast(String(e), "error");
+                else error = String(e);
+            }
+        } finally {
+            // A mutation refresh can supersede a route load during A→B→A
+            // navigation, so every current read must settle the loading state.
+            if (isCurrent()) loading = false;
         }
     }
 
@@ -181,7 +201,6 @@
     });
 
     let orderedTracks = $derived(groupedTracks.flatMap((g) => g.items));
-
     function scrollIndexValue(item: IndexedTrack): string | null {
         switch ($sortBy) {
             case "artist":
@@ -214,14 +233,6 @@
             mode,
         );
     });
-    let scrollAnchorIndices = $derived(
-        new Set(scrollEntries.map((entry) => entry.index)),
-    );
-
-    function scrollAnchorId(index: number): string {
-        return `playlist-scroll-${index}`;
-    }
-
     // Row clicks keep the player's current shuffle mode; the header buttons
     // are explicit context switches: Play = in order, Shuffle = shuffled.
     function playPlaylist(index = 0) {
@@ -256,28 +267,30 @@
     }
 
     async function handleDelete() {
+        const id = playlistId;
         deleting = true;
         try {
-            await deletePlaylist(playlistId);
+            await deletePlaylist(id);
             addToast("Playlist deleted", "success");
-            goto("/playlists");
+            if (isViewing(id)) await goto("/playlists");
         } catch (e) {
             addToast(String(e), "error");
         } finally {
-            deleting = false;
+            if (isViewing(id)) deleting = false;
         }
     }
 
     async function handleRemoveTrack(trackId: number) {
+        const id = playlistId;
         deletingTrack = trackId;
         try {
-            await removeTrackFromPlaylist(playlistId, trackId);
+            await removeTrackFromPlaylist(id, trackId);
             addToast("Track removed", "success");
-            await refresh();
+            if (isViewing(id)) await load(id, true);
         } catch (e) {
             addToast(String(e), "error");
         } finally {
-            deletingTrack = null;
+            if (isViewing(id)) deletingTrack = null;
         }
     }
 
@@ -459,61 +472,49 @@
                     />
                 </div>
             </div>
-            <ScrollIndex
+            <VirtualTrackList
+                groups={groupedTracks}
                 entries={scrollEntries}
-                anchorIdForEntry={(entry) => scrollAnchorId(entry.index)}
                 ariaLabel="Playlist songs index"
-            />
-            {#each groupedTracks as group (group.key)}
-                {#if group.key}
-                    <h2 id={scrollAnchorId(group.offset)} class="group-header">
-                        {group.key}
-                    </h2>
-                {/if}
-                <ul class="track-list">
-                    {#each group.items as item, index (item.track.id)}
-                        <li class="track-row-wrapper">
-                            <TrackRow
-                                track={item.track}
-                                index={group.offset + index}
-                                anchorId={$groupBy === "none" &&
-                                scrollAnchorIndices.has(group.offset + index)
-                                    ? scrollAnchorId(group.offset + index)
-                                    : undefined}
-                                variant="songs"
-                                onPlay={playPlaylist}
-                                showAddToPlaylist={true}
-                            />
-                            {#if !playlist.folder_path && !playlist.live_mix}
-                                <button
-                                    class="remove-track"
-                                    aria-label="Remove track"
-                                    onclick={() =>
-                                        handleRemoveTrack(item.track.id)}
-                                    disabled={deletingTrack === item.track.id}
-                                >
-                                    {#if deletingTrack === item.track.id}
-                                        <Loading variant="inline" />
-                                    {:else}
-                                        <svg
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            stroke-width="2"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                            aria-hidden="true"
-                                        >
-                                            <path d="M18 6 6 18" />
-                                            <path d="m6 6 12 12" />
-                                        </svg>
-                                    {/if}
-                                </button>
-                            {/if}
-                        </li>
-                    {/each}
-                </ul>
-            {/each}
+            >
+                {#snippet children(item, index)}
+                    <div class="track-row-wrapper">
+                        <TrackRow
+                            track={item.track}
+                            {index}
+                            as="div"
+                            variant="songs"
+                            onPlay={playPlaylist}
+                            showAddToPlaylist={true}
+                        />
+                        {#if playlist && !playlist.folder_path && !playlist.live_mix}
+                            <button
+                                class="remove-track"
+                                aria-label="Remove track"
+                                onclick={() => handleRemoveTrack(item.track.id)}
+                                disabled={deletingTrack === item.track.id}
+                            >
+                                {#if deletingTrack === item.track.id}
+                                    <Loading variant="inline" />
+                                {:else}
+                                    <svg
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        aria-hidden="true"
+                                    >
+                                        <path d="M18 6 6 18" />
+                                        <path d="m6 6 12 12" />
+                                    </svg>
+                                {/if}
+                            </button>
+                        {/if}
+                    </div>
+                {/snippet}
+            </VirtualTrackList>
         {/if}
     {:else if error}
         <div class="error">{error}</div>
@@ -641,12 +642,6 @@
         height: 1.125rem;
     }
 
-    .track-list {
-        display: flex;
-        flex-direction: column;
-        gap: var(--spacing-xs);
-    }
-
     .toolbar {
         display: flex;
         align-items: center;
@@ -668,6 +663,7 @@
     }
 
     .track-row-wrapper {
+        height: 100%;
         display: flex;
         align-items: center;
         gap: var(--spacing-sm);

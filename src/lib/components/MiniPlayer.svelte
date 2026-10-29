@@ -1,6 +1,7 @@
 <script lang="ts">
-    import Artwork from "$lib/components/Artwork.svelte";
     import MiniLyrics from "$lib/components/MiniLyrics.svelte";
+    import PlayerArtwork from "$lib/components/PlayerArtwork.svelte";
+    import { playbackArtwork } from "$lib/stores/playbackArtwork";
     import {
         playback,
         interpolatedPositionMs,
@@ -85,6 +86,16 @@
         }
     }
 
+    function handleVolumeWheel(event: WheelEvent) {
+        event.preventDefault();
+        const delta = event.deltaY > 0 ? -0.05 : 0.05;
+        const value = Math.max(
+            0,
+            Math.min(1, Math.round((volume + delta) * 100) / 100),
+        );
+        void changeVolume(value);
+    }
+
     function previewVolume(value: number) {
         volumeRequest++;
         volumePreview = value;
@@ -99,10 +110,24 @@
 <section class="mini-player" aria-label="Mini player">
     <div class="track">
         <div class="artwork">
-            <Artwork
-                albumId={track?.album_id}
+            <PlayerArtwork
+                image={$playbackArtwork}
                 alt={track?.album_title ?? "Album art"}
-            />
+            >
+                <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                >
+                    <path d="M9 18V5l12-2v13" />
+                    <circle cx="6" cy="18" r="3" />
+                    <circle cx="18" cy="16" r="3" />
+                </svg>
+            </PlayerArtwork>
         </div>
         <div class="track-details">
             <div
@@ -228,6 +253,7 @@
             <button
                 class="icon-button mute"
                 onclick={() => changeVolume(volume > 0 ? 0 : getUnmuteVolume())}
+                onwheel={handleVolumeWheel}
                 aria-label={volume > 0 ? "Mute" : "Unmute"}
                 title={volume > 0 ? "Mute" : "Unmute"}
             >
@@ -260,6 +286,7 @@
                 onchange={(event) =>
                     changeVolume(Number(event.currentTarget.value))}
                 onpointercancel={() => changeVolume(volume)}
+                onwheel={handleVolumeWheel}
             />
         </div>
     </div>
@@ -335,12 +362,14 @@
         overflow: hidden;
         border-radius: var(--radius-sm);
         background: var(--color-surface-elevated);
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
-    .artwork :global(img),
-    .artwork :global(.artwork-fallback) {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
+    .artwork svg {
+        width: 40%;
+        height: 40%;
+        color: var(--color-text-muted);
     }
     .track-details {
         display: flex;

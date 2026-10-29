@@ -1,20 +1,33 @@
 import type { Action } from "svelte/action";
+import { tick } from "svelte";
 
-// Svelte action that fires when the node scrolls near the viewport. Used for
-// progressive (lazy) rendering of long lists: put it on a sentinel div and
-// grow the visible window in the callback.
 export const intersect: Action<HTMLElement, () => void> = (node, callback) => {
+    let disposed = false;
+    let pending = false;
     const observer = new IntersectionObserver(
-        (entries) => {
-            if (entries.some((entry) => entry.isIntersecting)) {
-                callback();
-            }
+        async (entries) => {
+            if (
+                disposed ||
+                pending ||
+                !entries.some((entry) => entry.isIntersecting)
+            )
+                return;
+            pending = true;
+            observer.unobserve(node);
+            callback();
+            await tick();
+            pending = false;
+            if (!disposed) observer.observe(node);
         },
         { rootMargin: "600px" },
     );
     observer.observe(node);
     return {
+        update(next) {
+            callback = next;
+        },
         destroy() {
+            disposed = true;
             observer.disconnect();
         },
     };

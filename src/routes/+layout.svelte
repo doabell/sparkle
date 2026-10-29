@@ -69,7 +69,7 @@
         "/now-playing",
     ];
     // Preserve the originating grid position when returning from a detail page.
-    const SCROLLBACK_ROUTES = new Set(["/albums", "/artists"]);
+    const SCROLLBACK_ROUTES = new Set(["/albums", "/artists", "/songs"]);
 
     let canGoBack = $state(false);
     let contentElement = $state<HTMLElement | null>(null);
@@ -112,7 +112,8 @@
     }
 
     function supportsScrollback(route: string): boolean {
-        return SCROLLBACK_ROUTES.has(route.split(/[?#]/, 1)[0]);
+        const path = route.split(/[?#]/, 1)[0];
+        return SCROLLBACK_ROUTES.has(path) || path.startsWith("/playlists/");
     }
 
     function restoreContentScroll(

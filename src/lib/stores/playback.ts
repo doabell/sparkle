@@ -61,6 +61,7 @@ export function createPlaybackStore() {
     const localOffsets = new Map<number, number>();
     let nativeRevision = -1;
     let progressSequence = -1;
+    let commandRequest = 0;
     // Both player layouts share mute memory, including while either is unmounted.
     let lastAudibleVolume = initialState.volume;
 
@@ -82,13 +83,18 @@ export function createPlaybackStore() {
         });
     }
 
-    function acceptSnapshot(state: ApiPlaybackState) {
+    function acceptSnapshot(state: ApiPlaybackState, clearError = true) {
         // Equal revisions can be an older command reply that arrives after
         // progress for the already-published state. Do not rewind its clock.
         if (state.revision <= nativeRevision) return;
         nativeRevision = state.revision;
         progressSequence = -1;
-        set({ ...state, error: null });
+        if (state.volume > 0) lastAudibleVolume = state.volume;
+        update((current) => ({
+            ...state,
+            current_track: withLocalOffset(state.current_track),
+            error: clearError ? null : current.error,
+        }));
     }
 
     async function init() {
@@ -155,10 +161,12 @@ export function createPlaybackStore() {
     }
 
     async function callCommand(fn: () => Promise<ApiPlaybackState>) {
+        const request = ++commandRequest;
         try {
             const state = await fn();
-            acceptSnapshot(state);
-            update((s) => ({ ...s, error: null }));
+            acceptSnapshot(state, request === commandRequest);
+            if (request === commandRequest)
+                update((s) => ({ ...s, error: null }));
             return state;
         } catch (err) {
             const message = String(err);
@@ -167,7 +175,8 @@ export function createPlaybackStore() {
                 "playback_command_failed",
                 describePlaybackError(err),
             );
-            update((s) => ({ ...s, error: message }));
+            if (request === commandRequest)
+                update((s) => ({ ...s, error: message }));
             throw err;
         }
     }
@@ -234,7 +243,11 @@ export function createPlaybackStore() {
         playQueueIndex: (
             orderPos: number,
             source: PlaybackActionSource = "ui",
-        ) => callCommand(() => backendPlayQueueIndex(orderPos, source)),
+            queueRevision?: number,
+        ) =>
+            callCommand(() =>
+                backendPlayQueueIndex(orderPos, source, queueRevision),
+            ),
         updateCurrentTrackLrcOffset,
         updateCurrentTrackLyricsSource,
         // shuffle = explicit context switch: page Play buttons pass false,
