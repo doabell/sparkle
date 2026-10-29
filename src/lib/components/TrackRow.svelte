@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { playback, playNext } from "$lib/stores/playback";
+    import { playback, playNext } from "#lib/stores/playback.ts";
     import {
         getPlaylists,
         addTracksToPlaylist,
@@ -8,10 +8,10 @@
         pickLyricsFile,
         revealInExplorer,
         type Playlist,
-    } from "$lib/api";
-    import Artwork from "$lib/components/Artwork.svelte";
-    import ArtistLinks from "$lib/components/ArtistLinks.svelte";
-    import { addToast } from "$lib/stores/toast";
+    } from "#lib/api.ts";
+    import Artwork from "#lib/components/Artwork.svelte";
+    import ArtistLinks from "#lib/components/ArtistLinks.svelte";
+    import { addToast } from "#lib/stores/toast.ts";
     import { goto } from "$app/navigation";
 
     interface TrackData {

@@ -1,6 +1,6 @@
 <script lang="ts">
     import { tick } from "svelte";
-    import { motionScrollBehavior } from "$lib/utils/motion";
+    import { motionScrollBehavior } from "#lib/utils/motion.ts";
 
     export interface ScrollIndexEntry {
         key: string;

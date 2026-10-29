@@ -1,4 +1,4 @@
-import type { DiscordLayout, DiscordPreview, Track } from "$lib/api";
+import type { DiscordLayout, DiscordPreview, Track } from "#lib/api.ts";
 
 export const discordTemplateFields = [
     { key: "title", label: "Title" },

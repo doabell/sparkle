@@ -1,6 +1,6 @@
 # Windows builds and releases
 
-Sparkle targets Windows x64 with Velopack 1.2.0. Keep the Rust SDK in
+Sparkle targets Windows x64 with Velopack 1.2.161. Keep the Rust SDK in
 `src-tauri/Cargo.toml` and CLI in `.config/dotnet-tools.json` aligned. Installed
 updates use app ID `com.doabell.sparkle` and feed channel `win-x64`.
 

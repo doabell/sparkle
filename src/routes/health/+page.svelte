@@ -5,10 +5,10 @@
         getLibraryHealth,
         type LibraryHealth,
         type Track,
-    } from "$lib/api";
-    import Loading from "$lib/components/Loading.svelte";
-    import TrackRow from "$lib/components/TrackRow.svelte";
-    import { loadQueue } from "$lib/stores/playback";
+    } from "#lib/api.ts";
+    import Loading from "#lib/components/Loading.svelte";
+    import TrackRow from "#lib/components/TrackRow.svelte";
+    import { loadQueue } from "#lib/stores/playback.ts";
     import { goto } from "$app/navigation";
     let health = $state<LibraryHealth | null>(null);
     let error = $state<string | null>(null);

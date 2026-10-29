@@ -1,6 +1,6 @@
 <script lang="ts">
     import { goto } from "$app/navigation";
-    import { moveCommandSelection } from "$lib/utils/commandPalette";
+    import { moveCommandSelection } from "#lib/utils/commandPalette.ts";
     import { onMount } from "svelte";
 
     interface Props {

@@ -1,7 +1,7 @@
 <script lang="ts">
     import { untrack, type Snippet } from "svelte";
-    import { cachedImageToUrl } from "$lib/utils/base64";
-    import type { CachedImage } from "$lib/api";
+    import { cachedImageToUrl } from "#lib/utils/base64.ts";
+    import type { CachedImage } from "#lib/api.ts";
 
     let {
         image,

@@ -1,7 +1,7 @@
 <script lang="ts">
-    import { getArtistImage, getCachedArtistImage } from "$lib/api";
-    import { onceVisible } from "$lib/utils/onceVisible";
-    import { cachedImageToUrl } from "$lib/utils/base64";
+    import { getArtistImage, getCachedArtistImage } from "#lib/api.ts";
+    import { onceVisible } from "#lib/utils/onceVisible.ts";
+    import { cachedImageToUrl } from "#lib/utils/base64.ts";
 
     interface Props {
         artistId: number;

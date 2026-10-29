@@ -83,7 +83,7 @@ successful write, and last failure. Failed writes never produce success logs.
 
 - Native code uses `log` macros with `target: "sparkle::<subsystem>"` and
   `event=snake_case` followed by useful `key=value` fields.
-- Frontend code uses `logger` from `$lib/logger`, with stable scope/event names.
+- Frontend code uses `logger` from `#lib/logger.ts`, with stable scope/event names.
   Uncaught errors and unhandled promise rejections are captured by the layout.
   Bridge failures fall back to a console notice without retrying.
 - Log a failure where its outcome is known. Expected misses and successful

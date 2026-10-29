@@ -1,10 +1,14 @@
 <script lang="ts">
-    import { getGenreCollageAlbumIds, getGenres, type Genre } from "$lib/api";
-    import { uiPref } from "$lib/stores/uiPrefs";
-    import Loading from "$lib/components/Loading.svelte";
-    import CoverCollage from "$lib/components/CoverCollage.svelte";
-    import Select from "$lib/components/Select.svelte";
-    import SortDirButton from "$lib/components/SortDirButton.svelte";
+    import {
+        getGenreCollageAlbumIds,
+        getGenres,
+        type Genre,
+    } from "#lib/api.ts";
+    import { uiPref } from "#lib/stores/uiPrefs.ts";
+    import Loading from "#lib/components/Loading.svelte";
+    import CoverCollage from "#lib/components/CoverCollage.svelte";
+    import Select from "#lib/components/Select.svelte";
+    import SortDirButton from "#lib/components/SortDirButton.svelte";
     import { onMount } from "svelte";
 
     const SORT_OPTIONS = [

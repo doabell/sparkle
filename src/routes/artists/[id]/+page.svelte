@@ -1,6 +1,6 @@
 <script lang="ts">
-    import { logger } from "$lib/logger";
-    import { page } from "$app/stores";
+    import { logger } from "#lib/logger.ts";
+    import { page } from "$app/state";
     import {
         getArtist,
         getAlbums,
@@ -26,22 +26,22 @@
         type ImageData,
         type ImageCandidate,
         type ImageSearchResults,
-    } from "$lib/api";
-    import { cachedImageToUrl, imageDataToUrl } from "$lib/utils/base64";
-    import { plural } from "$lib/utils/text";
-    import { loadQueue } from "$lib/stores/playback";
-    import Loading from "$lib/components/Loading.svelte";
-    import TrackRow from "$lib/components/TrackRow.svelte";
-    import Artwork from "$lib/components/Artwork.svelte";
-    import ArtistAvatar from "$lib/components/ArtistAvatar.svelte";
-    import Select from "$lib/components/Select.svelte";
-    import SearchField from "$lib/components/SearchField.svelte";
-    import SearchFeedback from "$lib/components/SearchFeedback.svelte";
-    import { dialogFocus } from "$lib/utils/dialogFocus";
+    } from "#lib/api.ts";
+    import { cachedImageToUrl, imageDataToUrl } from "#lib/utils/base64.ts";
+    import { plural } from "#lib/utils/text.ts";
+    import { loadQueue } from "#lib/stores/playback.ts";
+    import Loading from "#lib/components/Loading.svelte";
+    import TrackRow from "#lib/components/TrackRow.svelte";
+    import Artwork from "#lib/components/Artwork.svelte";
+    import ArtistAvatar from "#lib/components/ArtistAvatar.svelte";
+    import Select from "#lib/components/Select.svelte";
+    import SearchField from "#lib/components/SearchField.svelte";
+    import SearchFeedback from "#lib/components/SearchFeedback.svelte";
+    import { dialogFocus } from "#lib/utils/dialogFocus.ts";
     import { onDestroy, onMount } from "svelte";
-    import { createLatestRequest } from "$lib/utils/latestRequest";
-    import { addToast } from "$lib/stores/toast";
-    import { windowPageTitle } from "$lib/stores/windowPageTitle";
+    import { createLatestRequest } from "#lib/utils/latestRequest.ts";
+    import { addToast } from "#lib/stores/toast.ts";
+    import { windowPageTitle } from "#lib/stores/windowPageTitle.ts";
     import { openUrl } from "@tauri-apps/plugin-opener";
 
     const requests = createLatestRequest();
@@ -141,7 +141,7 @@
         }
     }
 
-    const artistId = $derived(Number($page.params.id));
+    const artistId = $derived(Number(page.params.id));
 
     $effect(() => {
         windowPageTitle.set(artist?.name ?? null);

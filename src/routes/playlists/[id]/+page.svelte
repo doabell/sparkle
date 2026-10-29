@@ -1,32 +1,32 @@
 <script lang="ts">
-    import { page } from "$app/stores";
+    import { page } from "$app/state";
     import {
         getPlaylist,
         deletePlaylist,
         removeTrackFromPlaylist,
         type PlaylistDetail,
         type Track,
-    } from "$lib/api";
-    import { loadQueue } from "$lib/stores/playback";
-    import { uiPref } from "$lib/stores/uiPrefs";
-    import Loading from "$lib/components/Loading.svelte";
-    import { type ScrollIndexEntry } from "$lib/components/ScrollIndex.svelte";
-    import TrackRow from "$lib/components/TrackRow.svelte";
-    import CoverCollage from "$lib/components/CoverCollage.svelte";
-    import Select from "$lib/components/Select.svelte";
-    import SortDirButton from "$lib/components/SortDirButton.svelte";
+    } from "#lib/api.ts";
+    import { loadQueue } from "#lib/stores/playback.ts";
+    import { uiPref } from "#lib/stores/uiPrefs.ts";
+    import Loading from "#lib/components/Loading.svelte";
+    import { type ScrollIndexEntry } from "#lib/components/ScrollIndex.svelte";
+    import TrackRow from "#lib/components/TrackRow.svelte";
+    import CoverCollage from "#lib/components/CoverCollage.svelte";
+    import Select from "#lib/components/Select.svelte";
+    import SortDirButton from "#lib/components/SortDirButton.svelte";
     import { goto } from "$app/navigation";
     import { onDestroy } from "svelte";
-    import { createLatestRequest } from "$lib/utils/latestRequest";
-    import VirtualTrackList from "$lib/components/VirtualTrackList.svelte";
-    import { addToast } from "$lib/stores/toast";
-    import { windowPageTitle } from "$lib/stores/windowPageTitle";
-    import { songIndexLanguage } from "$lib/stores/songIndex";
+    import { createLatestRequest } from "#lib/utils/latestRequest.ts";
+    import VirtualTrackList from "#lib/components/VirtualTrackList.svelte";
+    import { addToast } from "#lib/stores/toast.ts";
+    import { windowPageTitle } from "#lib/stores/windowPageTitle.ts";
+    import { songIndexLanguage } from "#lib/stores/songIndex.ts";
     import {
         createScrollIndexEntries,
         createGroupScrollIndexEntries,
         resolveScrollIndexMode,
-    } from "$lib/utils/songIndex";
+    } from "#lib/utils/songIndex.ts";
 
     const SORT_OPTIONS = [
         { value: "position", label: "Playlist order" },
@@ -55,7 +55,7 @@
     const groupBy = uiPref<string>("playlist-detail.groupBy", "none");
     const groupAsc = uiPref("playlist-detail.groupAsc", true);
 
-    const playlistId = $derived(Number($page.params.id));
+    const playlistId = $derived(Number(page.params.id));
     const requests = createLatestRequest();
     let disposed = false;
     onDestroy(() => {

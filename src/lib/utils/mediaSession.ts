@@ -1,4 +1,4 @@
-import { enableMediaControlEvents } from "$lib/api";
+import { enableMediaControlEvents } from "#lib/api.ts";
 import { mediaControls } from "tauri-plugin-media-api";
 
 let initialization: Promise<void> | null = null;

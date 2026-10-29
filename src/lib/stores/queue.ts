@@ -5,7 +5,7 @@ import {
     type QueueView,
     type QueuedTrack,
     type PlaybackState,
-} from "$lib/api";
+} from "#lib/api.ts";
 
 export const QUEUE_PAGE_SIZE = 100;
 const MAX_PAGES = 6;

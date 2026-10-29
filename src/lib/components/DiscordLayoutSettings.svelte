@@ -4,17 +4,17 @@
         getDiscordPreview,
         type DiscordLayout,
         type DiscordPreview,
-    } from "$lib/api";
-    import { playback, interpolatedPositionMs } from "$lib/stores/playback";
-    import { cachedImageToUrl } from "$lib/utils/base64";
-    import { formatTime } from "$lib/utils/formatTime";
-    import Select from "$lib/components/Select.svelte";
+    } from "#lib/api.ts";
+    import { playback, interpolatedPositionMs } from "#lib/stores/playback.ts";
+    import { cachedImageToUrl } from "#lib/utils/base64.ts";
+    import { formatTime } from "#lib/utils/formatTime.ts";
+    import Select from "#lib/components/Select.svelte";
     import {
         defaultDiscordLayout,
         discordTemplateFields,
         discordPreviewValues,
         renderDiscordTemplate,
-    } from "$lib/utils/discord";
+    } from "#lib/utils/discord.ts";
 
     let {
         layout = $bindable(),

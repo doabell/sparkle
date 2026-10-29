@@ -1,6 +1,6 @@
 import { readable, type Readable } from "svelte/store";
-import { getAlbumArt, getCachedAlbumArt, type CachedImage } from "$lib/api";
-import { playback, type PlaybackState } from "$lib/stores/playback";
+import { getAlbumArt, getCachedAlbumArt, type CachedImage } from "#lib/api.ts";
+import { playback, type PlaybackState } from "#lib/stores/playback.ts";
 
 type ArtworkState = Pick<PlaybackState, "current_track" | "album_art">;
 

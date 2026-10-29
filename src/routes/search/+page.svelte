@@ -1,20 +1,20 @@
 <script lang="ts">
-    import { logger } from "$lib/logger";
+    import { logger } from "#lib/logger.ts";
     import {
         search,
         getTracks,
         type SearchResults,
         type Track,
-    } from "$lib/api";
-    import { plural } from "$lib/utils/text";
-    import { loadQueue } from "$lib/stores/playback";
-    import Loading from "$lib/components/Loading.svelte";
-    import TrackRow from "$lib/components/TrackRow.svelte";
-    import Artwork from "$lib/components/Artwork.svelte";
-    import ArtistAvatar from "$lib/components/ArtistAvatar.svelte";
-    import { addRecentSearch } from "$lib/utils/searchHistory";
+    } from "#lib/api.ts";
+    import { plural } from "#lib/utils/text.ts";
+    import { loadQueue } from "#lib/stores/playback.ts";
+    import Loading from "#lib/components/Loading.svelte";
+    import TrackRow from "#lib/components/TrackRow.svelte";
+    import Artwork from "#lib/components/Artwork.svelte";
+    import ArtistAvatar from "#lib/components/ArtistAvatar.svelte";
+    import { addRecentSearch } from "#lib/utils/searchHistory.ts";
     import { onMount } from "svelte";
-    import { page } from "$app/stores";
+    import { page } from "$app/state";
 
     let query = $state("");
     let results = $state<SearchResults | null>(null);
@@ -61,7 +61,7 @@
     onMount(() => {
         inputRef?.focus();
         loadHistory();
-        const initialQuery = $page.url.searchParams.get("q");
+        const initialQuery = page.url.searchParams.get("q");
         if (initialQuery) query = initialQuery;
     });
 

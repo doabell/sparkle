@@ -1,6 +1,6 @@
 <script lang="ts">
-    import { page } from "$app/stores";
-    import { libraryScan } from "$lib/stores/libraryScan";
+    import { page } from "$app/state";
+    import { libraryScan } from "#lib/stores/libraryScan.ts";
 
     const items = [
         {
@@ -97,7 +97,7 @@
     ];
 
     let open = $state(false);
-    let pathname = $derived($page.url.pathname);
+    let pathname = $derived(page.url.pathname);
 
     function isActive(href: string) {
         return href === "/" ? pathname === "/" : pathname.startsWith(href);

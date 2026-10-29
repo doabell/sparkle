@@ -7,7 +7,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { compile } from "svelte/compiler";
+import { compile, compileModule } from "svelte/compiler";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const fixture = join(root, "test/browser");
@@ -57,16 +57,33 @@ try {
                 name: "svelte-browser-tests",
                 setup(build) {
                     build.onResolve(
-                        { filter: /^\$app\/(stores|navigation)$/ },
-                        () => ({ path: join(fixture, "router.ts") }),
+                        { filter: /^\$app\/(state|navigation)$/ },
+                        () => ({ path: join(fixture, "router.svelte.ts") }),
                     );
-                    build.onResolve({ filter: /^\$lib\// }, ({ path }) => ({
+                    build.onResolve({ filter: /^#lib\// }, ({ path }) => ({
                         path: join(
                             root,
                             "src/lib",
                             path.slice(5) + (extname(path) ? "" : ".ts"),
                         ),
                     }));
+                    build.onLoad(
+                        { filter: /\.svelte\.ts$/ },
+                        async ({ path }) => ({
+                            contents: compileModule(
+                                new Bun.Transpiler({
+                                    loader: "ts",
+                                }).transformSync(await readFile(path, "utf8")),
+                                {
+                                    filename: path,
+                                    generate: "client",
+                                    dev: true,
+                                },
+                            ).js.code,
+                            loader: "js",
+                            resolveDir: dirname(path),
+                        }),
+                    );
                     build.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
                         contents: compile(await readFile(path, "utf8"), {
                             filename: path,

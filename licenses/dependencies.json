@@ -1,5 +1,5 @@
 {
-  "fingerprint": "7f5d2966057d4336d2c98840265aed83e0c8b56928e8c9cd9bb499244f06e36f",
+  "fingerprint": "fa9bf1a6ce43fca7ac7b4e92cc9519f1117868006d0a54ede573968efaeadd9b",
   "licenses": [
     {
       "key": "06c92da1ff4a9f369dc53a7055f2283ab8ed95e8b6a52f2c5b995c3ae8f6c3b8",
@@ -8,15 +8,15 @@
       "components": [
         {
           "name": "@tauri-apps/plugin-dialog",
-          "version": "2.7.2",
+          "version": "2.8.4",
           "ecosystem": "JavaScript",
-          "source": "https://www.npmjs.com/package/@tauri-apps/plugin-dialog/v/2.7.2"
+          "source": "https://www.npmjs.com/package/@tauri-apps/plugin-dialog/v/2.8.4"
         },
         {
           "name": "@tauri-apps/plugin-opener",
-          "version": "2.5.4",
+          "version": "2.7.2",
           "ecosystem": "JavaScript",
-          "source": "https://www.npmjs.com/package/@tauri-apps/plugin-opener/v/2.5.4"
+          "source": "https://www.npmjs.com/package/@tauri-apps/plugin-opener/v/2.7.2"
         },
         {
           "name": "anyhow",
@@ -44,9 +44,9 @@
         },
         {
           "name": "dirs",
-          "version": "6.0.0",
+          "version": "7.0.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/dirs/6.0.0"
+          "source": "https://crates.io/crates/dirs/7.0.0"
         },
         {
           "name": "dirs-sys",
@@ -74,9 +74,9 @@
         },
         {
           "name": "erased-serde",
-          "version": "0.4.10",
+          "version": "0.4.11",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/erased-serde/0.4.10"
+          "source": "https://crates.io/crates/erased-serde/0.4.11"
         },
         {
           "name": "fdeflate",
@@ -110,15 +110,15 @@
         },
         {
           "name": "libc",
-          "version": "0.2.189",
+          "version": "0.2.191",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/libc/0.2.189"
+          "source": "https://crates.io/crates/libc/0.2.191"
         },
         {
           "name": "lofty",
-          "version": "0.25.1",
+          "version": "0.25.5",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/lofty/0.25.1"
+          "source": "https://crates.io/crates/lofty/0.25.5"
         },
         {
           "name": "lofty_attr",
@@ -133,10 +133,16 @@
           "source": "https://crates.io/crates/miniz_oxide/0.8.9"
         },
         {
-          "name": "normpath",
-          "version": "1.5.1",
+          "name": "miniz_oxide",
+          "version": "0.9.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/normpath/1.5.1"
+          "source": "https://crates.io/crates/miniz_oxide/0.9.1"
+        },
+        {
+          "name": "normpath",
+          "version": "1.5.2",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/normpath/1.5.2"
         },
         {
           "name": "num-conv",
@@ -146,9 +152,9 @@
         },
         {
           "name": "ogg_pager",
-          "version": "0.7.2",
+          "version": "0.8.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/ogg_pager/0.7.2"
+          "source": "https://crates.io/crates/ogg_pager/0.8.0"
         },
         {
           "name": "paste",
@@ -176,9 +182,9 @@
         },
         {
           "name": "rand",
-          "version": "0.10.2",
+          "version": "0.10.3",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/rand/0.10.2"
+          "source": "https://crates.io/crates/rand/0.10.3"
         },
         {
           "name": "raw-window-handle",
@@ -188,9 +194,9 @@
         },
         {
           "name": "rodio",
-          "version": "0.22.2",
+          "version": "0.23.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/rodio/0.22.2"
+          "source": "https://crates.io/crates/rodio/0.23.0"
         },
         {
           "name": "rustc-hash",
@@ -242,9 +248,9 @@
         },
         {
           "name": "serde_json",
-          "version": "1.0.151",
+          "version": "1.0.154",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/serde_json/1.0.151"
+          "source": "https://crates.io/crates/serde_json/1.0.154"
         },
         {
           "name": "serde_repr",
@@ -259,10 +265,10 @@
           "source": "https://crates.io/crates/serde_urlencoded/0.7.1"
         },
         {
-          "name": "siphasher",
-          "version": "1.0.3",
+          "name": "simdutf8",
+          "version": "0.1.5",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/siphasher/1.0.3"
+          "source": "https://crates.io/crates/simdutf8/0.1.5"
         },
         {
           "name": "syn",
@@ -272,9 +278,9 @@
         },
         {
           "name": "syn",
-          "version": "3.0.3",
+          "version": "3.0.9",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/syn/3.0.3"
+          "source": "https://crates.io/crates/syn/3.0.9"
         },
         {
           "name": "sync_wrapper",
@@ -284,93 +290,81 @@
         },
         {
           "name": "tauri",
-          "version": "2.11.5",
+          "version": "2.12.5",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri/2.11.5"
+          "source": "https://crates.io/crates/tauri/2.12.5"
         },
         {
           "name": "tauri-codegen",
-          "version": "2.6.3",
+          "version": "2.7.4",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-codegen/2.6.3"
+          "source": "https://crates.io/crates/tauri-codegen/2.7.4"
         },
         {
           "name": "tauri-macros",
-          "version": "2.6.3",
+          "version": "2.7.4",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-macros/2.6.3"
+          "source": "https://crates.io/crates/tauri-macros/2.7.4"
         },
         {
           "name": "tauri-plugin-dialog",
-          "version": "2.7.2",
+          "version": "2.8.4",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-plugin-dialog/2.7.2"
+          "source": "https://crates.io/crates/tauri-plugin-dialog/2.8.4"
         },
         {
           "name": "tauri-plugin-fs",
-          "version": "2.5.1",
+          "version": "2.7.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-plugin-fs/2.5.1"
+          "source": "https://crates.io/crates/tauri-plugin-fs/2.7.1"
         },
         {
           "name": "tauri-plugin-global-shortcut",
-          "version": "2.3.2",
+          "version": "2.4.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-plugin-global-shortcut/2.3.2"
+          "source": "https://crates.io/crates/tauri-plugin-global-shortcut/2.4.1"
         },
         {
           "name": "tauri-plugin-log",
-          "version": "2.9.0",
+          "version": "2.10.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-plugin-log/2.9.0"
+          "source": "https://crates.io/crates/tauri-plugin-log/2.10.1"
         },
         {
           "name": "tauri-plugin-opener",
-          "version": "2.5.4",
+          "version": "2.7.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-plugin-opener/2.5.4"
+          "source": "https://crates.io/crates/tauri-plugin-opener/2.7.2"
         },
         {
           "name": "tauri-runtime",
-          "version": "2.11.3",
+          "version": "2.12.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-runtime/2.11.3"
+          "source": "https://crates.io/crates/tauri-runtime/2.12.2"
         },
         {
           "name": "tauri-runtime-wry",
-          "version": "2.11.4",
+          "version": "2.12.3",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-runtime-wry/2.11.4"
+          "source": "https://crates.io/crates/tauri-runtime-wry/2.12.3"
         },
         {
           "name": "tauri-utils",
-          "version": "2.9.3",
+          "version": "2.10.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-utils/2.9.3"
+          "source": "https://crates.io/crates/tauri-utils/2.10.2"
         },
         {
           "name": "thiserror",
-          "version": "1.0.69",
+          "version": "2.0.21",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/thiserror/1.0.69"
-        },
-        {
-          "name": "thiserror",
-          "version": "2.0.20",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/thiserror/2.0.20"
+          "source": "https://crates.io/crates/thiserror/2.0.21"
         },
         {
           "name": "thiserror-impl",
-          "version": "1.0.69",
+          "version": "2.0.21",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/thiserror-impl/1.0.69"
-        },
-        {
-          "name": "thiserror-impl",
-          "version": "2.0.20",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/thiserror-impl/2.0.20"
+          "source": "https://crates.io/crates/thiserror-impl/2.0.21"
         },
         {
           "name": "time",
@@ -392,9 +386,9 @@
         },
         {
           "name": "typed-path",
-          "version": "0.12.3",
+          "version": "0.13.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/typed-path/0.12.3"
+          "source": "https://crates.io/crates/typed-path/0.13.0"
         },
         {
           "name": "typeid",
@@ -403,40 +397,10 @@
           "source": "https://crates.io/crates/typeid/1.0.3"
         },
         {
-          "name": "unic-char-property",
-          "version": "0.9.0",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/unic-char-property/0.9.0"
-        },
-        {
-          "name": "unic-char-range",
-          "version": "0.9.0",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/unic-char-range/0.9.0"
-        },
-        {
-          "name": "unic-common",
-          "version": "0.9.0",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/unic-common/0.9.0"
-        },
-        {
-          "name": "unic-ucd-ident",
-          "version": "0.9.0",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/unic-ucd-ident/0.9.0"
-        },
-        {
-          "name": "unic-ucd-version",
-          "version": "0.9.0",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/unic-ucd-version/0.9.0"
-        },
-        {
           "name": "unicode-ident",
-          "version": "1.0.24",
+          "version": "1.0.27",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/unicode-ident/1.0.24"
+          "source": "https://crates.io/crates/unicode-ident/1.0.27"
         },
         {
           "name": "utf8-zero",
@@ -472,9 +436,9 @@
       "components": [
         {
           "name": "aes",
-          "version": "0.9.2",
+          "version": "0.9.3",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/aes/0.9.2"
+          "source": "https://crates.io/crates/aes/0.9.3"
         },
         {
           "name": "block-buffer",
@@ -502,9 +466,9 @@
         },
         {
           "name": "chacha20",
-          "version": "0.10.1",
+          "version": "0.10.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/chacha20/0.10.1"
+          "source": "https://crates.io/crates/chacha20/0.10.2"
         },
         {
           "name": "cipher",
@@ -532,9 +496,9 @@
         },
         {
           "name": "cpufeatures",
-          "version": "0.3.0",
+          "version": "0.3.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/cpufeatures/0.3.0"
+          "source": "https://crates.io/crates/cpufeatures/0.3.1"
         },
         {
           "name": "crypto-common",
@@ -562,15 +526,15 @@
         },
         {
           "name": "hybrid-array",
-          "version": "0.4.14",
+          "version": "0.4.15",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/hybrid-array/0.4.14"
+          "source": "https://crates.io/crates/hybrid-array/0.4.15"
         },
         {
           "name": "inout",
-          "version": "0.2.2",
+          "version": "0.2.5",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/inout/0.2.2"
+          "source": "https://crates.io/crates/inout/0.2.5"
         },
         {
           "name": "md-5",
@@ -592,9 +556,9 @@
         },
         {
           "name": "sha2",
-          "version": "0.11.0",
+          "version": "0.11.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/sha2/0.11.0"
+          "source": "https://crates.io/crates/sha2/0.11.1"
         }
       ]
     },
@@ -635,9 +599,9 @@
         },
         {
           "name": "bitflags",
-          "version": "2.13.1",
+          "version": "2.13.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/bitflags/2.13.1"
+          "source": "https://crates.io/crates/bitflags/2.13.2"
         },
         {
           "name": "bumpalo",
@@ -647,27 +611,33 @@
         },
         {
           "name": "camino",
-          "version": "1.2.5",
+          "version": "1.2.6",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/camino/1.2.5"
+          "source": "https://crates.io/crates/camino/1.2.6"
         },
         {
           "name": "cfg-if",
-          "version": "1.0.4",
+          "version": "1.0.5",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/cfg-if/1.0.4"
+          "source": "https://crates.io/crates/cfg-if/1.0.5"
+        },
+        {
+          "name": "core_detect",
+          "version": "1.0.0",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/core_detect/1.0.0"
         },
         {
           "name": "crossbeam-channel",
-          "version": "0.5.16",
+          "version": "0.5.17",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/crossbeam-channel/0.5.16"
+          "source": "https://crates.io/crates/crossbeam-channel/0.5.17"
         },
         {
           "name": "crossbeam-utils",
-          "version": "0.8.22",
+          "version": "0.8.23",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/crossbeam-utils/0.8.22"
+          "source": "https://crates.io/crates/crossbeam-utils/0.8.23"
         },
         {
           "name": "derivative",
@@ -683,15 +653,15 @@
         },
         {
           "name": "either",
-          "version": "1.18.0",
+          "version": "1.19.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/either/1.18.0"
+          "source": "https://crates.io/crates/either/1.19.0"
         },
         {
           "name": "equivalent",
-          "version": "1.0.2",
+          "version": "1.0.3",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/equivalent/1.0.2"
+          "source": "https://crates.io/crates/equivalent/1.0.3"
         },
         {
           "name": "fastrand",
@@ -701,9 +671,9 @@
         },
         {
           "name": "flate2",
-          "version": "1.1.9",
+          "version": "1.1.10",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/flate2/1.1.9"
+          "source": "https://crates.io/crates/flate2/1.1.10"
         },
         {
           "name": "fnv",
@@ -749,9 +719,9 @@
         },
         {
           "name": "html5ever",
-          "version": "0.38.0",
+          "version": "0.39.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/html5ever/0.38.0"
+          "source": "https://crates.io/crates/html5ever/0.39.0"
         },
         {
           "name": "httparse",
@@ -761,9 +731,9 @@
         },
         {
           "name": "hyper-rustls",
-          "version": "0.27.9",
+          "version": "0.27.10",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/hyper-rustls/0.27.9"
+          "source": "https://crates.io/crates/hyper-rustls/0.27.10"
         },
         {
           "name": "idna",
@@ -779,9 +749,9 @@
         },
         {
           "name": "indexmap",
-          "version": "2.14.0",
+          "version": "2.14.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/indexmap/2.14.0"
+          "source": "https://crates.io/crates/indexmap/2.14.2"
         },
         {
           "name": "itertools",
@@ -796,10 +766,16 @@
           "source": "https://crates.io/crates/keyboard-types/0.7.0"
         },
         {
-          "name": "lazy_static",
-          "version": "1.5.0",
+          "name": "keyboard-types",
+          "version": "0.8.3",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/lazy_static/1.5.0"
+          "source": "https://crates.io/crates/keyboard-types/0.8.3"
+        },
+        {
+          "name": "lazy_static",
+          "version": "1.5.1",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/lazy_static/1.5.1"
         },
         {
           "name": "lock_api",
@@ -809,15 +785,15 @@
         },
         {
           "name": "log",
-          "version": "0.4.33",
+          "version": "0.4.34",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/log/0.4.33"
+          "source": "https://crates.io/crates/log/0.4.34"
         },
         {
           "name": "markup5ever",
-          "version": "0.38.0",
+          "version": "0.39.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/markup5ever/0.38.0"
+          "source": "https://crates.io/crates/markup5ever/0.39.0"
         },
         {
           "name": "mime",
@@ -827,9 +803,9 @@
         },
         {
           "name": "muda",
-          "version": "0.19.3",
+          "version": "0.20.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/muda/0.19.3"
+          "source": "https://crates.io/crates/muda/0.20.0"
         },
         {
           "name": "num-bigint",
@@ -842,6 +818,12 @@
           "version": "0.5.1",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/num-bigint/0.5.1"
+        },
+        {
+          "name": "num-complex",
+          "version": "0.4.6",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/num-complex/0.4.6"
         },
         {
           "name": "num-integer",
@@ -887,12 +869,6 @@
         },
         {
           "name": "png",
-          "version": "0.17.16",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/png/0.17.16"
-        },
-        {
-          "name": "png",
           "version": "0.18.1",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/png/0.18.1"
@@ -910,6 +886,12 @@
           "source": "https://crates.io/crates/regex-automata/0.4.18"
         },
         {
+          "name": "regex-lite",
+          "version": "0.1.9",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/regex-lite/0.1.9"
+        },
+        {
           "name": "regex-syntax",
           "version": "0.8.11",
           "ecosystem": "Rust",
@@ -923,9 +905,9 @@
         },
         {
           "name": "rustls",
-          "version": "0.23.43",
+          "version": "0.23.46",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/rustls/0.23.43"
+          "source": "https://crates.io/crates/rustls/0.23.46"
         },
         {
           "name": "scopeguard",
@@ -935,15 +917,15 @@
         },
         {
           "name": "serde_with",
-          "version": "3.22.0",
+          "version": "3.24.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/serde_with/3.22.0"
+          "source": "https://crates.io/crates/serde_with/3.24.0"
         },
         {
           "name": "serde_with_macros",
-          "version": "3.22.0",
+          "version": "3.24.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/serde_with_macros/3.22.0"
+          "source": "https://crates.io/crates/serde_with_macros/3.24.0"
         },
         {
           "name": "servo_arc",
@@ -953,9 +935,9 @@
         },
         {
           "name": "smallvec",
-          "version": "1.15.2",
+          "version": "1.16.4",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/smallvec/1.15.2"
+          "source": "https://crates.io/crates/smallvec/1.16.4"
         },
         {
           "name": "socket2",
@@ -989,9 +971,9 @@
         },
         {
           "name": "unicase",
-          "version": "2.9.0",
+          "version": "2.10.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/unicase/2.9.0"
+          "source": "https://crates.io/crates/unicase/2.10.0"
         },
         {
           "name": "unicode-segmentation",
@@ -1013,9 +995,9 @@
         },
         {
           "name": "uuid",
-          "version": "1.24.1",
+          "version": "1.29.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/uuid/1.24.1"
+          "source": "https://crates.io/crates/uuid/1.29.0"
         },
         {
           "name": "web_atoms",
@@ -1031,15 +1013,15 @@
         },
         {
           "name": "window-vibrancy",
-          "version": "0.6.0",
+          "version": "0.8.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/window-vibrancy/0.6.0"
+          "source": "https://crates.io/crates/window-vibrancy/0.8.1"
         },
         {
           "name": "wry",
-          "version": "0.55.1",
+          "version": "0.57.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/wry/0.55.1"
+          "source": "https://crates.io/crates/wry/0.57.1"
         }
       ]
     },
@@ -1062,9 +1044,9 @@
         },
         {
           "name": "hashlink",
-          "version": "0.12.1",
+          "version": "0.12.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/hashlink/0.12.1"
+          "source": "https://crates.io/crates/hashlink/0.12.2"
         }
       ]
     },
@@ -1114,9 +1096,9 @@
       "components": [
         {
           "name": "cpal",
-          "version": "0.17.3",
+          "version": "0.18.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/cpal/0.17.3"
+          "source": "https://crates.io/crates/cpal/0.18.2"
         },
         {
           "name": "crc-fast",
@@ -1126,21 +1108,27 @@
         },
         {
           "name": "encoding_rs",
-          "version": "0.8.35",
+          "version": "0.8.42",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/encoding_rs/0.8.35"
+          "source": "https://crates.io/crates/encoding_rs/0.8.42"
+        },
+        {
+          "name": "multiversion_no_op",
+          "version": "1.0.0",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/multiversion_no_op/1.0.0"
         },
         {
           "name": "object_store",
-          "version": "0.14.1",
+          "version": "0.14.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/object_store/0.14.1"
+          "source": "https://crates.io/crates/object_store/0.14.2"
         },
         {
           "name": "rustls-platform-verifier",
-          "version": "0.7.0",
+          "version": "0.7.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/rustls-platform-verifier/0.7.0"
+          "source": "https://crates.io/crates/rustls-platform-verifier/0.7.1"
         },
         {
           "name": "serialize-to-javascript",
@@ -1155,16 +1143,22 @@
           "source": "https://crates.io/crates/serialize-to-javascript-impl/0.1.2"
         },
         {
-          "name": "ureq",
-          "version": "3.4.1",
+          "name": "siphasher",
+          "version": "1.0.4",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/ureq/3.4.1"
+          "source": "https://crates.io/crates/siphasher/1.0.4"
+        },
+        {
+          "name": "ureq",
+          "version": "3.5.0",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/ureq/3.5.0"
         },
         {
           "name": "ureq-proto",
-          "version": "0.6.2",
+          "version": "0.6.5",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/ureq-proto/0.6.2"
+          "source": "https://crates.io/crates/ureq-proto/0.6.5"
         },
         {
           "name": "utf8_iter",
@@ -1174,9 +1168,9 @@
         },
         {
           "name": "zeroize",
-          "version": "1.9.0",
+          "version": "1.9.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/zeroize/1.9.0"
+          "source": "https://crates.io/crates/zeroize/1.9.1"
         },
         {
           "name": "zune-core",
@@ -1199,21 +1193,15 @@
       "components": [
         {
           "name": "crc32fast",
-          "version": "1.5.0",
+          "version": "1.5.3",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/crc32fast/1.5.0"
+          "source": "https://crates.io/crates/crc32fast/1.5.3"
         },
         {
           "name": "ctor",
-          "version": "0.8.0",
+          "version": "1.0.13",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/ctor/0.8.0"
-        },
-        {
-          "name": "ctor-proc-macro",
-          "version": "0.0.7",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/ctor-proc-macro/0.0.7"
+          "source": "https://crates.io/crates/ctor/1.0.13"
         },
         {
           "name": "dpi",
@@ -1241,9 +1229,9 @@
         },
         {
           "name": "json-patch",
-          "version": "3.0.1",
+          "version": "4.2.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/json-patch/3.0.1"
+          "source": "https://crates.io/crates/json-patch/4.2.0"
         },
         {
           "name": "quick-error",
@@ -1252,40 +1240,10 @@
           "source": "https://crates.io/crates/quick-error/2.0.1"
         },
         {
-          "name": "serde_spanned",
-          "version": "1.1.1",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/serde_spanned/1.1.1"
-        },
-        {
           "name": "tao",
-          "version": "0.35.3",
+          "version": "0.37.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tao/0.35.3"
-        },
-        {
-          "name": "toml",
-          "version": "1.1.4+spec-1.1.0",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/toml/1.1.4+spec-1.1.0"
-        },
-        {
-          "name": "toml_datetime",
-          "version": "1.1.1+spec-1.1.0",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/toml_datetime/1.1.1+spec-1.1.0"
-        },
-        {
-          "name": "toml_parser",
-          "version": "1.1.3+spec-1.1.0",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/toml_parser/1.1.3+spec-1.1.0"
-        },
-        {
-          "name": "toml_writer",
-          "version": "1.1.2+spec-1.1.0",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/toml_writer/1.1.2+spec-1.1.0"
+          "source": "https://crates.io/crates/tao/0.37.2"
         }
       ]
     },
@@ -1296,9 +1254,9 @@
       "components": [
         {
           "name": "deranged",
-          "version": "0.5.8",
+          "version": "0.5.9",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/deranged/0.5.8"
+          "source": "https://crates.io/crates/deranged/0.5.9"
         }
       ]
     },
@@ -1396,9 +1354,9 @@
       "components": [
         {
           "name": "ipnet",
-          "version": "2.12.1",
+          "version": "2.12.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/ipnet/2.12.1"
+          "source": "https://crates.io/crates/ipnet/2.12.2"
         }
       ]
     },
@@ -1409,9 +1367,9 @@
       "components": [
         {
           "name": "jsonptr",
-          "version": "0.6.3",
+          "version": "0.7.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/jsonptr/0.6.3"
+          "source": "https://crates.io/crates/jsonptr/0.7.1"
         }
       ]
     },
@@ -1441,9 +1399,9 @@
       "components": [
         {
           "name": "powerfmt",
-          "version": "0.2.0",
+          "version": "0.2.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/powerfmt/0.2.0"
+          "source": "https://crates.io/crates/powerfmt/0.2.1"
         }
       ]
     },
@@ -1473,9 +1431,9 @@
       "components": [
         {
           "name": "reqwest",
-          "version": "0.13.4",
+          "version": "0.13.5",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/reqwest/0.13.4"
+          "source": "https://crates.io/crates/reqwest/0.13.5"
         }
       ]
     },
@@ -1489,6 +1447,43 @@
           "version": "1.15.1",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/rustls-pki-types/1.15.1"
+        }
+      ]
+    },
+    {
+      "key": "36445dcebc17ea802185acadcc7025e62791a869a748c9aec155d5a1f73768f0",
+      "license": "Apache-2.0",
+      "text": "Apache License\n                           Version 2.0, January 2004\n                        http://www.apache.org/licenses/\n\n   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n\n   1. Definitions.\n\n      \"License\" shall mean the terms and conditions for use, reproduction,\n      and distribution as defined by Sections 1 through 9 of this document.\n\n      \"Licensor\" shall mean the copyright owner or entity authorized by\n      the copyright owner that is granting the License.\n\n      \"Legal Entity\" shall mean the union of the acting entity and all\n      other entities that control, are controlled by, or are under common\n      control with that entity. For the purposes of this definition,\n      \"control\" means (i) the power, direct or indirect, to cause the\n      direction or management of such entity, whether by contract or\n      otherwise, or (ii) ownership of fifty percent (50%) or more of the\n      outstanding shares, or (iii) beneficial ownership of such entity.\n\n      \"You\" (or \"Your\") shall mean an individual or Legal Entity\n      exercising permissions granted by this License.\n\n      \"Source\" form shall mean the preferred form for making modifications,\n      including but not limited to software source code, documentation\n      source, and configuration files.\n\n      \"Object\" form shall mean any form resulting from mechanical\n      transformation or translation of a Source form, including but\n      not limited to compiled object code, generated documentation,\n      and conversions to other media types.\n\n      \"Work\" shall mean the work of authorship, whether in Source or\n      Object form, made available under the License, as indicated by a\n      copyright notice that is included in or attached to the work\n      (an example is provided in the Appendix below).\n\n      \"Derivative Works\" shall mean any work, whether in Source or Object\n      form, that is based on (or derived from) the Work and for which the\n      editorial revisions, annotations, elaborations, or other modifications\n      represent, as a whole, an original work of authorship. For the purposes\n      of this License, Derivative Works shall not include works that remain\n      separable from, or merely link (or bind by name) to the interfaces of,\n      the Work and Derivative Works thereof.\n\n      \"Contribution\" shall mean any work of authorship, including\n      the original version of the Work and any modifications or additions\n      to that Work or Derivative Works thereof, that is intentionally\n      submitted to Licensor for inclusion in the Work by the copyright owner\n      or by an individual or Legal Entity authorized to submit on behalf of\n      the copyright owner. For the purposes of this definition, \"submitted\"\n      means any form of electronic, verbal, or written communication sent\n      to the Licensor or its representatives, including but not limited to\n      communication on electronic mailing lists, source code control systems,\n      and issue tracking systems that are managed by, or on behalf of, the\n      Licensor for the purpose of discussing and improving the Work, but\n      excluding communication that is conspicuously marked or otherwise\n      designated in writing by the copyright owner as \"Not a Contribution.\"\n\n      \"Contributor\" shall mean Licensor and any individual or Legal Entity\n      on behalf of whom a Contribution has been received by Licensor and\n      subsequently incorporated within the Work.\n\n   2. Grant of Copyright License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      copyright license to reproduce, prepare Derivative Works of,\n      publicly display, publicly perform, sublicense, and distribute the\n      Work and such Derivative Works in Source or Object form.\n\n   3. Grant of Patent License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      (except as stated in this section) patent license to make, have made,\n      use, offer to sell, sell, import, and otherwise transfer the Work,\n      where such license applies only to those patent claims licensable\n      by such Contributor that are necessarily infringed by their\n      Contribution(s) alone or by combination of their Contribution(s)\n      with the Work to which such Contribution(s) was submitted. If You\n      institute patent litigation against any entity (including a\n      cross-claim or counterclaim in a lawsuit) alleging that the Work\n      or a Contribution incorporated within the Work constitutes direct\n      or contributory patent infringement, then any patent licenses\n      granted to You under this License for that Work shall terminate\n      as of the date such litigation is filed.\n\n   4. Redistribution. You may reproduce and distribute copies of the\n      Work or Derivative Works thereof in any medium, with or without\n      modifications, and in Source or Object form, provided that You\n      meet the following conditions:\n\n      (a) You must give any other recipients of the Work or\n          Derivative Works a copy of this License; and\n\n      (b) You must cause any modified files to carry prominent notices\n          stating that You changed the files; and\n\n      (c) You must retain, in the Source form of any Derivative Works\n          that You distribute, all copyright, patent, trademark, and\n          attribution notices from the Source form of the Work,\n          excluding those notices that do not pertain to any part of\n          the Derivative Works; and\n\n      (d) If the Work includes a \"NOTICE\" text file as part of its\n          distribution, then any Derivative Works that You distribute must\n          include a readable copy of the attribution notices contained\n          within such NOTICE file, excluding those notices that do not\n          pertain to any part of the Derivative Works, in at least one\n          of the following places: within a NOTICE text file distributed\n          as part of the Derivative Works; within the Source form or\n          documentation, if provided along with the Derivative Works; or,\n          within a display generated by the Derivative Works, if and\n          wherever such third-party notices normally appear. The contents\n          of the NOTICE file are for informational purposes only and\n          do not modify the License. You may add Your own attribution\n          notices within Derivative Works that You distribute, alongside\n          or as an addendum to the NOTICE text from the Work, provided\n          that such additional attribution notices cannot be construed\n          as modifying the License.\n\n      You may add Your own copyright statement to Your modifications and\n      may provide additional or different license terms and conditions\n      for use, reproduction, or distribution of Your modifications, or\n      for any such Derivative Works as a whole, provided Your use,\n      reproduction, and distribution of the Work otherwise complies with\n      the conditions stated in this License.\n\n   5. Submission of Contributions. Unless You explicitly state otherwise,\n      any Contribution intentionally submitted for inclusion in the Work\n      by You to the Licensor shall be under the terms and conditions of\n      this License, without any additional terms or conditions.\n      Notwithstanding the above, nothing herein shall supersede or modify\n      the terms of any separate license agreement you may have executed\n      with Licensor regarding such Contributions.\n\n   6. Trademarks. This License does not grant permission to use the trade\n      names, trademarks, service marks, or product names of the Licensor,\n      except as required for reasonable and customary use in describing the\n      origin of the Work and reproducing the content of the NOTICE file.\n\n   7. Disclaimer of Warranty. Unless required by applicable law or\n      agreed to in writing, Licensor provides the Work (and each\n      Contributor provides its Contributions) on an \"AS IS\" BASIS,\n      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or\n      implied, including, without limitation, any warranties or conditions\n      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A\n      PARTICULAR PURPOSE. You are solely responsible for determining the\n      appropriateness of using or redistributing the Work and assume any\n      risks associated with Your exercise of permissions under this License.\n\n   8. Limitation of Liability. In no event and under no legal theory,\n      whether in tort (including negligence), contract, or otherwise,\n      unless required by applicable law (such as deliberate and grossly\n      negligent acts) or agreed to in writing, shall any Contributor be\n      liable to You for damages, including any direct, indirect, special,\n      incidental, or consequential damages of any character arising as a\n      result of this License or out of the use or inability to use the\n      Work (including but not limited to damages for loss of goodwill,\n      work stoppage, computer failure or malfunction, or any and all\n      other commercial damages or losses), even if such Contributor\n      has been advised of the possibility of such damages.\n\n   9. Accepting Warranty or Additional Liability. While redistributing\n      the Work or Derivative Works thereof, You may choose to offer,\n      and charge a fee for, acceptance of support, warranty, indemnity,\n      or other liability obligations and/or rights consistent with this\n      License. However, in accepting such obligations, You may act only\n      on Your own behalf and on Your sole responsibility, not on behalf\n      of any other Contributor, and only if You agree to indemnify,\n      defend, and hold each Contributor harmless for any liability\n      incurred by, or claims asserted against, such Contributor by reason\n      of your accepting any such warranty or additional liability.\n\n   END OF TERMS AND CONDITIONS\n\n   APPENDIX: How to apply the Apache License to your work.\n\n      To apply the Apache License to your work, attach the following\n      boilerplate notice, with the fields enclosed by brackets \"{}\"\n      replaced with your own identifying information. (Don't include\n      the brackets!)  The text should be enclosed in the appropriate\n      comment syntax for the file format. We also recommend that a\n      file or class name and description of purpose be included on the\n      same \"printed page\" as the copyright notice for easier\n      identification within third-party archives.\n\n   Copyright Individual contributors\n\n   Licensed under the Apache License, Version 2.0 (the \"License\");\n   you may not use this file except in compliance with the License.\n   You may obtain a copy of the License at\n\n       http://www.apache.org/licenses/LICENSE-2.0\n\n   Unless required by applicable law or agreed to in writing, software\n   distributed under the License is distributed on an \"AS IS\" BASIS,\n   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n   See the License for the specific language governing permissions and\n   limitations under the License.\n",
+      "components": [
+        {
+          "name": "serde_spanned",
+          "version": "1.1.2",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/serde_spanned/1.1.2"
+        },
+        {
+          "name": "toml",
+          "version": "1.1.8+spec-1.1.0",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/toml/1.1.8+spec-1.1.0"
+        },
+        {
+          "name": "toml_datetime",
+          "version": "1.1.2+spec-1.1.0",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/toml_datetime/1.1.2+spec-1.1.0"
+        },
+        {
+          "name": "toml_parser",
+          "version": "1.1.5+spec-1.1.0",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/toml_parser/1.1.5+spec-1.1.0"
+        },
+        {
+          "name": "toml_writer",
+          "version": "1.1.3+spec-1.1.0",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/toml_writer/1.1.3+spec-1.1.0"
         }
       ]
     },
@@ -1531,9 +1526,9 @@
       "components": [
         {
           "name": "tokio-rustls",
-          "version": "0.26.4",
+          "version": "0.26.6",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tokio-rustls/0.26.4"
+          "source": "https://crates.io/crates/tokio-rustls/0.26.6"
         }
       ]
     },
@@ -1551,33 +1546,46 @@
       ]
     },
     {
+      "key": "d980c747bf544b502a2173504f8393a73c52fe307c3f7508e827315b20709571",
+      "license": "Apache-2.0",
+      "text": "Apache License\n                           Version 2.0, January 2004\n                        http://www.apache.org/licenses/\n\n   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n\n   1. Definitions.\n\n      \"License\" shall mean the terms and conditions for use, reproduction,\n      and distribution as defined by Sections 1 through 9 of this document.\n\n      \"Licensor\" shall mean the copyright owner or entity authorized by\n      the copyright owner that is granting the License.\n\n      \"Legal Entity\" shall mean the union of the acting entity and all\n      other entities that control, are controlled by, or are under common\n      control with that entity. For the purposes of this definition,\n      \"control\" means (i) the power, direct or indirect, to cause the\n      direction or management of such entity, whether by contract or\n      otherwise, or (ii) ownership of fifty percent (50%) or more of the\n      outstanding shares, or (iii) beneficial ownership of such entity.\n\n      \"You\" (or \"Your\") shall mean an individual or Legal Entity\n      exercising permissions granted by this License.\n\n      \"Source\" form shall mean the preferred form for making modifications,\n      including but not limited to software source code, documentation\n      source, and configuration files.\n\n      \"Object\" form shall mean any form resulting from mechanical\n      transformation or translation of a Source form, including but\n      not limited to compiled object code, generated documentation,\n      and conversions to other media types.\n\n      \"Work\" shall mean the work of authorship, whether in Source or\n      Object form, made available under the License, as indicated by a\n      copyright notice that is included in or attached to the work\n      (an example is provided in the Appendix below).\n\n      \"Derivative Works\" shall mean any work, whether in Source or Object\n      form, that is based on (or derived from) the Work and for which the\n      editorial revisions, annotations, elaborations, or other modifications\n      represent, as a whole, an original work of authorship. For the purposes\n      of this License, Derivative Works shall not include works that remain\n      separable from, or merely link (or bind by name) to the interfaces of,\n      the Work and Derivative Works thereof.\n\n      \"Contribution\" shall mean any work of authorship, including\n      the original version of the Work and any modifications or additions\n      to that Work or Derivative Works thereof, that is intentionally\n      submitted to Licensor for inclusion in the Work by the copyright owner\n      or by an individual or Legal Entity authorized to submit on behalf of\n      the copyright owner. For the purposes of this definition, \"submitted\"\n      means any form of electronic, verbal, or written communication sent\n      to the Licensor or its representatives, including but not limited to\n      communication on electronic mailing lists, source code control systems,\n      and issue tracking systems that are managed by, or on behalf of, the\n      Licensor for the purpose of discussing and improving the Work, but\n      excluding communication that is conspicuously marked or otherwise\n      designated in writing by the copyright owner as \"Not a Contribution.\"\n\n      \"Contributor\" shall mean Licensor and any individual or Legal Entity\n      on behalf of whom a Contribution has been received by Licensor and\n      subsequently incorporated within the Work.\n\n   2. Grant of Copyright License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      copyright license to reproduce, prepare Derivative Works of,\n      publicly display, publicly perform, sublicense, and distribute the\n      Work and such Derivative Works in Source or Object form.\n\n   3. Grant of Patent License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      (except as stated in this section) patent license to make, have made,\n      use, offer to sell, sell, import, and otherwise transfer the Work,\n      where such license applies only to those patent claims licensable\n      by such Contributor that are necessarily infringed by their\n      Contribution(s) alone or by combination of their Contribution(s)\n      with the Work to which such Contribution(s) was submitted. If You\n      institute patent litigation against any entity (including a\n      cross-claim or counterclaim in a lawsuit) alleging that the Work\n      or a Contribution incorporated within the Work constitutes direct\n      or contributory patent infringement, then any patent licenses\n      granted to You under this License for that Work shall terminate\n      as of the date such litigation is filed.\n\n   4. Redistribution. You may reproduce and distribute copies of the\n      Work or Derivative Works thereof in any medium, with or without\n      modifications, and in Source or Object form, provided that You\n      meet the following conditions:\n\n      (a) You must give any other recipients of the Work or\n          Derivative Works a copy of this License; and\n\n      (b) You must cause any modified files to carry prominent notices\n          stating that You changed the files; and\n\n      (c) You must retain, in the Source form of any Derivative Works\n          that You distribute, all copyright, patent, trademark, and\n          attribution notices from the Source form of the Work,\n          excluding those notices that do not pertain to any part of\n          the Derivative Works; and\n\n      (d) If the Work includes a \"NOTICE\" text file as part of its\n          distribution, then any Derivative Works that You distribute must\n          include a readable copy of the attribution notices contained\n          within such NOTICE file, excluding those notices that do not\n          pertain to any part of the Derivative Works, in at least one\n          of the following places: within a NOTICE text file distributed\n          as part of the Derivative Works; within the Source form or\n          documentation, if provided along with the Derivative Works; or,\n          within a display generated by the Derivative Works, if and\n          wherever such third-party notices normally appear. The contents\n          of the NOTICE file are for informational purposes only and\n          do not modify the License. You may add Your own attribution\n          notices within Derivative Works that You distribute, alongside\n          or as an addendum to the NOTICE text from the Work, provided\n          that such additional attribution notices cannot be construed\n          as modifying the License.\n\n      You may add Your own copyright statement to Your modifications and\n      may provide additional or different license terms and conditions\n      for use, reproduction, or distribution of Your modifications, or\n      for any such Derivative Works as a whole, provided Your use,\n      reproduction, and distribution of the Work otherwise complies with\n      the conditions stated in this License.\n\n   5. Submission of Contributions. Unless You explicitly state otherwise,\n      any Contribution intentionally submitted for inclusion in the Work\n      by You to the Licensor shall be under the terms and conditions of\n      this License, without any additional terms or conditions.\n      Notwithstanding the above, nothing herein shall supersede or modify\n      the terms of any separate license agreement you may have executed\n      with Licensor regarding such Contributions.\n\n   6. Trademarks. This License does not grant permission to use the trade\n      names, trademarks, service marks, or product names of the Licensor,\n      except as required for reasonable and customary use in describing the\n      origin of the Work and reproducing the content of the NOTICE file.\n\n   7. Disclaimer of Warranty. Unless required by applicable law or\n      agreed to in writing, Licensor provides the Work (and each\n      Contributor provides its Contributions) on an \"AS IS\" BASIS,\n      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or\n      implied, including, without limitation, any warranties or conditions\n      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A\n      PARTICULAR PURPOSE. You are solely responsible for determining the\n      appropriateness of using or redistributing the Work and assume any\n      risks associated with Your exercise of permissions under this License.\n\n   8. Limitation of Liability. In no event and under no legal theory,\n      whether in tort (including negligence), contract, or otherwise,\n      unless required by applicable law (such as deliberate and grossly\n      negligent acts) or agreed to in writing, shall any Contributor be\n      liable to You for damages, including any direct, indirect, special,\n      incidental, or consequential damages of any character arising as a\n      result of this License or out of the use or inability to use the\n      Work (including but not limited to damages for loss of goodwill,\n      work stoppage, computer failure or malfunction, or any and all\n      other commercial damages or losses), even if such Contributor\n      has been advised of the possibility of such damages.\n\n   9. Accepting Warranty or Additional Liability. While redistributing\n      the Work or Derivative Works thereof, You may choose to offer,\n      and charge a fee for, acceptance of support, warranty, indemnity,\n      or other liability obligations and/or rights consistent with this\n      License. However, in accepting such obligations, You may act only\n      on Your own behalf and on Your sole responsibility, not on behalf\n      of any other Contributor, and only if You agree to indemnify,\n      defend, and hold each Contributor harmless for any liability\n      incurred by, or claims asserted against, such Contributor by reason\n      of your accepting any such warranty or additional liability.\n\n   END OF TERMS AND CONDITIONS\n\n   APPENDIX: How to apply the Apache License to your work.\n\n      To apply the Apache License to your work, attach the following\n      boilerplate notice, with the fields enclosed by brackets \"[]\"\n      replaced with your own identifying information. (Don't include\n      the brackets!)  The text should be enclosed in the appropriate\n      comment syntax for the file format. We also recommend that a\n      file or class name and description of purpose be included on the\n      same \"printed page\" as the copyright notice for easier\n      identification within third-party archives.\n\n   Copyright 2023 dAxpeDDa\n\n   Licensed under the Apache License, Version 2.0 (the \"License\");\n   you may not use this file except in compliance with the License.\n   You may obtain a copy of the License at\n\n       http://www.apache.org/licenses/LICENSE-2.0\n\n   Unless required by applicable law or agreed to in writing, software\n   distributed under the License is distributed on an \"AS IS\" BASIS,\n   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n   See the License for the specific language governing permissions and\n   limitations under the License.\n",
+      "components": [
+        {
+          "name": "web-time",
+          "version": "1.1.0",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/web-time/1.1.0"
+        }
+      ]
+    },
+    {
       "key": "fa7577a8d5dcc5b25d522ff92c974300042ff65c27d2ec2105e38b6901d897d0",
       "license": "Apache-2.0",
       "text": "Apache License\n                           Version 2.0, January 2004\n                        http://www.apache.org/licenses/\n\n   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n\n   1. Definitions.\n\n      \"License\" shall mean the terms and conditions for use, reproduction,\n      and distribution as defined by Sections 1 through 9 of this document.\n\n      \"Licensor\" shall mean the copyright owner or entity authorized by\n      the copyright owner that is granting the License.\n\n      \"Legal Entity\" shall mean the union of the acting entity and all\n      other entities that control, are controlled by, or are under common\n      control with that entity. For the purposes of this definition,\n      \"control\" means (i) the power, direct or indirect, to cause the\n      direction or management of such entity, whether by contract or\n      otherwise, or (ii) ownership of fifty percent (50%) or more of the\n      outstanding shares, or (iii) beneficial ownership of such entity.\n\n      \"You\" (or \"Your\") shall mean an individual or Legal Entity\n      exercising permissions granted by this License.\n\n      \"Source\" form shall mean the preferred form for making modifications,\n      including but not limited to software source code, documentation\n      source, and configuration files.\n\n      \"Object\" form shall mean any form resulting from mechanical\n      transformation or translation of a Source form, including but\n      not limited to compiled object code, generated documentation,\n      and conversions to other media types.\n\n      \"Work\" shall mean the work of authorship, whether in Source or\n      Object form, made available under the License, as indicated by a\n      copyright notice that is included in or attached to the work\n      (an example is provided in the Appendix below).\n\n      \"Derivative Works\" shall mean any work, whether in Source or Object\n      form, that is based on (or derived from) the Work and for which the\n      editorial revisions, annotations, elaborations, or other modifications\n      represent, as a whole, an original work of authorship. For the purposes\n      of this License, Derivative Works shall not include works that remain\n      separable from, or merely link (or bind by name) to the interfaces of,\n      the Work and Derivative Works thereof.\n\n      \"Contribution\" shall mean any work of authorship, including\n      the original version of the Work and any modifications or additions\n      to that Work or Derivative Works thereof, that is intentionally\n      submitted to Licensor for inclusion in the Work by the copyright owner\n      or by an individual or Legal Entity authorized to submit on behalf of\n      the copyright owner. For the purposes of this definition, \"submitted\"\n      means any form of electronic, verbal, or written communication sent\n      to the Licensor or its representatives, including but not limited to\n      communication on electronic mailing lists, source code control systems,\n      and issue tracking systems that are managed by, or on behalf of, the\n      Licensor for the purpose of discussing and improving the Work, but\n      excluding communication that is conspicuously marked or otherwise\n      designated in writing by the copyright owner as \"Not a Contribution.\"\n\n      \"Contributor\" shall mean Licensor and any individual or Legal Entity\n      on behalf of whom a Contribution has been received by Licensor and\n      subsequently incorporated within the Work.\n\n   2. Grant of Copyright License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      copyright license to reproduce, prepare Derivative Works of,\n      publicly display, publicly perform, sublicense, and distribute the\n      Work and such Derivative Works in Source or Object form.\n\n   3. Grant of Patent License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      (except as stated in this section) patent license to make, have made,\n      use, offer to sell, sell, import, and otherwise transfer the Work,\n      where such license applies only to those patent claims licensable\n      by such Contributor that are necessarily infringed by their\n      Contribution(s) alone or by combination of their Contribution(s)\n      with the Work to which such Contribution(s) was submitted. If You\n      institute patent litigation against any entity (including a\n      cross-claim or counterclaim in a lawsuit) alleging that the Work\n      or a Contribution incorporated within the Work constitutes direct\n      or contributory patent infringement, then any patent licenses\n      granted to You under this License for that Work shall terminate\n      as of the date such litigation is filed.\n\n   4. Redistribution. You may reproduce and distribute copies of the\n      Work or Derivative Works thereof in any medium, with or without\n      modifications, and in Source or Object form, provided that You\n      meet the following conditions:\n\n      (a) You must give any other recipients of the Work or\n          Derivative Works a copy of this License; and\n\n      (b) You must cause any modified files to carry prominent notices\n          stating that You changed the files; and\n\n      (c) You must retain, in the Source form of any Derivative Works\n          that You distribute, all copyright, patent, trademark, and\n          attribution notices from the Source form of the Work,\n          excluding those notices that do not pertain to any part of\n          the Derivative Works; and\n\n      (d) If the Work includes a \"NOTICE\" text file as part of its\n          distribution, then any Derivative Works that You distribute must\n          include a readable copy of the attribution notices contained\n          within such NOTICE file, excluding those notices that do not\n          pertain to any part of the Derivative Works, in at least one\n          of the following places: within a NOTICE text file distributed\n          as part of the Derivative Works; within the Source form or\n          documentation, if provided along with the Derivative Works; or,\n          within a display generated by the Derivative Works, if and\n          wherever such third-party notices normally appear. The contents\n          of the NOTICE file are for informational purposes only and\n          do not modify the License. You may add Your own attribution\n          notices within Derivative Works that You distribute, alongside\n          or as an addendum to the NOTICE text from the Work, provided\n          that such additional attribution notices cannot be construed\n          as modifying the License.\n\n      You may add Your own copyright statement to Your modifications and\n      may provide additional or different license terms and conditions\n      for use, reproduction, or distribution of Your modifications, or\n      for any such Derivative Works as a whole, provided Your use,\n      reproduction, and distribution of the Work otherwise complies with\n      the conditions stated in this License.\n\n   5. Submission of Contributions. Unless You explicitly state otherwise,\n      any Contribution intentionally submitted for inclusion in the Work\n      by You to the Licensor shall be under the terms and conditions of\n      this License, without any additional terms or conditions.\n      Notwithstanding the above, nothing herein shall supersede or modify\n      the terms of any separate license agreement you may have executed\n      with Licensor regarding such Contributions.\n\n   6. Trademarks. This License does not grant permission to use the trade\n      names, trademarks, service marks, or product names of the Licensor,\n      except as required for reasonable and customary use in describing the\n      origin of the Work and reproducing the content of the NOTICE file.\n\n   7. Disclaimer of Warranty. Unless required by applicable law or\n      agreed to in writing, Licensor provides the Work (and each\n      Contributor provides its Contributions) on an \"AS IS\" BASIS,\n      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or\n      implied, including, without limitation, any warranties or conditions\n      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A\n      PARTICULAR PURPOSE. You are solely responsible for determining the\n      appropriateness of using or redistributing the Work and assume any\n      risks associated with Your exercise of permissions under this License.\n\n   8. Limitation of Liability. In no event and under no legal theory,\n      whether in tort (including negligence), contract, or otherwise,\n      unless required by applicable law (such as deliberate and grossly\n      negligent acts) or agreed to in writing, shall any Contributor be\n      liable to You for damages, including any direct, indirect, special,\n      incidental, or consequential damages of any character arising as a\n      result of this License or out of the use or inability to use the\n      Work (including but not limited to damages for loss of goodwill,\n      work stoppage, computer failure or malfunction, or any and all\n      other commercial damages or losses), even if such Contributor\n      has been advised of the possibility of such damages.\n\n   9. Accepting Warranty or Additional Liability. While redistributing\n      the Work or Derivative Works thereof, You may choose to offer,\n      and charge a fee for, acceptance of support, warranty, indemnity,\n      or other liability obligations and/or rights consistent with this\n      License. However, in accepting such obligations, You may act only\n      on Your own behalf and on Your sole responsibility, not on behalf\n      of any other Contributor, and only if You agree to indemnify,\n      defend, and hold each Contributor harmless for any liability\n      incurred by, or claims asserted against, such Contributor by reason\n      of your accepting any such warranty or additional liability.\n\n   END OF TERMS AND CONDITIONS\n\n   APPENDIX: How to apply the Apache License to your work.\n\n      To apply the Apache License to your work, attach the following\n      boilerplate notice, with the fields enclosed by brackets \"[]\"\n      replaced with your own identifying information. (Don't include\n      the brackets!)  The text should be enclosed in the appropriate\n      comment syntax for the file format. We also recommend that a\n      file or class name and description of purpose be included on the\n      same \"printed page\" as the copyright notice for easier\n      identification within third-party archives.\n\n   Copyright (c) Microsoft Corporation.\n\n   Licensed under the Apache License, Version 2.0 (the \"License\");\n   you may not use this file except in compliance with the License.\n   You may obtain a copy of the License at\n\n       http://www.apache.org/licenses/LICENSE-2.0\n\n   Unless required by applicable law or agreed to in writing, software\n   distributed under the License is distributed on an \"AS IS\" BASIS,\n   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n   See the License for the specific language governing permissions and\n   limitations under the License.\n",
       "components": [
         {
           "name": "windows",
-          "version": "0.61.3",
+          "version": "0.62.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows/0.61.3"
+          "source": "https://crates.io/crates/windows/0.62.2"
         },
         {
           "name": "windows-collections",
-          "version": "0.2.0",
+          "version": "0.3.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-collections/0.2.0"
+          "source": "https://crates.io/crates/windows-collections/0.3.2"
         },
         {
           "name": "windows-core",
-          "version": "0.61.2",
+          "version": "0.62.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-core/0.61.2"
+          "source": "https://crates.io/crates/windows-core/0.62.2"
         },
         {
           "name": "windows-future",
-          "version": "0.2.1",
+          "version": "0.3.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-future/0.2.1"
+          "source": "https://crates.io/crates/windows-future/0.3.2"
         },
         {
           "name": "windows-implement",
@@ -1593,21 +1601,15 @@
         },
         {
           "name": "windows-link",
-          "version": "0.1.3",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-link/0.1.3"
-        },
-        {
-          "name": "windows-link",
           "version": "0.2.1",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/windows-link/0.2.1"
         },
         {
           "name": "windows-numerics",
-          "version": "0.2.0",
+          "version": "0.3.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-numerics/0.2.0"
+          "source": "https://crates.io/crates/windows-numerics/0.3.1"
         },
         {
           "name": "windows-registry",
@@ -1617,21 +1619,9 @@
         },
         {
           "name": "windows-result",
-          "version": "0.3.4",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-result/0.3.4"
-        },
-        {
-          "name": "windows-result",
           "version": "0.4.1",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/windows-result/0.4.1"
-        },
-        {
-          "name": "windows-strings",
-          "version": "0.4.2",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-strings/0.4.2"
         },
         {
           "name": "windows-strings",
@@ -1647,12 +1637,6 @@
         },
         {
           "name": "windows-sys",
-          "version": "0.60.2",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-sys/0.60.2"
-        },
-        {
-          "name": "windows-sys",
           "version": "0.61.2",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/windows-sys/0.61.2"
@@ -1664,16 +1648,10 @@
           "source": "https://crates.io/crates/windows-targets/0.52.6"
         },
         {
-          "name": "windows-targets",
-          "version": "0.53.5",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-targets/0.53.5"
-        },
-        {
           "name": "windows-threading",
-          "version": "0.1.0",
+          "version": "0.2.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-threading/0.1.0"
+          "source": "https://crates.io/crates/windows-threading/0.2.1"
         },
         {
           "name": "windows-version",
@@ -1686,12 +1664,6 @@
           "version": "0.52.6",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/windows_x86_64_msvc/0.52.6"
-        },
-        {
-          "name": "windows_x86_64_msvc",
-          "version": "0.53.1",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows_x86_64_msvc/0.53.1"
         }
       ]
     },
@@ -1702,9 +1674,9 @@
       "components": [
         {
           "name": "zopfli",
-          "version": "0.8.3",
+          "version": "0.8.4",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/zopfli/0.8.3"
+          "source": "https://crates.io/crates/zopfli/0.8.4"
         }
       ]
     },
@@ -1715,9 +1687,9 @@
       "components": [
         {
           "name": "@tauri-apps/api",
-          "version": "2.11.1",
+          "version": "2.12.4",
           "ecosystem": "JavaScript",
-          "source": "https://www.npmjs.com/package/@tauri-apps/api/v/2.11.1"
+          "source": "https://www.npmjs.com/package/@tauri-apps/api/v/2.12.4"
         }
       ]
     },
@@ -1728,9 +1700,9 @@
       "components": [
         {
           "name": "@tauri-apps/api",
-          "version": "2.11.1",
+          "version": "2.12.4",
           "ecosystem": "JavaScript",
-          "source": "https://www.npmjs.com/package/@tauri-apps/api/v/2.11.1"
+          "source": "https://www.npmjs.com/package/@tauri-apps/api/v/2.12.4"
         }
       ]
     },
@@ -1741,21 +1713,21 @@
       "components": [
         {
           "name": "alloc-no-stdlib",
-          "version": "2.0.4",
+          "version": "3.0.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/alloc-no-stdlib/2.0.4"
+          "source": "https://crates.io/crates/alloc-no-stdlib/3.0.0"
         },
         {
           "name": "brotli",
-          "version": "8.0.4",
+          "version": "9.1.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/brotli/8.0.4"
+          "source": "https://crates.io/crates/brotli/9.1.1"
         },
         {
           "name": "brotli-decompressor",
-          "version": "5.0.3",
+          "version": "6.2.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/brotli-decompressor/5.0.3"
+          "source": "https://crates.io/crates/brotli-decompressor/6.2.0"
         }
       ]
     },
@@ -1766,9 +1738,9 @@
       "components": [
         {
           "name": "alloc-stdlib",
-          "version": "0.2.4",
+          "version": "0.3.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/alloc-stdlib/0.2.4"
+          "source": "https://crates.io/crates/alloc-stdlib/0.3.0"
         }
       ]
     },
@@ -1779,9 +1751,9 @@
       "components": [
         {
           "name": "encoding_rs",
-          "version": "0.8.35",
+          "version": "0.8.42",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/encoding_rs/0.8.35"
+          "source": "https://crates.io/crates/encoding_rs/0.8.42"
         }
       ]
     },
@@ -1805,9 +1777,9 @@
       "components": [
         {
           "name": "webpki-roots",
-          "version": "1.0.9",
+          "version": "1.0.11",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/webpki-roots/1.0.9"
+          "source": "https://crates.io/crates/webpki-roots/1.0.11"
         }
       ]
     },
@@ -1831,9 +1803,9 @@
       "components": [
         {
           "name": "rustls-webpki",
-          "version": "0.103.14",
+          "version": "0.103.16",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/rustls-webpki/0.103.14"
+          "source": "https://crates.io/crates/rustls-webpki/0.103.16"
         }
       ]
     },
@@ -1857,9 +1829,9 @@
       "components": [
         {
           "name": "@sveltejs/kit",
-          "version": "2.70.3",
+          "version": "3.1.0",
           "ecosystem": "JavaScript",
-          "source": "https://www.npmjs.com/package/@sveltejs/kit/v/2.70.3"
+          "source": "https://www.npmjs.com/package/@sveltejs/kit/v/3.1.0"
         }
       ]
     },
@@ -1907,9 +1879,9 @@
       "components": [
         {
           "name": "brotli",
-          "version": "8.0.4",
+          "version": "9.1.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/brotli/8.0.4"
+          "source": "https://crates.io/crates/brotli/9.1.1"
         }
       ]
     },
@@ -1952,9 +1924,9 @@
       "components": [
         {
           "name": "cfb",
-          "version": "0.7.3",
+          "version": "0.14.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/cfb/0.7.3"
+          "source": "https://crates.io/crates/cfb/0.14.0"
         }
       ]
     },
@@ -1991,21 +1963,21 @@
       "components": [
         {
           "name": "darling",
-          "version": "0.23.0",
+          "version": "0.24.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/darling/0.23.0"
+          "source": "https://crates.io/crates/darling/0.24.1"
         },
         {
           "name": "darling_core",
-          "version": "0.23.0",
+          "version": "0.24.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/darling_core/0.23.0"
+          "source": "https://crates.io/crates/darling_core/0.24.1"
         },
         {
           "name": "darling_macro",
-          "version": "0.23.0",
+          "version": "0.24.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/darling_macro/0.23.0"
+          "source": "https://crates.io/crates/darling_macro/0.24.1"
         }
       ]
     },
@@ -2042,6 +2014,19 @@
       ]
     },
     {
+      "key": "0b3c018d76a0ddbd8008d333d8ea23543eb949712310e0c846a6ff5c9be2ec54",
+      "license": "MIT",
+      "text": "Copyright (c) 2018-19 [these people](https://github.com/rich-harris/devalue/graphs/contributors)\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n",
+      "components": [
+        {
+          "name": "devalue",
+          "version": "5.9.4",
+          "ecosystem": "JavaScript",
+          "source": "https://www.npmjs.com/package/devalue/v/5.9.4"
+        }
+      ]
+    },
+    {
       "key": "a58d8d6facb6928ae05a9f305c5ecc95335320477205206d7a99feb05d36d4c5",
       "license": "MIT",
       "text": "MIT License\n\nCopyright (c) 2025 vionya\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
@@ -2061,9 +2046,9 @@
       "components": [
         {
           "name": "dom_query",
-          "version": "0.27.0",
+          "version": "0.28.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/dom_query/0.27.0"
+          "source": "https://crates.io/crates/dom_query/0.28.0"
         }
       ]
     },
@@ -2087,9 +2072,9 @@
       "components": [
         {
           "name": "ebur128",
-          "version": "0.1.10",
+          "version": "0.1.11",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/ebur128/0.1.10"
+          "source": "https://crates.io/crates/ebur128/0.1.11"
         }
       ]
     },
@@ -2139,9 +2124,9 @@
       "components": [
         {
           "name": "h2",
-          "version": "0.4.18",
+          "version": "0.4.20",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/h2/0.4.18"
+          "source": "https://crates.io/crates/h2/0.4.20"
         }
       ]
     },
@@ -2171,9 +2156,9 @@
       "components": [
         {
           "name": "http-range",
-          "version": "0.1.5",
+          "version": "0.1.6",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/http-range/0.1.5"
+          "source": "https://crates.io/crates/http-range/0.1.6"
         }
       ]
     },
@@ -2184,9 +2169,9 @@
       "components": [
         {
           "name": "hyper",
-          "version": "1.11.0",
+          "version": "1.12.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/hyper/1.11.0"
+          "source": "https://crates.io/crates/hyper/1.12.0"
         }
       ]
     },
@@ -2197,9 +2182,9 @@
       "components": [
         {
           "name": "hyper-util",
-          "version": "0.1.20",
+          "version": "0.1.21",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/hyper-util/0.1.20"
+          "source": "https://crates.io/crates/hyper-util/0.1.21"
         }
       ]
     },
@@ -2210,9 +2195,9 @@
       "components": [
         {
           "name": "ico",
-          "version": "0.5.0",
+          "version": "0.6.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/ico/0.5.0"
+          "source": "https://crates.io/crates/ico/0.6.0"
         }
       ]
     },
@@ -2223,9 +2208,9 @@
       "components": [
         {
           "name": "infer",
-          "version": "0.19.0",
+          "version": "0.22.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/infer/0.19.0"
+          "source": "https://crates.io/crates/infer/0.22.0"
         }
       ]
     },
@@ -2249,15 +2234,15 @@
       "components": [
         {
           "name": "libsqlite3-sys",
-          "version": "0.38.2",
+          "version": "0.39.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/libsqlite3-sys/0.38.2"
+          "source": "https://crates.io/crates/libsqlite3-sys/0.39.1"
         },
         {
           "name": "rusqlite",
-          "version": "0.40.2",
+          "version": "0.41.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/rusqlite/0.40.2"
+          "source": "https://crates.io/crates/rusqlite/0.41.1"
         }
       ]
     },
@@ -2281,9 +2266,9 @@
       "components": [
         {
           "name": "mio",
-          "version": "1.2.2",
+          "version": "1.2.4",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/mio/1.2.2"
+          "source": "https://crates.io/crates/mio/1.2.4"
         }
       ]
     },
@@ -2307,9 +2292,9 @@
       "components": [
         {
           "name": "open",
-          "version": "5.4.1",
+          "version": "5.4.5",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/open/5.4.1"
+          "source": "https://crates.io/crates/open/5.4.5"
         }
       ]
     },
@@ -2351,9 +2336,9 @@
       "components": [
         {
           "name": "plist",
-          "version": "1.10.0",
+          "version": "1.10.3",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/plist/1.10.0"
+          "source": "https://crates.io/crates/plist/1.10.3"
         }
       ]
     },
@@ -2380,6 +2365,12 @@
           "version": "0.41.0",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/quick-xml/0.41.0"
+        },
+        {
+          "name": "quick-xml",
+          "version": "0.42.0",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/quick-xml/0.42.0"
         }
       ]
     },
@@ -2390,9 +2381,9 @@
       "components": [
         {
           "name": "rfd",
-          "version": "0.16.0",
+          "version": "0.17.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/rfd/0.16.0"
+          "source": "https://crates.io/crates/rfd/0.17.2"
         }
       ]
     },
@@ -2473,9 +2464,9 @@
         },
         {
           "name": "zip",
-          "version": "8.6.0",
+          "version": "9.1.3",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/zip/8.6.0"
+          "source": "https://crates.io/crates/zip/9.1.3"
         }
       ]
     },
@@ -2499,9 +2490,9 @@
       "components": [
         {
           "name": "svelte",
-          "version": "5.56.10",
+          "version": "5.57.3",
           "ecosystem": "JavaScript",
-          "source": "https://www.npmjs.com/package/svelte/v/5.56.10"
+          "source": "https://www.npmjs.com/package/svelte/v/5.57.3"
         }
       ]
     },
@@ -2512,9 +2503,9 @@
       "components": [
         {
           "name": "synstructure",
-          "version": "0.13.2",
+          "version": "0.14.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/synstructure/0.13.2"
+          "source": "https://crates.io/crates/synstructure/0.14.0"
         }
       ]
     },
@@ -2525,15 +2516,15 @@
       "components": [
         {
           "name": "tokio",
-          "version": "1.53.1",
+          "version": "1.54.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tokio/1.53.1"
+          "source": "https://crates.io/crates/tokio/1.54.1"
         },
         {
           "name": "tokio-util",
-          "version": "0.7.19",
+          "version": "0.7.20",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tokio-util/0.7.19"
+          "source": "https://crates.io/crates/tokio-util/0.7.20"
         }
       ]
     },
@@ -2633,9 +2624,9 @@
       "components": [
         {
           "name": "urlpattern",
-          "version": "0.3.0",
+          "version": "0.6.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/urlpattern/0.3.0"
+          "source": "https://crates.io/crates/urlpattern/0.6.0"
         }
       ]
     },
@@ -2646,7 +2637,7 @@
       "components": [
         {
           "name": "velopack",
-          "version": "1.2.0",
+          "version": "1.2.161",
           "ecosystem": "Rust",
           "source": "https://github.com/doabell/sparkle/tree/main/src-tauri/patches/velopack"
         }
@@ -2659,9 +2650,9 @@
       "components": [
         {
           "name": "want",
-          "version": "0.3.1",
+          "version": "0.3.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/want/0.3.1"
+          "source": "https://crates.io/crates/want/0.3.2"
         }
       ]
     },
@@ -2672,9 +2663,9 @@
       "components": [
         {
           "name": "webview2-com",
-          "version": "0.38.2",
+          "version": "0.39.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/webview2-com/0.38.2"
+          "source": "https://crates.io/crates/webview2-com/0.39.1"
         },
         {
           "name": "webview2-com-macros",
@@ -2684,9 +2675,9 @@
         },
         {
           "name": "webview2-com-sys",
-          "version": "0.38.2",
+          "version": "0.39.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/webview2-com-sys/0.38.2"
+          "source": "https://crates.io/crates/webview2-com-sys/0.39.1"
         }
       ]
     },
@@ -2723,15 +2714,75 @@
       "components": [
         {
           "name": "cssparser",
-          "version": "0.36.0",
+          "version": "0.37.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/cssparser/0.36.0"
+          "source": "https://crates.io/crates/cssparser/0.37.0"
         },
         {
           "name": "cssparser-macros",
+          "version": "0.7.1",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/cssparser-macros/0.7.1"
+        },
+        {
+          "name": "symphonia",
           "version": "0.6.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/cssparser-macros/0.6.1"
+          "source": "https://crates.io/crates/symphonia/0.6.1"
+        },
+        {
+          "name": "symphonia-bundle-flac",
+          "version": "0.6.1",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/symphonia-bundle-flac/0.6.1"
+        },
+        {
+          "name": "symphonia-bundle-mp3",
+          "version": "0.6.1",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/symphonia-bundle-mp3/0.6.1"
+        },
+        {
+          "name": "symphonia-codec-aac",
+          "version": "0.6.1",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/symphonia-codec-aac/0.6.1"
+        },
+        {
+          "name": "symphonia-codec-vorbis",
+          "version": "0.6.1",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/symphonia-codec-vorbis/0.6.1"
+        },
+        {
+          "name": "symphonia-common",
+          "version": "0.6.1",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/symphonia-common/0.6.1"
+        },
+        {
+          "name": "symphonia-core",
+          "version": "0.6.1",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/symphonia-core/0.6.1"
+        },
+        {
+          "name": "symphonia-format-isomp4",
+          "version": "0.6.1",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/symphonia-format-isomp4/0.6.1"
+        },
+        {
+          "name": "symphonia-format-ogg",
+          "version": "0.6.1",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/symphonia-format-ogg/0.6.1"
+        },
+        {
+          "name": "symphonia-metadata",
+          "version": "0.6.1",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/symphonia-metadata/0.6.1"
         }
       ]
     },
@@ -2761,9 +2812,9 @@
         },
         {
           "name": "selectors",
-          "version": "0.36.1",
+          "version": "0.38.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/selectors/0.36.1"
+          "source": "https://crates.io/crates/selectors/0.38.0"
         },
         {
           "name": "symphonia",
@@ -2840,51 +2891,64 @@
       ]
     },
     {
+      "key": "083b29f19360f6e724a53293a38edcf304692db4d3a227a781a160e2be8ea047",
+      "license": "Notice",
+      "text": "SPDXVersion: SPDX-2.1\nDataLicense: CC0-1.0\nPackageName: tauri\nDataFormat: SPDXRef-1\nPackageSupplier: Organization: The Tauri Programme in the Commons Conservancy\nPackageHomePage: https://tauri.app\nPackageLicenseDeclared: Apache-2.0\nPackageLicenseDeclared: MIT\nPackageCopyrightText: 2019-2025, The Tauri Programme in the Commons Conservancy\nPackageSummary: <text>Tauri is a rust project that enables developers to make secure\nand small desktop applications using a web frontend.\n                </text>\nPackageComment: <text>The package includes the following libraries; see\nRelationship information.\n                </text>\nCreated: 2019-05-20T09:00:00Z\nPackageDownloadLocation: git://github.com/tauri-apps/tauri\nPackageDownloadLocation: git+https://github.com/tauri-apps/tauri.git\nPackageDownloadLocation: git+ssh://github.com/tauri-apps/tauri.git\nCreator: Person: Daniel Thompson-Yvetot\n",
+      "components": [
+        {
+          "name": "@tauri-apps/api",
+          "version": "2.12.4",
+          "ecosystem": "JavaScript",
+          "source": "https://www.npmjs.com/package/@tauri-apps/api/v/2.12.4"
+        }
+      ]
+    },
+    {
       "key": "4a851065f0c0ccb637225e9acd78a5b2c52d6c1a3392cd5abbaa90de0960b54d",
       "license": "Notice",
       "text": "SPDXVersion: SPDX-2.1\nDataLicense: CC0-1.0\nPackageName: tauri\nDataFormat: SPDXRef-1\nPackageSupplier: Organization: The Tauri Programme in the Commons Conservancy\nPackageHomePage: https://tauri.app\nPackageLicenseDeclared: Apache-2.0\nPackageLicenseDeclared: MIT\nPackageCopyrightText: 2019-2022, The Tauri Programme in the Commons Conservancy\nPackageSummary: <text>Tauri is a rust project that enables developers to make secure\nand small desktop applications using a web frontend.\n                </text>\nPackageComment: <text>The package includes the following libraries; see\nRelationship information.\n                </text>\nCreated: 2019-05-20T09:00:00Z\nPackageDownloadLocation: git://github.com/tauri-apps/tauri\nPackageDownloadLocation: git+https://github.com/tauri-apps/tauri.git\nPackageDownloadLocation: git+ssh://github.com/tauri-apps/tauri.git\nCreator: Person: Daniel Thompson-Yvetot\n",
       "components": [
         {
           "name": "@tauri-apps/plugin-dialog",
-          "version": "2.7.2",
+          "version": "2.8.4",
           "ecosystem": "JavaScript",
-          "source": "https://www.npmjs.com/package/@tauri-apps/plugin-dialog/v/2.7.2"
+          "source": "https://www.npmjs.com/package/@tauri-apps/plugin-dialog/v/2.8.4"
         },
         {
           "name": "@tauri-apps/plugin-opener",
-          "version": "2.5.4",
+          "version": "2.7.2",
           "ecosystem": "JavaScript",
-          "source": "https://www.npmjs.com/package/@tauri-apps/plugin-opener/v/2.5.4"
+          "source": "https://www.npmjs.com/package/@tauri-apps/plugin-opener/v/2.7.2"
         },
         {
           "name": "tauri-plugin-dialog",
-          "version": "2.7.2",
+          "version": "2.8.4",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-plugin-dialog/2.7.2"
+          "source": "https://crates.io/crates/tauri-plugin-dialog/2.8.4"
         },
         {
           "name": "tauri-plugin-fs",
-          "version": "2.5.1",
+          "version": "2.7.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-plugin-fs/2.5.1"
+          "source": "https://crates.io/crates/tauri-plugin-fs/2.7.1"
         },
         {
           "name": "tauri-plugin-global-shortcut",
-          "version": "2.3.2",
+          "version": "2.4.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-plugin-global-shortcut/2.3.2"
+          "source": "https://crates.io/crates/tauri-plugin-global-shortcut/2.4.1"
         },
         {
           "name": "tauri-plugin-log",
-          "version": "2.9.0",
+          "version": "2.10.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-plugin-log/2.9.0"
+          "source": "https://crates.io/crates/tauri-plugin-log/2.10.1"
         },
         {
           "name": "tauri-plugin-opener",
-          "version": "2.5.4",
+          "version": "2.7.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-plugin-opener/2.5.4"
+          "source": "https://crates.io/crates/tauri-plugin-opener/2.7.2"
         }
       ]
     },
@@ -2932,9 +2996,9 @@
         },
         {
           "name": "camino",
-          "version": "1.2.5",
+          "version": "1.2.6",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/camino/1.2.5"
+          "source": "https://crates.io/crates/camino/1.2.6"
         },
         {
           "name": "cargo-platform",
@@ -2962,9 +3026,9 @@
         },
         {
           "name": "erased-serde",
-          "version": "0.4.10",
+          "version": "0.4.11",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/erased-serde/0.4.10"
+          "source": "https://crates.io/crates/erased-serde/0.4.11"
         },
         {
           "name": "fastrand",
@@ -2977,6 +3041,12 @@
           "version": "1.0.18",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/itoa/1.0.18"
+        },
+        {
+          "name": "lazy_static",
+          "version": "1.5.1",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/lazy_static/1.5.1"
         },
         {
           "name": "once_cell",
@@ -3052,9 +3122,9 @@
         },
         {
           "name": "serde_json",
-          "version": "1.0.151",
+          "version": "1.0.154",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/serde_json/1.0.151"
+          "source": "https://crates.io/crates/serde_json/1.0.154"
         },
         {
           "name": "serde_repr",
@@ -3082,39 +3152,27 @@
         },
         {
           "name": "syn",
-          "version": "3.0.3",
+          "version": "3.0.9",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/syn/3.0.3"
+          "source": "https://crates.io/crates/syn/3.0.9"
         },
         {
           "name": "thiserror",
-          "version": "1.0.69",
+          "version": "2.0.21",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/thiserror/1.0.69"
-        },
-        {
-          "name": "thiserror",
-          "version": "2.0.20",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/thiserror/2.0.20"
+          "source": "https://crates.io/crates/thiserror/2.0.21"
         },
         {
           "name": "thiserror-impl",
-          "version": "1.0.69",
+          "version": "2.0.21",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/thiserror-impl/1.0.69"
-        },
-        {
-          "name": "thiserror-impl",
-          "version": "2.0.20",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/thiserror-impl/2.0.20"
+          "source": "https://crates.io/crates/thiserror-impl/2.0.21"
         },
         {
           "name": "typed-path",
-          "version": "0.12.3",
+          "version": "0.13.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/typed-path/0.12.3"
+          "source": "https://crates.io/crates/typed-path/0.13.0"
         },
         {
           "name": "typeid",
@@ -3124,9 +3182,9 @@
         },
         {
           "name": "unicode-ident",
-          "version": "1.0.24",
+          "version": "1.0.27",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/unicode-ident/1.0.24"
+          "source": "https://crates.io/crates/unicode-ident/1.0.27"
         },
         {
           "name": "utf8-zero",
@@ -3143,9 +3201,9 @@
       "components": [
         {
           "name": "aes",
-          "version": "0.9.2",
+          "version": "0.9.3",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/aes/0.9.2"
+          "source": "https://crates.io/crates/aes/0.9.3"
         }
       ]
     },
@@ -3223,9 +3281,9 @@
         },
         {
           "name": "erased-serde",
-          "version": "0.4.10",
+          "version": "0.4.11",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/erased-serde/0.4.10"
+          "source": "https://crates.io/crates/erased-serde/0.4.11"
         },
         {
           "name": "itoa",
@@ -3235,9 +3293,9 @@
         },
         {
           "name": "libc",
-          "version": "0.2.189",
+          "version": "0.2.191",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/libc/0.2.189"
+          "source": "https://crates.io/crates/libc/0.2.191"
         },
         {
           "name": "paste",
@@ -3307,9 +3365,9 @@
         },
         {
           "name": "serde_json",
-          "version": "1.0.151",
+          "version": "1.0.154",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/serde_json/1.0.151"
+          "source": "https://crates.io/crates/serde_json/1.0.154"
         },
         {
           "name": "serde_repr",
@@ -3331,39 +3389,27 @@
         },
         {
           "name": "syn",
-          "version": "3.0.3",
+          "version": "3.0.9",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/syn/3.0.3"
+          "source": "https://crates.io/crates/syn/3.0.9"
         },
         {
           "name": "thiserror",
-          "version": "1.0.69",
+          "version": "2.0.21",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/thiserror/1.0.69"
-        },
-        {
-          "name": "thiserror",
-          "version": "2.0.20",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/thiserror/2.0.20"
+          "source": "https://crates.io/crates/thiserror/2.0.21"
         },
         {
           "name": "thiserror-impl",
-          "version": "1.0.69",
+          "version": "2.0.21",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/thiserror-impl/1.0.69"
-        },
-        {
-          "name": "thiserror-impl",
-          "version": "2.0.20",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/thiserror-impl/2.0.20"
+          "source": "https://crates.io/crates/thiserror-impl/2.0.21"
         },
         {
           "name": "typed-path",
-          "version": "0.12.3",
+          "version": "0.13.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/typed-path/0.12.3"
+          "source": "https://crates.io/crates/typed-path/0.13.0"
         },
         {
           "name": "typeid",
@@ -3373,9 +3419,9 @@
         },
         {
           "name": "unicode-ident",
-          "version": "1.0.24",
+          "version": "1.0.27",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/unicode-ident/1.0.24"
+          "source": "https://crates.io/crates/unicode-ident/1.0.27"
         },
         {
           "name": "utf8-zero",
@@ -3469,9 +3515,9 @@
         },
         {
           "name": "bitflags",
-          "version": "2.13.1",
+          "version": "2.13.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/bitflags/2.13.1"
+          "source": "https://crates.io/crates/bitflags/2.13.2"
         },
         {
           "name": "glob",
@@ -3481,9 +3527,9 @@
         },
         {
           "name": "log",
-          "version": "0.4.33",
+          "version": "0.4.34",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/log/0.4.33"
+          "source": "https://crates.io/crates/log/0.4.34"
         },
         {
           "name": "num-bigint",
@@ -3496,6 +3542,12 @@
           "version": "0.5.1",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/num-bigint/0.5.1"
+        },
+        {
+          "name": "num-complex",
+          "version": "0.4.6",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/num-complex/0.4.6"
         },
         {
           "name": "num-integer",
@@ -3526,6 +3578,12 @@
           "version": "0.4.18",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/regex-automata/0.4.18"
+        },
+        {
+          "name": "regex-lite",
+          "version": "0.1.9",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/regex-lite/0.1.9"
         },
         {
           "name": "regex-syntax",
@@ -3626,9 +3684,9 @@
       "components": [
         {
           "name": "cfg-if",
-          "version": "1.0.4",
+          "version": "1.0.5",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/cfg-if/1.0.4"
+          "source": "https://crates.io/crates/cfg-if/1.0.5"
         },
         {
           "name": "socket2",
@@ -3645,9 +3703,9 @@
       "components": [
         {
           "name": "chacha20",
-          "version": "0.10.1",
+          "version": "0.10.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/chacha20/0.10.1"
+          "source": "https://crates.io/crates/chacha20/0.10.2"
         }
       ]
     },
@@ -3674,6 +3732,12 @@
           "version": "0.10.2",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/const-oid/0.10.2"
+        },
+        {
+          "name": "cpufeatures",
+          "version": "0.3.1",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/cpufeatures/0.3.1"
         }
       ]
     },
@@ -3687,6 +3751,19 @@
           "version": "0.18.2",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/cookie/0.18.2"
+        }
+      ]
+    },
+    {
+      "key": "b1c9c189e69c03ac50354c3da246679849aa31486b38de8f7096b5e0aeefb893",
+      "license": "Notice",
+      "text": "Copyright (c) 2017-2020 The Rust Project Developers\n\nPermission is hereby granted, free of charge, to any\nperson obtaining a copy of this software and associated\ndocumentation files (the \"Software\"), to deal in the\nSoftware without restriction, including without\nlimitation the rights to use, copy, modify, merge,\npublish, distribute, sublicense, and/or sell copies of\nthe Software, and to permit persons to whom the Software\nis furnished to do so, subject to the following\nconditions:\n\nThe above copyright notice and this permission notice\nshall be included in all copies or substantial portions\nof the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF\nANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED\nTO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A\nPARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT\nSHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY\nCLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION\nOF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR\nIN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER\nDEALINGS IN THE SOFTWARE.\n",
+      "components": [
+        {
+          "name": "core_detect",
+          "version": "1.0.0",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/core_detect/1.0.0"
         }
       ]
     },
@@ -3713,12 +3790,6 @@
           "version": "0.2.17",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/cpufeatures/0.2.17"
-        },
-        {
-          "name": "cpufeatures",
-          "version": "0.3.0",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/cpufeatures/0.3.0"
         }
       ]
     },
@@ -3742,9 +3813,9 @@
       "components": [
         {
           "name": "crc32fast",
-          "version": "1.5.0",
+          "version": "1.5.3",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/crc32fast/1.5.0"
+          "source": "https://crates.io/crates/crc32fast/1.5.3"
         }
       ]
     },
@@ -3755,9 +3826,9 @@
       "components": [
         {
           "name": "crossbeam-channel",
-          "version": "0.5.16",
+          "version": "0.5.17",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/crossbeam-channel/0.5.16"
+          "source": "https://crates.io/crates/crossbeam-channel/0.5.17"
         }
       ]
     },
@@ -3768,15 +3839,15 @@
       "components": [
         {
           "name": "crossbeam-channel",
-          "version": "0.5.16",
+          "version": "0.5.17",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/crossbeam-channel/0.5.16"
+          "source": "https://crates.io/crates/crossbeam-channel/0.5.17"
         },
         {
           "name": "crossbeam-utils",
-          "version": "0.8.22",
+          "version": "0.8.23",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/crossbeam-utils/0.8.22"
+          "source": "https://crates.io/crates/crossbeam-utils/0.8.23"
         }
       ]
     },
@@ -3813,15 +3884,9 @@
       "components": [
         {
           "name": "ctor",
-          "version": "0.8.0",
+          "version": "1.0.13",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/ctor/0.8.0"
-        },
-        {
-          "name": "ctor-proc-macro",
-          "version": "0.0.7",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/ctor-proc-macro/0.0.7"
+          "source": "https://crates.io/crates/ctor/1.0.13"
         }
       ]
     },
@@ -3832,9 +3897,9 @@
       "components": [
         {
           "name": "deranged",
-          "version": "0.5.8",
+          "version": "0.5.9",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/deranged/0.5.8"
+          "source": "https://crates.io/crates/deranged/0.5.9"
         }
       ]
     },
@@ -3884,9 +3949,9 @@
       "components": [
         {
           "name": "dirs",
-          "version": "6.0.0",
+          "version": "7.0.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/dirs/6.0.0"
+          "source": "https://crates.io/crates/dirs/7.0.0"
         },
         {
           "name": "dirs-sys",
@@ -3903,9 +3968,9 @@
       "components": [
         {
           "name": "dirs",
-          "version": "6.0.0",
+          "version": "7.0.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/dirs/6.0.0"
+          "source": "https://crates.io/crates/dirs/7.0.0"
         },
         {
           "name": "dirs-sys",
@@ -3935,9 +4000,9 @@
       "components": [
         {
           "name": "either",
-          "version": "1.18.0",
+          "version": "1.19.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/either/1.18.0"
+          "source": "https://crates.io/crates/either/1.19.0"
         },
         {
           "name": "itertools",
@@ -3947,15 +4012,15 @@
         },
         {
           "name": "serde_with",
-          "version": "3.22.0",
+          "version": "3.24.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/serde_with/3.22.0"
+          "source": "https://crates.io/crates/serde_with/3.24.0"
         },
         {
           "name": "serde_with_macros",
-          "version": "3.22.0",
+          "version": "3.24.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/serde_with_macros/3.22.0"
+          "source": "https://crates.io/crates/serde_with_macros/3.24.0"
         }
       ]
     },
@@ -3966,9 +4031,9 @@
       "components": [
         {
           "name": "encoding_rs",
-          "version": "0.8.35",
+          "version": "0.8.42",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/encoding_rs/0.8.35"
+          "source": "https://crates.io/crates/encoding_rs/0.8.42"
         }
       ]
     },
@@ -3979,9 +4044,15 @@
       "components": [
         {
           "name": "encoding_rs",
-          "version": "0.8.35",
+          "version": "0.8.42",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/encoding_rs/0.8.35"
+          "source": "https://crates.io/crates/encoding_rs/0.8.42"
+        },
+        {
+          "name": "multiversion_no_op",
+          "version": "1.0.0",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/multiversion_no_op/1.0.0"
         },
         {
           "name": "utf8_iter",
@@ -3998,9 +4069,9 @@
       "components": [
         {
           "name": "equivalent",
-          "version": "1.0.2",
+          "version": "1.0.3",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/equivalent/1.0.2"
+          "source": "https://crates.io/crates/equivalent/1.0.3"
         }
       ]
     },
@@ -4060,10 +4131,16 @@
           "source": "https://crates.io/crates/miniz_oxide/0.8.9"
         },
         {
-          "name": "normpath",
-          "version": "1.5.1",
+          "name": "miniz_oxide",
+          "version": "0.9.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/normpath/1.5.1"
+          "source": "https://crates.io/crates/miniz_oxide/0.9.1"
+        },
+        {
+          "name": "normpath",
+          "version": "1.5.2",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/normpath/1.5.2"
         },
         {
           "name": "num-conv",
@@ -4085,9 +4162,15 @@
         },
         {
           "name": "rodio",
-          "version": "0.22.2",
+          "version": "0.23.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/rodio/0.22.2"
+          "source": "https://crates.io/crates/rodio/0.23.0"
+        },
+        {
+          "name": "simdutf8",
+          "version": "0.1.5",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/simdutf8/0.1.5"
         },
         {
           "name": "sync_wrapper",
@@ -4097,69 +4180,69 @@
         },
         {
           "name": "tauri",
-          "version": "2.11.5",
+          "version": "2.12.5",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri/2.11.5"
+          "source": "https://crates.io/crates/tauri/2.12.5"
         },
         {
           "name": "tauri-codegen",
-          "version": "2.6.3",
+          "version": "2.7.4",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-codegen/2.6.3"
+          "source": "https://crates.io/crates/tauri-codegen/2.7.4"
         },
         {
           "name": "tauri-macros",
-          "version": "2.6.3",
+          "version": "2.7.4",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-macros/2.6.3"
+          "source": "https://crates.io/crates/tauri-macros/2.7.4"
         },
         {
           "name": "tauri-plugin-dialog",
-          "version": "2.7.2",
+          "version": "2.8.4",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-plugin-dialog/2.7.2"
+          "source": "https://crates.io/crates/tauri-plugin-dialog/2.8.4"
         },
         {
           "name": "tauri-plugin-fs",
-          "version": "2.5.1",
+          "version": "2.7.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-plugin-fs/2.5.1"
+          "source": "https://crates.io/crates/tauri-plugin-fs/2.7.1"
         },
         {
           "name": "tauri-plugin-global-shortcut",
-          "version": "2.3.2",
+          "version": "2.4.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-plugin-global-shortcut/2.3.2"
+          "source": "https://crates.io/crates/tauri-plugin-global-shortcut/2.4.1"
         },
         {
           "name": "tauri-plugin-log",
-          "version": "2.9.0",
+          "version": "2.10.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-plugin-log/2.9.0"
+          "source": "https://crates.io/crates/tauri-plugin-log/2.10.1"
         },
         {
           "name": "tauri-plugin-opener",
-          "version": "2.5.4",
+          "version": "2.7.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-plugin-opener/2.5.4"
+          "source": "https://crates.io/crates/tauri-plugin-opener/2.7.2"
         },
         {
           "name": "tauri-runtime",
-          "version": "2.11.3",
+          "version": "2.12.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-runtime/2.11.3"
+          "source": "https://crates.io/crates/tauri-runtime/2.12.2"
         },
         {
           "name": "tauri-runtime-wry",
-          "version": "2.11.4",
+          "version": "2.12.3",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-runtime-wry/2.11.4"
+          "source": "https://crates.io/crates/tauri-runtime-wry/2.12.3"
         },
         {
           "name": "tauri-utils",
-          "version": "2.9.3",
+          "version": "2.10.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-utils/2.9.3"
+          "source": "https://crates.io/crates/tauri-utils/2.10.2"
         },
         {
           "name": "time",
@@ -4213,9 +4296,9 @@
       "components": [
         {
           "name": "flate2",
-          "version": "1.1.9",
+          "version": "1.1.10",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/flate2/1.1.9"
+          "source": "https://crates.io/crates/flate2/1.1.10"
         }
       ]
     },
@@ -4372,9 +4455,9 @@
         },
         {
           "name": "muda",
-          "version": "0.19.3",
+          "version": "0.20.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/muda/0.19.3"
+          "source": "https://crates.io/crates/muda/0.20.0"
         }
       ]
     },
@@ -4398,9 +4481,9 @@
       "components": [
         {
           "name": "hashlink",
-          "version": "0.12.1",
+          "version": "0.12.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/hashlink/0.12.1"
+          "source": "https://crates.io/crates/hashlink/0.12.2"
         }
       ]
     },
@@ -4430,15 +4513,15 @@
       "components": [
         {
           "name": "html5ever",
-          "version": "0.38.0",
+          "version": "0.39.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/html5ever/0.38.0"
+          "source": "https://crates.io/crates/html5ever/0.39.0"
         },
         {
           "name": "markup5ever",
-          "version": "0.38.0",
+          "version": "0.39.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/markup5ever/0.38.0"
+          "source": "https://crates.io/crates/markup5ever/0.39.0"
         },
         {
           "name": "web_atoms",
@@ -4494,9 +4577,9 @@
       "components": [
         {
           "name": "hybrid-array",
-          "version": "0.4.14",
+          "version": "0.4.15",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/hybrid-array/0.4.14"
+          "source": "https://crates.io/crates/hybrid-array/0.4.15"
         }
       ]
     },
@@ -4507,15 +4590,15 @@
       "components": [
         {
           "name": "hyper-rustls",
-          "version": "0.27.9",
+          "version": "0.27.10",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/hyper-rustls/0.27.9"
+          "source": "https://crates.io/crates/hyper-rustls/0.27.10"
         },
         {
           "name": "rustls",
-          "version": "0.23.43",
+          "version": "0.23.46",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/rustls/0.23.43"
+          "source": "https://crates.io/crates/rustls/0.23.46"
         }
       ]
     },
@@ -4526,15 +4609,15 @@
       "components": [
         {
           "name": "hyper-rustls",
-          "version": "0.27.9",
+          "version": "0.27.10",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/hyper-rustls/0.27.9"
+          "source": "https://crates.io/crates/hyper-rustls/0.27.10"
         },
         {
           "name": "rustls",
-          "version": "0.23.43",
+          "version": "0.23.46",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/rustls/0.23.43"
+          "source": "https://crates.io/crates/rustls/0.23.46"
         }
       ]
     },
@@ -4548,6 +4631,12 @@
           "version": "1.0.1",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/ident_case/1.0.1"
+        },
+        {
+          "name": "simdutf8",
+          "version": "0.1.5",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/simdutf8/0.1.5"
         }
       ]
     },
@@ -4596,9 +4685,9 @@
       "components": [
         {
           "name": "indexmap",
-          "version": "2.14.0",
+          "version": "2.14.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/indexmap/2.14.0"
+          "source": "https://crates.io/crates/indexmap/2.14.2"
         }
       ]
     },
@@ -4609,9 +4698,9 @@
       "components": [
         {
           "name": "inout",
-          "version": "0.2.2",
+          "version": "0.2.5",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/inout/0.2.2"
+          "source": "https://crates.io/crates/inout/0.2.5"
         }
       ]
     },
@@ -4622,9 +4711,9 @@
       "components": [
         {
           "name": "ipnet",
-          "version": "2.12.1",
+          "version": "2.12.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/ipnet/2.12.1"
+          "source": "https://crates.io/crates/ipnet/2.12.2"
         }
       ]
     },
@@ -4635,9 +4724,9 @@
       "components": [
         {
           "name": "json-patch",
-          "version": "3.0.1",
+          "version": "4.2.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/json-patch/3.0.1"
+          "source": "https://crates.io/crates/json-patch/4.2.0"
         }
       ]
     },
@@ -4648,9 +4737,9 @@
       "components": [
         {
           "name": "jsonptr",
-          "version": "0.6.3",
+          "version": "0.7.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/jsonptr/0.6.3"
+          "source": "https://crates.io/crates/jsonptr/0.7.1"
         }
       ]
     },
@@ -4664,19 +4753,12 @@
           "version": "0.7.0",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/keyboard-types/0.7.0"
-        }
-      ]
-    },
-    {
-      "key": "ee24ce170cba51367a7b839573790039007238fbe4014dccdb16003c34442cf3",
-      "license": "Notice",
-      "text": "Copyright (c) 2010 The Rust Project Developers\n\nPermission is hereby granted, free of charge, to any\nperson obtaining a copy of this software and associated\ndocumentation files (the \"Software\"), to deal in the\nSoftware without restriction, including without\nlimitation the rights to use, copy, modify, merge,\npublish, distribute, sublicense, and/or sell copies of\nthe Software, and to permit persons to whom the Software\nis furnished to do so, subject to the following\nconditions:\n\nThe above copyright notice and this permission notice\nshall be included in all copies or substantial portions\nof the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF\nANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED\nTO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A\nPARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT\nSHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY\nCLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION\nOF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR\nIN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER\nDEALINGS IN THE SOFTWARE.\n",
-      "components": [
+        },
         {
-          "name": "lazy_static",
-          "version": "1.5.0",
+          "name": "keyboard-types",
+          "version": "0.8.3",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/lazy_static/1.5.0"
+          "source": "https://crates.io/crates/keyboard-types/0.8.3"
         }
       ]
     },
@@ -4687,9 +4769,9 @@
       "components": [
         {
           "name": "libc",
-          "version": "0.2.189",
+          "version": "0.2.191",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/libc/0.2.189"
+          "source": "https://crates.io/crates/libc/0.2.191"
         }
       ]
     },
@@ -4737,9 +4819,9 @@
         },
         {
           "name": "sha2",
-          "version": "0.11.0",
+          "version": "0.11.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/sha2/0.11.0"
+          "source": "https://crates.io/crates/sha2/0.11.1"
         }
       ]
     },
@@ -4766,6 +4848,12 @@
           "version": "0.8.9",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/miniz_oxide/0.8.9"
+        },
+        {
+          "name": "miniz_oxide",
+          "version": "0.9.1",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/miniz_oxide/0.9.1"
         }
       ]
     },
@@ -4779,6 +4867,12 @@
           "version": "0.8.9",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/miniz_oxide/0.8.9"
+        },
+        {
+          "name": "miniz_oxide",
+          "version": "0.9.1",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/miniz_oxide/0.9.1"
         }
       ]
     },
@@ -4792,6 +4886,12 @@
           "version": "0.8.9",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/miniz_oxide/0.8.9"
+        },
+        {
+          "name": "miniz_oxide",
+          "version": "0.9.1",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/miniz_oxide/0.9.1"
         }
       ]
     },
@@ -4821,9 +4921,22 @@
       "components": [
         {
           "name": "muda",
-          "version": "0.19.3",
+          "version": "0.20.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/muda/0.19.3"
+          "source": "https://crates.io/crates/muda/0.20.0"
+        }
+      ]
+    },
+    {
+      "key": "17a6b8fda92861bdcbf107a19ea956d7efe55045622332871b1c7efd30c655d0",
+      "license": "Notice",
+      "text": "Copyright Mozilla Foundation\n\nLicensed under the Apache License (Version 2.0), or the MIT license,\n(the \"Licenses\") at your option. You may not use this file except in\ncompliance with one of the Licenses. You may obtain copies of the\nLicenses at:\n\n   https://www.apache.org/licenses/LICENSE-2.0\n   https://opensource.org/licenses/MIT\n\nUnless required by applicable law or agreed to in writing, software\ndistributed under the Licenses is distributed on an \"AS IS\" BASIS,\nWITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\nSee the Licenses for the specific language governing permissions and\nlimitations under the Licenses.\n",
+      "components": [
+        {
+          "name": "multiversion_no_op",
+          "version": "1.0.0",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/multiversion_no_op/1.0.0"
         }
       ]
     },
@@ -4834,9 +4947,9 @@
       "components": [
         {
           "name": "normpath",
-          "version": "1.5.1",
+          "version": "1.5.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/normpath/1.5.1"
+          "source": "https://crates.io/crates/normpath/1.5.2"
         }
       ]
     },
@@ -4847,9 +4960,9 @@
       "components": [
         {
           "name": "normpath",
-          "version": "1.5.1",
+          "version": "1.5.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/normpath/1.5.1"
+          "source": "https://crates.io/crates/normpath/1.5.2"
         }
       ]
     },
@@ -4860,9 +4973,9 @@
       "components": [
         {
           "name": "normpath",
-          "version": "1.5.1",
+          "version": "1.5.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/normpath/1.5.1"
+          "source": "https://crates.io/crates/normpath/1.5.2"
         }
       ]
     },
@@ -4886,9 +4999,9 @@
       "components": [
         {
           "name": "object_store",
-          "version": "0.14.1",
+          "version": "0.14.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/object_store/0.14.1"
+          "source": "https://crates.io/crates/object_store/0.14.2"
         }
       ]
     },
@@ -4897,12 +5010,6 @@
       "license": "Notice",
       "text": "Copyright (c) 2015 nwin\n\nPermission is hereby granted, free of charge, to any\nperson obtaining a copy of this software and associated\ndocumentation files (the \"Software\"), to deal in the\nSoftware without restriction, including without\nlimitation the rights to use, copy, modify, merge,\npublish, distribute, sublicense, and/or sell copies of\nthe Software, and to permit persons to whom the Software\nis furnished to do so, subject to the following\nconditions:\n\nThe above copyright notice and this permission notice\nshall be included in all copies or substantial portions\nof the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF\nANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED\nTO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A\nPARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT\nSHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY\nCLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION\nOF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR\nIN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER\nDEALINGS IN THE SOFTWARE.\n",
       "components": [
-        {
-          "name": "png",
-          "version": "0.17.16",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/png/0.17.16"
-        },
         {
           "name": "png",
           "version": "0.18.1",
@@ -4918,9 +5025,9 @@
       "components": [
         {
           "name": "powerfmt",
-          "version": "0.2.0",
+          "version": "0.2.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/powerfmt/0.2.0"
+          "source": "https://crates.io/crates/powerfmt/0.2.1"
         }
       ]
     },
@@ -4944,9 +5051,9 @@
       "components": [
         {
           "name": "rand",
-          "version": "0.10.2",
+          "version": "0.10.3",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/rand/0.10.2"
+          "source": "https://crates.io/crates/rand/0.10.3"
         },
         {
           "name": "rand_distr",
@@ -4963,9 +5070,9 @@
       "components": [
         {
           "name": "rand",
-          "version": "0.10.2",
+          "version": "0.10.3",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/rand/0.10.2"
+          "source": "https://crates.io/crates/rand/0.10.3"
         }
       ]
     },
@@ -4976,9 +5083,9 @@
       "components": [
         {
           "name": "rand",
-          "version": "0.10.2",
+          "version": "0.10.3",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/rand/0.10.2"
+          "source": "https://crates.io/crates/rand/0.10.3"
         }
       ]
     },
@@ -5054,9 +5161,9 @@
       "components": [
         {
           "name": "reqwest",
-          "version": "0.13.4",
+          "version": "0.13.5",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/reqwest/0.13.4"
+          "source": "https://crates.io/crates/reqwest/0.13.5"
         }
       ]
     },
@@ -5093,9 +5200,9 @@
       "components": [
         {
           "name": "rodio",
-          "version": "0.22.2",
+          "version": "0.23.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/rodio/0.22.2"
+          "source": "https://crates.io/crates/rodio/0.23.0"
         }
       ]
     },
@@ -5119,9 +5226,9 @@
       "components": [
         {
           "name": "rustls-platform-verifier",
-          "version": "0.7.0",
+          "version": "0.7.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/rustls-platform-verifier/0.7.0"
+          "source": "https://crates.io/crates/rustls-platform-verifier/0.7.1"
         }
       ]
     },
@@ -5158,33 +5265,33 @@
       "components": [
         {
           "name": "serde_spanned",
-          "version": "1.1.1",
+          "version": "1.1.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/serde_spanned/1.1.1"
+          "source": "https://crates.io/crates/serde_spanned/1.1.2"
         },
         {
           "name": "toml",
-          "version": "1.1.4+spec-1.1.0",
+          "version": "1.1.8+spec-1.1.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/toml/1.1.4+spec-1.1.0"
+          "source": "https://crates.io/crates/toml/1.1.8+spec-1.1.0"
         },
         {
           "name": "toml_datetime",
-          "version": "1.1.1+spec-1.1.0",
+          "version": "1.1.2+spec-1.1.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/toml_datetime/1.1.1+spec-1.1.0"
+          "source": "https://crates.io/crates/toml_datetime/1.1.2+spec-1.1.0"
         },
         {
           "name": "toml_parser",
-          "version": "1.1.3+spec-1.1.0",
+          "version": "1.1.5+spec-1.1.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/toml_parser/1.1.3+spec-1.1.0"
+          "source": "https://crates.io/crates/toml_parser/1.1.5+spec-1.1.0"
         },
         {
           "name": "toml_writer",
-          "version": "1.1.2+spec-1.1.0",
+          "version": "1.1.3+spec-1.1.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/toml_writer/1.1.2+spec-1.1.0"
+          "source": "https://crates.io/crates/toml_writer/1.1.3+spec-1.1.0"
         }
       ]
     },
@@ -5234,15 +5341,28 @@
       ]
     },
     {
+      "key": "56d1919c53ae0c9312d3a1a6f6658344618ccc293868c094ed790f91ff66f58c",
+      "license": "Notice",
+      "text": "Permission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
+      "components": [
+        {
+          "name": "siphasher",
+          "version": "1.0.4",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/siphasher/1.0.4"
+        }
+      ]
+    },
+    {
       "key": "6a1b07f063d7a0ada56067bba167b99cd23b23a61d8846999836ea9236f6ad67",
       "license": "Notice",
       "text": "Copyright 2012-2016 The Rust Project Developers.\nCopyright 2016-2026 Frank Denis.\n\nLicensed under the Apache License, Version 2.0 <LICENSE-APACHE or\nhttp://www.apache.org/licenses/LICENSE-2.0> or the MIT license\n<LICENSE-MIT or http://opensource.org/licenses/MIT>, at your\noption.\n",
       "components": [
         {
           "name": "siphasher",
-          "version": "1.0.3",
+          "version": "1.0.4",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/siphasher/1.0.3"
+          "source": "https://crates.io/crates/siphasher/1.0.4"
         }
       ]
     },
@@ -5253,9 +5373,9 @@
       "components": [
         {
           "name": "smallvec",
-          "version": "1.15.2",
+          "version": "1.16.4",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/smallvec/1.15.2"
+          "source": "https://crates.io/crates/smallvec/1.16.4"
         }
       ]
     },
@@ -5305,9 +5425,9 @@
       "components": [
         {
           "name": "tao",
-          "version": "0.35.3",
+          "version": "0.37.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tao/0.35.3"
+          "source": "https://crates.io/crates/tao/0.37.2"
         }
       ]
     },
@@ -5318,69 +5438,69 @@
       "components": [
         {
           "name": "tauri",
-          "version": "2.11.5",
+          "version": "2.12.5",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri/2.11.5"
+          "source": "https://crates.io/crates/tauri/2.12.5"
         },
         {
           "name": "tauri-codegen",
-          "version": "2.6.3",
+          "version": "2.7.4",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-codegen/2.6.3"
+          "source": "https://crates.io/crates/tauri-codegen/2.7.4"
         },
         {
           "name": "tauri-macros",
-          "version": "2.6.3",
+          "version": "2.7.4",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-macros/2.6.3"
+          "source": "https://crates.io/crates/tauri-macros/2.7.4"
         },
         {
           "name": "tauri-plugin-dialog",
-          "version": "2.7.2",
+          "version": "2.8.4",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-plugin-dialog/2.7.2"
+          "source": "https://crates.io/crates/tauri-plugin-dialog/2.8.4"
         },
         {
           "name": "tauri-plugin-fs",
-          "version": "2.5.1",
+          "version": "2.7.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-plugin-fs/2.5.1"
+          "source": "https://crates.io/crates/tauri-plugin-fs/2.7.1"
         },
         {
           "name": "tauri-plugin-global-shortcut",
-          "version": "2.3.2",
+          "version": "2.4.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-plugin-global-shortcut/2.3.2"
+          "source": "https://crates.io/crates/tauri-plugin-global-shortcut/2.4.1"
         },
         {
           "name": "tauri-plugin-log",
-          "version": "2.9.0",
+          "version": "2.10.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-plugin-log/2.9.0"
+          "source": "https://crates.io/crates/tauri-plugin-log/2.10.1"
         },
         {
           "name": "tauri-plugin-opener",
-          "version": "2.5.4",
+          "version": "2.7.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-plugin-opener/2.5.4"
+          "source": "https://crates.io/crates/tauri-plugin-opener/2.7.2"
         },
         {
           "name": "tauri-runtime",
-          "version": "2.11.3",
+          "version": "2.12.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-runtime/2.11.3"
+          "source": "https://crates.io/crates/tauri-runtime/2.12.2"
         },
         {
           "name": "tauri-runtime-wry",
-          "version": "2.11.4",
+          "version": "2.12.3",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-runtime-wry/2.11.4"
+          "source": "https://crates.io/crates/tauri-runtime-wry/2.12.3"
         },
         {
           "name": "tauri-utils",
-          "version": "2.9.3",
+          "version": "2.10.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tauri-utils/2.9.3"
+          "source": "https://crates.io/crates/tauri-utils/2.10.2"
         }
       ]
     },
@@ -5442,9 +5562,9 @@
       "components": [
         {
           "name": "tokio-rustls",
-          "version": "0.26.4",
+          "version": "0.26.6",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tokio-rustls/0.26.4"
+          "source": "https://crates.io/crates/tokio-rustls/0.26.6"
         }
       ]
     },
@@ -5481,9 +5601,9 @@
       "components": [
         {
           "name": "unicase",
-          "version": "2.9.0",
+          "version": "2.10.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/unicase/2.9.0"
+          "source": "https://crates.io/crates/unicase/2.10.0"
         }
       ]
     },
@@ -5507,9 +5627,9 @@
       "components": [
         {
           "name": "ureq",
-          "version": "3.4.1",
+          "version": "3.5.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/ureq/3.4.1"
+          "source": "https://crates.io/crates/ureq/3.5.0"
         }
       ]
     },
@@ -5520,9 +5640,9 @@
       "components": [
         {
           "name": "ureq-proto",
-          "version": "0.6.2",
+          "version": "0.6.5",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/ureq-proto/0.6.2"
+          "source": "https://crates.io/crates/ureq-proto/0.6.5"
         }
       ]
     },
@@ -5565,9 +5685,22 @@
         },
         {
           "name": "uuid",
-          "version": "1.24.1",
+          "version": "1.29.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/uuid/1.24.1"
+          "source": "https://crates.io/crates/uuid/1.29.0"
+        }
+      ]
+    },
+    {
+      "key": "4f6870566631dd85a59968b481fe6d5a608c6882001579d0e4df4aad394d47c7",
+      "license": "Notice",
+      "text": "MIT License\n\nCopyright (c) 2023 dAxpeDDa\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
+      "components": [
+        {
+          "name": "web-time",
+          "version": "1.1.0",
+          "ecosystem": "Rust",
+          "source": "https://crates.io/crates/web-time/1.1.0"
         }
       ]
     },
@@ -5591,9 +5724,9 @@
       "components": [
         {
           "name": "window-vibrancy",
-          "version": "0.6.0",
+          "version": "0.8.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/window-vibrancy/0.6.0"
+          "source": "https://crates.io/crates/window-vibrancy/0.8.1"
         }
       ]
     },
@@ -5604,9 +5737,9 @@
       "components": [
         {
           "name": "window-vibrancy",
-          "version": "0.6.0",
+          "version": "0.8.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/window-vibrancy/0.6.0"
+          "source": "https://crates.io/crates/window-vibrancy/0.8.1"
         }
       ]
     },
@@ -5617,27 +5750,27 @@
       "components": [
         {
           "name": "windows",
-          "version": "0.61.3",
+          "version": "0.62.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows/0.61.3"
+          "source": "https://crates.io/crates/windows/0.62.2"
         },
         {
           "name": "windows-collections",
-          "version": "0.2.0",
+          "version": "0.3.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-collections/0.2.0"
+          "source": "https://crates.io/crates/windows-collections/0.3.2"
         },
         {
           "name": "windows-core",
-          "version": "0.61.2",
+          "version": "0.62.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-core/0.61.2"
+          "source": "https://crates.io/crates/windows-core/0.62.2"
         },
         {
           "name": "windows-future",
-          "version": "0.2.1",
+          "version": "0.3.2",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-future/0.2.1"
+          "source": "https://crates.io/crates/windows-future/0.3.2"
         },
         {
           "name": "windows-implement",
@@ -5653,21 +5786,15 @@
         },
         {
           "name": "windows-link",
-          "version": "0.1.3",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-link/0.1.3"
-        },
-        {
-          "name": "windows-link",
           "version": "0.2.1",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/windows-link/0.2.1"
         },
         {
           "name": "windows-numerics",
-          "version": "0.2.0",
+          "version": "0.3.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-numerics/0.2.0"
+          "source": "https://crates.io/crates/windows-numerics/0.3.1"
         },
         {
           "name": "windows-registry",
@@ -5677,21 +5804,9 @@
         },
         {
           "name": "windows-result",
-          "version": "0.3.4",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-result/0.3.4"
-        },
-        {
-          "name": "windows-result",
           "version": "0.4.1",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/windows-result/0.4.1"
-        },
-        {
-          "name": "windows-strings",
-          "version": "0.4.2",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-strings/0.4.2"
         },
         {
           "name": "windows-strings",
@@ -5707,12 +5822,6 @@
         },
         {
           "name": "windows-sys",
-          "version": "0.60.2",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-sys/0.60.2"
-        },
-        {
-          "name": "windows-sys",
           "version": "0.61.2",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/windows-sys/0.61.2"
@@ -5724,16 +5833,10 @@
           "source": "https://crates.io/crates/windows-targets/0.52.6"
         },
         {
-          "name": "windows-targets",
-          "version": "0.53.5",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-targets/0.53.5"
-        },
-        {
           "name": "windows-threading",
-          "version": "0.1.0",
+          "version": "0.2.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows-threading/0.1.0"
+          "source": "https://crates.io/crates/windows-threading/0.2.1"
         },
         {
           "name": "windows-version",
@@ -5746,12 +5849,6 @@
           "version": "0.52.6",
           "ecosystem": "Rust",
           "source": "https://crates.io/crates/windows_x86_64_msvc/0.52.6"
-        },
-        {
-          "name": "windows_x86_64_msvc",
-          "version": "0.53.1",
-          "ecosystem": "Rust",
-          "source": "https://crates.io/crates/windows_x86_64_msvc/0.53.1"
         }
       ]
     },
@@ -5762,9 +5859,9 @@
       "components": [
         {
           "name": "wry",
-          "version": "0.55.1",
+          "version": "0.57.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/wry/0.55.1"
+          "source": "https://crates.io/crates/wry/0.57.1"
         }
       ]
     },
@@ -5775,9 +5872,9 @@
       "components": [
         {
           "name": "wry",
-          "version": "0.55.1",
+          "version": "0.57.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/wry/0.55.1"
+          "source": "https://crates.io/crates/wry/0.57.1"
         }
       ]
     },
@@ -5788,9 +5885,9 @@
       "components": [
         {
           "name": "zeroize",
-          "version": "1.9.0",
+          "version": "1.9.1",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/zeroize/1.9.0"
+          "source": "https://crates.io/crates/zeroize/1.9.1"
         }
       ]
     },
@@ -5839,45 +5936,45 @@
       "components": [
         {
           "name": "icu_collections",
-          "version": "2.3.0",
+          "version": "2.4.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/icu_collections/2.3.0"
+          "source": "https://crates.io/crates/icu_collections/2.4.0"
         },
         {
           "name": "icu_locale_core",
-          "version": "2.3.0",
+          "version": "2.4.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/icu_locale_core/2.3.0"
+          "source": "https://crates.io/crates/icu_locale_core/2.4.0"
         },
         {
           "name": "icu_normalizer",
-          "version": "2.3.0",
+          "version": "2.4.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/icu_normalizer/2.3.0"
+          "source": "https://crates.io/crates/icu_normalizer/2.4.0"
         },
         {
           "name": "icu_normalizer_data",
-          "version": "2.3.0",
+          "version": "2.4.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/icu_normalizer_data/2.3.0"
+          "source": "https://crates.io/crates/icu_normalizer_data/2.4.0"
         },
         {
           "name": "icu_properties",
-          "version": "2.3.0",
+          "version": "2.4.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/icu_properties/2.3.0"
+          "source": "https://crates.io/crates/icu_properties/2.4.0"
         },
         {
           "name": "icu_properties_data",
-          "version": "2.3.0",
+          "version": "2.4.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/icu_properties_data/2.3.0"
+          "source": "https://crates.io/crates/icu_properties_data/2.4.0"
         },
         {
           "name": "icu_provider",
-          "version": "2.3.1",
+          "version": "2.4.0",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/icu_provider/2.3.1"
+          "source": "https://crates.io/crates/icu_provider/2.4.0"
         },
         {
           "name": "litemap",
@@ -5893,9 +5990,9 @@
         },
         {
           "name": "tinystr",
-          "version": "0.8.4",
+          "version": "0.8.5",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/tinystr/0.8.4"
+          "source": "https://crates.io/crates/tinystr/0.8.5"
         },
         {
           "name": "writeable",
@@ -5905,15 +6002,15 @@
         },
         {
           "name": "yoke",
-          "version": "0.8.3",
+          "version": "0.8.4",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/yoke/0.8.3"
+          "source": "https://crates.io/crates/yoke/0.8.4"
         },
         {
           "name": "yoke-derive",
-          "version": "0.8.2",
+          "version": "0.8.4",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/yoke-derive/0.8.2"
+          "source": "https://crates.io/crates/yoke-derive/0.8.4"
         },
         {
           "name": "zerofrom",
@@ -5923,9 +6020,9 @@
         },
         {
           "name": "zerofrom-derive",
-          "version": "0.1.7",
+          "version": "0.1.8",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/zerofrom-derive/0.1.7"
+          "source": "https://crates.io/crates/zerofrom-derive/0.1.8"
         },
         {
           "name": "zerotrie",
@@ -5935,15 +6032,15 @@
         },
         {
           "name": "zerovec",
-          "version": "0.11.8",
+          "version": "0.11.9",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/zerovec/0.11.8"
+          "source": "https://crates.io/crates/zerovec/0.11.9"
         },
         {
           "name": "zerovec-derive",
-          "version": "0.11.6",
+          "version": "0.11.7",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/zerovec-derive/0.11.6"
+          "source": "https://crates.io/crates/zerovec-derive/0.11.7"
         }
       ]
     },
@@ -5954,9 +6051,9 @@
       "components": [
         {
           "name": "unicode-ident",
-          "version": "1.0.24",
+          "version": "1.0.27",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/unicode-ident/1.0.24"
+          "source": "https://crates.io/crates/unicode-ident/1.0.27"
         }
       ]
     },
@@ -5980,9 +6077,9 @@
       "components": [
         {
           "name": "zlib-rs",
-          "version": "0.6.7",
+          "version": "0.6.8",
           "ecosystem": "Rust",
-          "source": "https://crates.io/crates/zlib-rs/0.6.7"
+          "source": "https://crates.io/crates/zlib-rs/0.6.8"
         }
       ]
     }

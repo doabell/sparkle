@@ -79,7 +79,7 @@ version = "0.2"
 
 [target.'cfg(target_os = "windows")'.dependencies.windows]
 # Share Tauri's bindings instead of compiling a separate Windows API stack.
-version = "0.61"
+version = "0.62"
 features = [
     "Foundation",
     "Foundation_Collections",

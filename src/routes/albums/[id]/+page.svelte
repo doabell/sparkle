@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { page } from "$app/stores";
+    import { page } from "$app/state";
     import {
         getAlbum,
         getAlbums,
@@ -12,19 +12,19 @@
         type Album,
         type Track as ApiTrack,
         type CachedImage,
-    } from "$lib/api";
-    import { cachedImageToUrl } from "$lib/utils/base64";
-    import { plural } from "$lib/utils/text";
-    import { loadQueue } from "$lib/stores/playback";
-    import Loading from "$lib/components/Loading.svelte";
-    import TrackRow from "$lib/components/TrackRow.svelte";
-    import Artwork from "$lib/components/Artwork.svelte";
-    import ArtistLinks from "$lib/components/ArtistLinks.svelte";
-    import { addToast } from "$lib/stores/toast";
-    import { windowPageTitle } from "$lib/stores/windowPageTitle";
+    } from "#lib/api.ts";
+    import { cachedImageToUrl } from "#lib/utils/base64.ts";
+    import { plural } from "#lib/utils/text.ts";
+    import { loadQueue } from "#lib/stores/playback.ts";
+    import Loading from "#lib/components/Loading.svelte";
+    import TrackRow from "#lib/components/TrackRow.svelte";
+    import Artwork from "#lib/components/Artwork.svelte";
+    import ArtistLinks from "#lib/components/ArtistLinks.svelte";
+    import { addToast } from "#lib/stores/toast.ts";
+    import { windowPageTitle } from "#lib/stores/windowPageTitle.ts";
 
     import { onDestroy } from "svelte";
-    import { createLatestRequest } from "$lib/utils/latestRequest";
+    import { createLatestRequest } from "#lib/utils/latestRequest.ts";
 
     const requests = createLatestRequest();
     const artRequests = createLatestRequest();
@@ -40,7 +40,7 @@
     let loading = $state(true);
     let artDialogOpen = $state(false);
 
-    const albumId = $derived(Number($page.params.id));
+    const albumId = $derived(Number(page.params.id));
 
     $effect(() => {
         windowPageTitle.set(album?.title ?? null);

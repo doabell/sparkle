@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { lyricWrapSegments } from "$lib/utils/lrc";
+    import { lyricWrapSegments } from "#lib/utils/lrc.ts";
 
     let { text }: { text: string } = $props();
     let segments = $derived(lyricWrapSegments(text));

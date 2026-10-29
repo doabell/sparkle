@@ -12,18 +12,18 @@
         seek,
         setShuffle,
         cycleRepeatMode,
-    } from "$lib/stores/playback";
-    import { formatTime } from "$lib/utils/formatTime";
-    import { smartGo } from "$lib/utils/nav";
-    import { getLyrics, LYRICS_CHANGED_EVENT } from "$lib/api";
-    import { playbackArtwork } from "$lib/stores/playbackArtwork";
-    import PlayerArtwork from "$lib/components/PlayerArtwork.svelte";
-    import { parseLrc, activeLineIndex, type LrcLine } from "$lib/utils/lrc";
+    } from "#lib/stores/playback.ts";
+    import { formatTime } from "#lib/utils/formatTime.ts";
+    import { smartGo } from "#lib/utils/nav.ts";
+    import { getLyrics, LYRICS_CHANGED_EVENT } from "#lib/api.ts";
+    import { playbackArtwork } from "#lib/stores/playbackArtwork.ts";
+    import PlayerArtwork from "#lib/components/PlayerArtwork.svelte";
+    import { parseLrc, activeLineIndex, type LrcLine } from "#lib/utils/lrc.ts";
     import { listen } from "@tauri-apps/api/event";
     import { onMount } from "svelte";
-    import QueuePanel from "$lib/components/QueuePanel.svelte";
-    import ArtistLinks from "$lib/components/ArtistLinks.svelte";
-    import { miniPlayer } from "$lib/stores/miniPlayer";
+    import QueuePanel from "#lib/components/QueuePanel.svelte";
+    import ArtistLinks from "#lib/components/ArtistLinks.svelte";
+    import { miniPlayer } from "#lib/stores/miniPlayer.ts";
 
     let art = $derived($playbackArtwork);
     let queueOpen = $state(false);

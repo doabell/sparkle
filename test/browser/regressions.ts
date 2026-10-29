@@ -5,7 +5,7 @@ import Lists from "./Lists.svelte";
 import ArtworkRows from "./ArtworkRows.svelte";
 import MiniPlayer from "../../src/lib/components/MiniPlayer.svelte";
 import Playlist from "../../src/routes/playlists/[id]/+page.svelte";
-import { navigate, navigations } from "./router";
+import { navigate, navigations } from "./router.svelte.ts";
 import { getAlbumArt, getArtistImage } from "../../src/lib/api";
 import { playback } from "../../src/lib/stores/playback";
 

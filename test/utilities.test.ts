@@ -111,9 +111,9 @@ test("intersection action only triggers for visible entries and disconnects", ()
 
 test("same-route navigation replaces history while a new route pushes", async () => {
     goto.mockClear();
-    page.set({ url: new URL("https://sparkle.test/albums") });
+    page.url = new URL("https://sparkle.test/albums");
     await smartGo("/albums");
-    expect(goto).toHaveBeenLastCalledWith("/albums", { replaceState: true });
+    expect(goto).toHaveBeenLastCalledWith("/albums", { replace: true });
     await smartGo("/artists");
     expect(goto).toHaveBeenLastCalledWith("/artists");
 });

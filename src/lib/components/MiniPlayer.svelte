@@ -1,7 +1,7 @@
 <script lang="ts">
-    import MiniLyrics from "$lib/components/MiniLyrics.svelte";
-    import PlayerArtwork from "$lib/components/PlayerArtwork.svelte";
-    import { playbackArtwork } from "$lib/stores/playbackArtwork";
+    import MiniLyrics from "#lib/components/MiniLyrics.svelte";
+    import PlayerArtwork from "#lib/components/PlayerArtwork.svelte";
+    import { playbackArtwork } from "#lib/stores/playbackArtwork.ts";
     import {
         playback,
         interpolatedPositionMs,
@@ -15,8 +15,8 @@
         getUnmuteVolume,
         setShuffle,
         cycleRepeatMode,
-    } from "$lib/stores/playback";
-    import { formatTime } from "$lib/utils/formatTime";
+    } from "#lib/stores/playback.ts";
+    import { formatTime } from "#lib/utils/formatTime.ts";
 
     let track = $derived($playback.current_track);
     let artist = $derived(track?.artist_names?.join(", ") || "Unknown artist");

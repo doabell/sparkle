@@ -1,18 +1,18 @@
 <script lang="ts">
     import { onDestroy, onMount } from "svelte";
-    import { createLatestRequest } from "$lib/utils/latestRequest";
+    import { createLatestRequest } from "#lib/utils/latestRequest.ts";
     const requests = createLatestRequest();
     onDestroy(requests.invalidate);
     import {
         getListeningStats,
         type ListeningStats,
         type PlayStatBucket,
-    } from "$lib/api";
-    import { uiPref } from "$lib/stores/uiPrefs";
-    import Loading from "$lib/components/Loading.svelte";
-    import Artwork from "$lib/components/Artwork.svelte";
-    import ArtistAvatar from "$lib/components/ArtistAvatar.svelte";
-    import { plural } from "$lib/utils/text";
+    } from "#lib/api.ts";
+    import { uiPref } from "#lib/stores/uiPrefs.ts";
+    import Loading from "#lib/components/Loading.svelte";
+    import Artwork from "#lib/components/Artwork.svelte";
+    import ArtistAvatar from "#lib/components/ArtistAvatar.svelte";
+    import { plural } from "#lib/utils/text.ts";
 
     const RANGES = [
         { days: 7, label: "7 days" },

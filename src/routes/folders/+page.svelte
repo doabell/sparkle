@@ -6,10 +6,10 @@
         removeFolder,
         setFolderEnabled,
         type Folder,
-    } from "$lib/api";
-    import Loading from "$lib/components/Loading.svelte";
-    import { addToast } from "$lib/stores/toast";
-    import { libraryScan } from "$lib/stores/libraryScan";
+    } from "#lib/api.ts";
+    import Loading from "#lib/components/Loading.svelte";
+    import { addToast } from "#lib/stores/toast.ts";
+    import { libraryScan } from "#lib/stores/libraryScan.ts";
     import { onMount } from "svelte";
 
     let folders = $state<Folder[]>([]);

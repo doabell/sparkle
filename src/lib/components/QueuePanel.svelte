@@ -1,10 +1,10 @@
 <script lang="ts">
-    import { createQueueStore, QUEUE_PAGE_SIZE } from "$lib/stores/queue";
-    import { playQueueIndex } from "$lib/stores/playback";
-    import { formatTime } from "$lib/utils/formatTime";
-    import Artwork from "$lib/components/Artwork.svelte";
-    import VirtualList from "$lib/components/VirtualList.svelte";
-    import { addToast } from "$lib/stores/toast";
+    import { createQueueStore, QUEUE_PAGE_SIZE } from "#lib/stores/queue.ts";
+    import { playQueueIndex } from "#lib/stores/playback.ts";
+    import { formatTime } from "#lib/utils/formatTime.ts";
+    import Artwork from "#lib/components/Artwork.svelte";
+    import VirtualList from "#lib/components/VirtualList.svelte";
+    import { addToast } from "#lib/stores/toast.ts";
 
     let { onClose }: { onClose: () => void } = $props();
     const queueStore = createQueueStore();

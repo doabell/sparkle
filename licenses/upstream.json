@@ -1,15 +1,15 @@
 [
     {
-        "packages": ["velopack@1.2.0"],
+        "packages": ["velopack@1.2.161"],
         "license": "MIT",
-        "file": "upstream/velopack-1.2.0-MIT.txt",
-        "source": "https://github.com/velopack/velopack/blob/1.2.0/LICENSE"
+        "file": "upstream/velopack-1.2.161-MIT.txt",
+        "source": "https://github.com/velopack/velopack/blob/1.2.161/LICENSE"
     },
     {
-        "packages": ["webview2-com@0.38.2", "webview2-com-sys@0.38.2"],
+        "packages": ["webview2-com@0.39.1", "webview2-com-sys@0.39.1"],
         "license": "MIT",
-        "file": "upstream/webview2-com-0.38.2-MIT.txt",
-        "source": "https://github.com/wravery/webview2-rs/blob/b74dc5e2b394044bea5191052868ce7a106c202c/LICENSE"
+        "file": "upstream/webview2-com-0.39.1-MIT.txt",
+        "source": "https://github.com/wravery/webview2-rs/blob/edc2caf886175ccaebe86078c9cfe1ae2a187328/LICENSE"
     },
     {
         "packages": ["webview2-com-macros@0.8.1"],

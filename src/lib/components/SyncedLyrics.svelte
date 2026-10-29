@@ -5,11 +5,11 @@
         LYRIC_TRANSITION_DURATION_MS,
         parseLrc,
         lrcPlainText,
-    } from "$lib/utils/lrc";
+    } from "#lib/utils/lrc.ts";
     import { onMount } from "svelte";
     import type { Action } from "svelte/action";
-    import LyricText from "$lib/components/LyricText.svelte";
-    import { prefersReducedMotion } from "$lib/utils/motion";
+    import LyricText from "#lib/components/LyricText.svelte";
+    import { prefersReducedMotion } from "#lib/utils/motion.ts";
 
     interface Props {
         fontFamily?: string;

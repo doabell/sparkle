@@ -10,8 +10,9 @@ bun run format:check
 bun run version:check
 ```
 
-The test scripts run `svelte-kit sync` first so `$lib` aliases resolve on a
-fresh checkout. Use `bun run test -- <file>` to select a test file.
+The test scripts run `svelte-kit sync` first to generate SvelteKit configuration
+on a fresh checkout. `#lib/*` imports are defined in `package.json`.
+Use `bun run test -- <file>` to select a test file.
 
 Dev/test builds retain Sparkle's debug symbols and omit dependency symbols.
 To debug dependency code, pass `--config 'profile.dev.package."*".debug=2'` to Cargo.
@@ -37,7 +38,7 @@ On Windows, install the coverage tools once:
 
 ```sh
 rustup component add llvm-tools-preview
-cargo install cargo-llvm-cov --version 0.9.0 --locked
+cargo install cargo-llvm-cov --version 0.9.1 --locked
 bun run test:coverage
 ```
 
@@ -71,7 +72,7 @@ full backend gate; `scripts/check-coverage.mjs` defines the inventories and gate
 - Tests use in-memory SQLite, temporary files, synthetic audio, fake storage,
   and bounded loopback HTTP fixtures. They need no player window, real audio
   output, or provider credentials. The taskbar-icon test uses a hidden native
-  window. FFmpeg is needed only to regenerate the committed FLAC fixture.
+  window. FFmpeg is needed only to regenerate the committed audio fixtures.
 - `test/fixtures/lrc.json` supplies the shared frontend/native lyric contract.
   Rust unit tests live in adjacent `tests/` directories so coverage excludes
   test code without excluding production modules.

@@ -4,7 +4,7 @@ import {
     getLibraryScanStatus,
     scanLibrary,
     type LibraryScanStatus,
-} from "$lib/api";
+} from "#lib/api.ts";
 import { addToast } from "./toast";
 
 interface ScanState extends LibraryScanStatus {

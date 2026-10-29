@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { getArtistDisplayEntries } from "$lib/utils/artists";
+    import { getArtistDisplayEntries } from "#lib/utils/artists.ts";
 
     interface Props {
         names?: readonly string[] | null;
