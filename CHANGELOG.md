@@ -2,12 +2,18 @@
 
 ## Unreleased
 
-- Fix seeks at both ends of the progress bar by enabling random access for audio files and keeping targets inside the decoded duration.
-- Define typed playback event payloads, command-linked failures, accurate queue/output transitions, and crash-recovery listen endings.
-- Prevent delayed playback events and command replies from rewinding seeks or overwriting newer state.
-- Report playback command outcomes and failures with correlation IDs, loading timings, and device recovery diagnostics.
-- Add local playback diagnostic captures and history-recorder health in Settings.
+## 0.6.0 — 2026-10-29
+
+- Add a compact mini player with synchronized lyrics, playback and seek controls, scrollable volume, and an optional always-on-top mode.
+- Customize Discord presence with editable metadata and lyric templates, artwork and progress controls, and a live track preview.
+- Fix seeks at both ends of the progress bar and prevent delayed playback events or command replies from overwriting newer playback state.
+- Improve queue paging, large track lists, and navigation so stale requests cannot replace the current view or queue.
+- Keep player artwork visible between track changes and show cached artwork immediately when rows return.
+- Repair lyric display and refresh, reuse unchanged audio fingerprints during full library scans, and restore Windows taskbar icons.
+- Add local playback diagnostic captures and history-recorder health in Settings, with clearer command outcomes, device recovery diagnostics, and crash-recovery listen endings.
 - Keep listening history without an automatic retention limit; expire diagnostic events after seven days and omit them from new library backups.
+- Upgrade desktop, audio, storage, and updater dependencies while preserving existing audio identities and refreshing bundled license notices.
+- Streamline build and release checks, reuse verified Windows packages, and expand playback, browser, and audio-identity regression coverage.
 
 ## 0.5.0 — 2026-09-10
 
