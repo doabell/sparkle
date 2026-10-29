@@ -6,22 +6,32 @@ updates use app ID `com.doabell.sparkle` and feed channel `win-x64`.
 
 ## Release
 
+Use GitHub Actions for builds, Windows packaging, and native Rust tests or
+coverage. Local release preparation can run formatting, version/license checks,
+type checks, and lightweight frontend tests.
+
 1. Update `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`,
-   `Cargo.lock`, and the matching `CHANGELOG.md` section. Run `bun run version:check`.
-2. For dependency changes, install `cargo-about` 0.8.4 with `--locked`, run
-   `bun run licenses:generate`, and commit the reviewed `licenses/dependencies.json`.
+   `src-tauri/Cargo.lock`, and the matching `CHANGELOG.md` section. Run
+   `bun run version:check`.
+2. Run `bun run licenses:check`. A version-only bump also changes the report's
+   input fingerprint; refresh it only after verifying that the other dependency,
+   notice, and generator inputs are unchanged. For dependency changes, regenerate
+   the report in CI with `cargo-about` 0.8.4 installed using `--locked` and
+   `bun run licenses:generate`, then commit the reviewed `licenses/dependencies.json`.
    `licenses/about.toml` lists accepted licenses; `licenses/upstream.json` supplies
    version-specific license files missing from published crates.
-3. To test packaging locally, install the Tauri prerequisites and .NET SDK 8,
-   run `dotnet tool restore`, then `bun run package:windows`. Use a fresh
-   `.tmp/releases` output directory. `VPK` and `CARGO_ABOUT` can select local tools.
-   `VPK` also accepts the pinned CLI's DLL when using an installed .NET runtime.
-   Add `--test` to compile the app and both workspace library test suites together,
-   then run the desktop and core tests before creating the installer.
-4. Merge and wait for main CI, then tag that commit `vX.Y.Z` and push the tag.
-   Actions creates a draft release. Review and publish its setup, full `.nupkg`,
-   and channel feed together, preserving asset names. Stable updates exclude
-   drafts and prereleases.
+3. Open a release PR and wait for CI. Download `sparkle-windows-x64` from that
+   run to test installation, playback, and the release's new features in a
+   disposable Windows user or VM. Complete the upgrade smoke test below; use a
+   fork for feed testing because the production updater excludes draft releases.
+4. Merge the release PR and wait for both CI and Coverage on that exact main
+   commit. Confirm that CI uploaded `sparkle-windows-x64` for the new version,
+   then tag the verified commit `vX.Y.Z` and push the tag.
+5. Actions creates a draft release, reusing the verified main package when
+   available. Review the release notes and publish its setup, full `.nupkg`,
+   and channel feed together, preserving asset names. Publishing makes the
+   version visible to stable in-app update checks; drafts and prereleases stay
+   excluded.
 
 Packages include the app, required DLLs, license notices, and offline dependency
 license texts. Setup creates a Start menu shortcut and installs WebView2 if
