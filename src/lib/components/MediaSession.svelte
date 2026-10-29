@@ -1,10 +1,10 @@
 <script lang="ts">
-    import { logger } from "$lib/logger";
+    import { logger } from "#lib/logger.ts";
     import { onMount } from "svelte";
-    import { getAlbumArtData, type Track } from "$lib/api";
-    import { bytesToBase64 } from "$lib/utils/base64";
-    import { initializeMediaSessionOnce } from "$lib/utils/mediaSession";
-    import { playback } from "$lib/stores/playback";
+    import { getAlbumArtData, type Track } from "#lib/api.ts";
+    import { bytesToBase64 } from "#lib/utils/base64.ts";
+    import { initializeMediaSessionOnce } from "#lib/utils/mediaSession.ts";
+    import { playback } from "#lib/stores/playback.ts";
     import {
         mediaControls,
         PlaybackStatus,

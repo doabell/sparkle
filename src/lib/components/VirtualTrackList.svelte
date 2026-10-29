@@ -1,9 +1,9 @@
 <script lang="ts" generics="T">
     import type { Snippet } from "svelte";
-    import VirtualList from "$lib/components/VirtualList.svelte";
+    import VirtualList from "#lib/components/VirtualList.svelte";
     import ScrollIndex, {
         type ScrollIndexEntry,
-    } from "$lib/components/ScrollIndex.svelte";
+    } from "#lib/components/ScrollIndex.svelte";
 
     interface Props {
         groups: { key: string; items: T[]; offset: number }[];

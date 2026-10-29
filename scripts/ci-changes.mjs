@@ -2,11 +2,7 @@ import { spawnSync } from "node:child_process";
 import { appendFileSync, readFileSync } from "node:fs";
 
 const allChecks = () => ({ frontend: true, rust: true, package: true });
-const frontendConfig = new Set([
-    "svelte.config.js",
-    "vite.config.js",
-    "tsconfig.json",
-]);
+const frontendConfig = new Set(["vite.config.js", "tsconfig.json"]);
 
 /**
  * Only known inputs may skip work. New configuration/build paths run everything.

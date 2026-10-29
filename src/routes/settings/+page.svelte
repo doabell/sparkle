@@ -29,25 +29,25 @@
         type BackupManifest,
         type BackupSections,
         type LoudnessStatus,
-    } from "$lib/api";
-    import Loading from "$lib/components/Loading.svelte";
-    import Select from "$lib/components/Select.svelte";
-    import UpdateSettings from "$lib/components/UpdateSettings.svelte";
-    import LicenseSettings from "$lib/components/LicenseSettings.svelte";
-    import DiscordLayoutSettings from "$lib/components/DiscordLayoutSettings.svelte";
-    import { defaultDiscordLayout } from "$lib/utils/discord";
-    import { addToast } from "$lib/stores/toast";
-    import { songIndexLanguage } from "$lib/stores/songIndex";
+    } from "#lib/api.ts";
+    import Loading from "#lib/components/Loading.svelte";
+    import Select from "#lib/components/Select.svelte";
+    import UpdateSettings from "#lib/components/UpdateSettings.svelte";
+    import LicenseSettings from "#lib/components/LicenseSettings.svelte";
+    import DiscordLayoutSettings from "#lib/components/DiscordLayoutSettings.svelte";
+    import { defaultDiscordLayout } from "#lib/utils/discord.ts";
+    import { addToast } from "#lib/stores/toast.ts";
+    import { songIndexLanguage } from "#lib/stores/songIndex.ts";
     import {
         nowPlayingLayout,
         type NowPlayingLayout,
-    } from "$lib/stores/uiPrefs";
-    import { getFontStack } from "$lib/utils/fonts";
+    } from "#lib/stores/uiPrefs.ts";
+    import { getFontStack } from "#lib/utils/fonts.ts";
     import {
         applyThemeMode,
         cacheThemeMode,
         normalizeThemeMode,
-    } from "$lib/utils/themeMode";
+    } from "#lib/utils/themeMode.ts";
     import {
         DEFAULT_ACCENT_COLOR,
         applyAccent,
@@ -56,8 +56,8 @@
         normalizeAccentForegroundPreference,
         normalizeHex,
         type AccentPalette,
-    } from "$lib/utils/theme";
-    import type { SongIndexLanguage } from "$lib/utils/songIndex";
+    } from "#lib/utils/theme.ts";
+    import type { SongIndexLanguage } from "#lib/utils/songIndex.ts";
 
     const DEFAULT_BACKUP_SECTIONS: BackupSections = {
         settings: true,

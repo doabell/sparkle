@@ -7,7 +7,7 @@
         getUpdateStatus,
         installUpdate,
         type UpdateStatus,
-    } from "$lib/api";
+    } from "#lib/api.ts";
 
     let status = $state<UpdateStatus | null>(null);
     let requestPending = $state(false);

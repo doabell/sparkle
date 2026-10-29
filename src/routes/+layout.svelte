@@ -1,45 +1,45 @@
 <script lang="ts">
-    import { logger, installErrorLogging } from "$lib/logger";
+    import { logger, installErrorLogging } from "#lib/logger.ts";
     import "../app.css";
-    import { browser } from "$app/environment";
-    import { page } from "$app/stores";
+    import { browser } from "$app/env";
+    import { page } from "$app/state";
     import { afterNavigate, beforeNavigate } from "$app/navigation";
-    import Sidebar from "$lib/components/Sidebar.svelte";
-    import PlayerBar from "$lib/components/PlayerBar.svelte";
-    import MiniPlayer from "$lib/components/MiniPlayer.svelte";
-    import { miniPlayer } from "$lib/stores/miniPlayer";
-    import Toaster from "$lib/components/Toaster.svelte";
-    import MediaSession from "$lib/components/MediaSession.svelte";
-    import CommandPalette from "$lib/components/CommandPalette.svelte";
-    import WindowControls from "$lib/components/WindowControls.svelte";
-    import PageScrollbar from "$lib/components/PageScrollbar.svelte";
+    import Sidebar from "#lib/components/Sidebar.svelte";
+    import PlayerBar from "#lib/components/PlayerBar.svelte";
+    import MiniPlayer from "#lib/components/MiniPlayer.svelte";
+    import { miniPlayer } from "#lib/stores/miniPlayer.ts";
+    import Toaster from "#lib/components/Toaster.svelte";
+    import MediaSession from "#lib/components/MediaSession.svelte";
+    import CommandPalette from "#lib/components/CommandPalette.svelte";
+    import WindowControls from "#lib/components/WindowControls.svelte";
+    import PageScrollbar from "#lib/components/PageScrollbar.svelte";
     import { onMount } from "svelte";
     import { listen } from "@tauri-apps/api/event";
     import { getCurrentWindow } from "@tauri-apps/api/window";
-    import { getOnlineSettings } from "$lib/api";
-    import { getFontStack } from "$lib/utils/fonts";
+    import { getOnlineSettings } from "#lib/api.ts";
+    import { getFontStack } from "#lib/utils/fonts.ts";
     import {
         applyCachedThemeMode,
         applyThemeMode,
         cacheThemeMode,
-    } from "$lib/utils/themeMode";
+    } from "#lib/utils/themeMode.ts";
     import {
         DEFAULT_ACCENT_COLOR,
         applyAccent,
         applyCachedAccent,
         cacheAccent,
         normalizeAccentForegroundPreference,
-    } from "$lib/utils/theme";
-    import { createContentScrollRestorer } from "$lib/utils/scrollRestore";
-    import { windowPageTitle } from "$lib/stores/windowPageTitle";
-    import { libraryScan } from "$lib/stores/libraryScan";
-    import { getRouteTitle, getWindowTitle } from "$lib/utils/windowTitle";
+    } from "#lib/utils/theme.ts";
+    import { createContentScrollRestorer } from "#lib/utils/scrollRestore.ts";
+    import { windowPageTitle } from "#lib/stores/windowPageTitle.ts";
+    import { libraryScan } from "#lib/stores/libraryScan.ts";
+    import { getRouteTitle, getWindowTitle } from "#lib/utils/windowTitle.ts";
     import {
         readScrollbackFromHistory,
         saveScrollbackToHistory,
         scrollbackRegistry,
         type ScrollbackSnapshot,
-    } from "$lib/utils/scrollback";
+    } from "#lib/utils/scrollback.ts";
     import {
         playback,
         play,
@@ -48,7 +48,7 @@
         previousTrack,
         setVolume,
         seek,
-    } from "$lib/stores/playback";
+    } from "#lib/stores/playback.ts";
 
     const SEEK_STEP_MS = 5000;
     const overlayScrollbarSupported =
@@ -107,7 +107,7 @@
         return { top, maxScrollTop };
     }
 
-    function routeKey(url: URL): string {
+    function routeKey(url: Pick<URL, "pathname" | "search" | "hash">): string {
         return `${url.pathname}${url.search}${url.hash}`;
     }
 
@@ -122,7 +122,7 @@
             | { top: number; maxScrollTop: number }
             | number
             | null,
-        route = routeKey($page.url),
+        route = routeKey(page.url),
     ) {
         if (!snapshot || !supportsScrollback(route)) return;
 
@@ -136,7 +136,7 @@
         return scrollbackRegistry.capture(route, captureContentScroll());
     }
 
-    function saveCurrentScrollback(route = routeKey($page.url)) {
+    function saveCurrentScrollback(route = routeKey(page.url)) {
         if (!supportsScrollback(route)) return;
 
         saveScrollbackToHistory(
@@ -150,7 +150,7 @@
     // separate list positions when navigating through several detail pages.
     export const snapshot = {
         capture: () => {
-            const route = routeKey($page.url);
+            const route = routeKey(page.url);
             return supportsScrollback(route) ? captureScrollback(route) : null;
         },
         restore: restoreContentScroll,
@@ -177,14 +177,14 @@
     });
 
     $effect(() => {
-        const path = $page.url.pathname;
+        const path = page.url.pathname;
         canGoBack =
             window.history.length > 1 &&
             BACK_ROUTES.some((r) => path.startsWith(r));
     });
 
     $effect(() => {
-        windowPageTitle.set(getRouteTitle($page.url.pathname));
+        windowPageTitle.set(getRouteTitle(page.url.pathname));
     });
 
     // The current route provides the stable context. While audio is actively
@@ -194,7 +194,7 @@
     $effect(() => {
         if (typeof document === "undefined") return;
         const title = getWindowTitle(
-            $page.url.pathname,
+            page.url.pathname,
             $playback.current_track,
             $playback.is_playing,
             $windowPageTitle,
@@ -403,7 +403,7 @@
             id="page-content"
             bind:this={contentElement}
             class="content"
-            class:now-playing-content={$page.url.pathname === "/now-playing"}
+            class:now-playing-content={page.url.pathname === "/now-playing"}
         >
             {#if canGoBack}
                 <button
@@ -430,7 +430,7 @@
         <PageScrollbar
             target={contentElement}
             enabled={overlayScrollbarSupported &&
-                $page.url.pathname !== "/now-playing"}
+                page.url.pathname !== "/now-playing"}
         />
         <div class="player-wrapper">
             <PlayerBar />

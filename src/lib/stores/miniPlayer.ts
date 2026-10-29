@@ -8,7 +8,7 @@ import {
     type PhysicalSize,
     type Window as TauriWindow,
 } from "@tauri-apps/api/window";
-import { addToast } from "$lib/stores/toast";
+import { addToast } from "#lib/stores/toast.ts";
 
 export const MINI_PLAYER_SIZE = new LogicalSize(360, 154);
 

@@ -1,6 +1,6 @@
 <script lang="ts">
-    import { getAlbumArt } from "$lib/api";
-    import { cachedImageToUrl } from "$lib/utils/base64";
+    import { getAlbumArt } from "#lib/api.ts";
+    import { cachedImageToUrl } from "#lib/utils/base64.ts";
 
     interface Props {
         albumIds: (number | null | undefined)[];

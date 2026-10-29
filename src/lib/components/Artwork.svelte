@@ -1,7 +1,7 @@
 <script lang="ts">
-    import { getAlbumArt, getCachedAlbumArt } from "$lib/api";
-    import { onceVisible } from "$lib/utils/onceVisible";
-    import { cachedImageToUrl } from "$lib/utils/base64";
+    import { getAlbumArt, getCachedAlbumArt } from "#lib/api.ts";
+    import { onceVisible } from "#lib/utils/onceVisible.ts";
+    import { cachedImageToUrl } from "#lib/utils/base64.ts";
 
     interface Props {
         albumId: number | null | undefined;

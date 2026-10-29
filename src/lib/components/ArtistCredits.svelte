@@ -1,6 +1,6 @@
 <script lang="ts">
-    import ArtistAvatar from "$lib/components/ArtistAvatar.svelte";
-    import { getArtistDisplayEntries } from "$lib/utils/artists";
+    import ArtistAvatar from "#lib/components/ArtistAvatar.svelte";
+    import { getArtistDisplayEntries } from "#lib/utils/artists.ts";
 
     interface Props {
         names?: readonly string[] | null;

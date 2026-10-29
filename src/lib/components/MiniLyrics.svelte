@@ -1,13 +1,13 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import { listen } from "@tauri-apps/api/event";
-    import { getLyrics, LYRICS_CHANGED_EVENT } from "$lib/api";
+    import { getLyrics, LYRICS_CHANGED_EVENT } from "#lib/api.ts";
     import {
         activeLineIndex,
         lrcPlainText,
         parseLrc,
         type LrcLine,
-    } from "$lib/utils/lrc";
+    } from "#lib/utils/lrc.ts";
 
     let {
         trackId,

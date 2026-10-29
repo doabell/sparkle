@@ -1,25 +1,25 @@
 <script lang="ts">
-    import { logger } from "$lib/logger";
-    import { getAlbums, getTracks, type Album } from "$lib/api";
-    import { loadQueue } from "$lib/stores/playback";
-    import { uiPref } from "$lib/stores/uiPrefs";
-    import Loading from "$lib/components/Loading.svelte";
+    import { logger } from "#lib/logger.ts";
+    import { getAlbums, getTracks, type Album } from "#lib/api.ts";
+    import { loadQueue } from "#lib/stores/playback.ts";
+    import { uiPref } from "#lib/stores/uiPrefs.ts";
+    import Loading from "#lib/components/Loading.svelte";
     import ScrollIndex, {
         type ScrollIndexEntry,
-    } from "$lib/components/ScrollIndex.svelte";
-    import Select from "$lib/components/Select.svelte";
-    import SortDirButton from "$lib/components/SortDirButton.svelte";
-    import ViewModeToggle from "$lib/components/ViewModeToggle.svelte";
-    import Artwork from "$lib/components/Artwork.svelte";
-    import { songIndexLanguage } from "$lib/stores/songIndex";
+    } from "#lib/components/ScrollIndex.svelte";
+    import Select from "#lib/components/Select.svelte";
+    import SortDirButton from "#lib/components/SortDirButton.svelte";
+    import ViewModeToggle from "#lib/components/ViewModeToggle.svelte";
+    import Artwork from "#lib/components/Artwork.svelte";
+    import { songIndexLanguage } from "#lib/stores/songIndex.ts";
     import {
         createScrollIndexEntries,
         createGroupScrollIndexEntries,
         resolveScrollIndexMode,
-    } from "$lib/utils/songIndex";
-    import { intersect } from "$lib/utils/intersect";
+    } from "#lib/utils/songIndex.ts";
+    import { intersect } from "#lib/utils/intersect.ts";
     import { onDestroy, onMount } from "svelte";
-    import { scrollbackRegistry } from "$lib/utils/scrollback";
+    import { scrollbackRegistry } from "#lib/utils/scrollback.ts";
 
     const SORT_OPTIONS = [
         { value: "title", label: "Title" },

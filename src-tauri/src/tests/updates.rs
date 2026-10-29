@@ -225,7 +225,10 @@ mod tests {
         let bytes = include_bytes!("fixtures/update-0.5.0.nupkg");
         let mut asset = offer().TargetFullRelease;
         asset.Size = bytes.len() as u64;
-        asset.SHA256 = format!("{:X}", Sha256::digest(bytes));
+        asset.SHA256 = Sha256::digest(bytes)
+            .iter()
+            .map(|byte| format!("{byte:02X}"))
+            .collect();
         fs::write(
             feed.join("releases.win-x64.json"),
             serde_json::to_vec(&VelopackAssetFeed {

@@ -55,7 +55,7 @@ impl WindowsMediaController {
         let async_op = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()?;
 
         // Wait for the async operation to complete synchronously
-        let session_manager = async_op.get()?;
+        let session_manager = async_op.join()?;
 
         // Get the current session (active media playing in the system)
         let current_session = session_manager.GetCurrentSession();
@@ -71,7 +71,7 @@ impl WindowsMediaController {
     fn get_all_sessions(
     ) -> Result<Vec<GlobalSystemMediaTransportControlsSession>, Box<dyn StdError>> {
         let async_op = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()?;
-        let session_manager = async_op.get()?;
+        let session_manager = async_op.join()?;
 
         let sessions_list = session_manager.GetSessions()?;
         let mut sessions = Vec::new();
@@ -261,8 +261,8 @@ impl super::MediaController for WindowsMediaController {
                 let stream = InMemoryRandomAccessStream::new()?;
                 let writer = DataWriter::CreateDataWriter(&stream)?;
                 writer.WriteBytes(artwork_data)?;
-                writer.StoreAsync()?.get()?;
-                writer.FlushAsync()?.get()?;
+                writer.StoreAsync()?.join()?;
+                writer.FlushAsync()?.join()?;
                 writer.DetachStream()?;
 
                 stream.Seek(0)?;
@@ -472,7 +472,7 @@ impl super::MediaController for WindowsMediaController {
         {
             // Try to get system-wide media info first
             if let Ok(Some(session)) = Self::get_global_session() {
-                if let Ok(media_properties) = session.TryGetMediaPropertiesAsync()?.get() {
+                if let Ok(media_properties) = session.TryGetMediaPropertiesAsync()?.join() {
                     let title = media_properties.Title()?.to_string();
                     let artist = media_properties.Artist()?.to_string();
                     let album_artist = media_properties.AlbumArtist()?.to_string();
@@ -481,14 +481,14 @@ impl super::MediaController for WindowsMediaController {
                     // Try to get artwork
                     let mut artwork_data = None;
                     if let Ok(thumbnail) = media_properties.Thumbnail() {
-                        if let Ok(stream) = thumbnail.OpenReadAsync()?.get() {
+                        if let Ok(stream) = thumbnail.OpenReadAsync()?.join() {
                             use windows::Storage::Streams::DataReader;
 
                             let size = stream.Size()?;
                             if size > 0 && size < 10_000_000 {
                                 // Limit to 10MB
                                 let reader = DataReader::CreateDataReader(&stream)?;
-                                reader.LoadAsync(size as u32)?.get()?;
+                                reader.LoadAsync(size as u32)?.join()?;
 
                                 let mut buffer = vec![0u8; size as usize];
                                 reader.ReadBytes(&mut buffer)?;

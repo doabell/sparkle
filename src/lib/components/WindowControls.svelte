@@ -4,7 +4,7 @@
         getCurrentWindow,
         type Window as TauriWindow,
     } from "@tauri-apps/api/window";
-    import { miniPlayer } from "$lib/stores/miniPlayer";
+    import { miniPlayer } from "#lib/stores/miniPlayer.ts";
 
     let appWindow: TauriWindow | null = null;
     let maximized = $state(false);

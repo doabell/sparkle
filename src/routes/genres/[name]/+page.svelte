@@ -1,25 +1,25 @@
 <script lang="ts">
-    import { page } from "$app/stores";
-    import { getTracksByGenre, type Track as ApiTrack } from "$lib/api";
-    import { loadQueue } from "$lib/stores/playback";
-    import { uiPref } from "$lib/stores/uiPrefs";
-    import Loading from "$lib/components/Loading.svelte";
+    import { page } from "$app/state";
+    import { getTracksByGenre, type Track as ApiTrack } from "#lib/api.ts";
+    import { loadQueue } from "#lib/stores/playback.ts";
+    import { uiPref } from "#lib/stores/uiPrefs.ts";
+    import Loading from "#lib/components/Loading.svelte";
     import ScrollIndex, {
         type ScrollIndexEntry,
-    } from "$lib/components/ScrollIndex.svelte";
-    import TrackRow from "$lib/components/TrackRow.svelte";
-    import Select from "$lib/components/Select.svelte";
-    import SortDirButton from "$lib/components/SortDirButton.svelte";
-    import { songIndexLanguage } from "$lib/stores/songIndex";
-    import { windowPageTitle } from "$lib/stores/windowPageTitle";
+    } from "#lib/components/ScrollIndex.svelte";
+    import TrackRow from "#lib/components/TrackRow.svelte";
+    import Select from "#lib/components/Select.svelte";
+    import SortDirButton from "#lib/components/SortDirButton.svelte";
+    import { songIndexLanguage } from "#lib/stores/songIndex.ts";
+    import { windowPageTitle } from "#lib/stores/windowPageTitle.ts";
     import {
         createScrollIndexEntries,
         createGroupScrollIndexEntries,
         resolveScrollIndexMode,
-    } from "$lib/utils/songIndex";
-    import { intersect } from "$lib/utils/intersect";
+    } from "#lib/utils/songIndex.ts";
+    import { intersect } from "#lib/utils/intersect.ts";
     import { onDestroy } from "svelte";
-    import { createLatestRequest } from "$lib/utils/latestRequest";
+    import { createLatestRequest } from "#lib/utils/latestRequest.ts";
 
     const SORT_OPTIONS = [
         { value: "title", label: "Title" },
@@ -46,7 +46,7 @@
     const groupBy = uiPref<string>("genre-detail.groupBy", "album");
     const groupAsc = uiPref("genre-detail.groupAsc", true);
 
-    const genreName = $derived($page.params.name || "");
+    const genreName = $derived(page.params.name || "");
     const requests = createLatestRequest();
     onDestroy(requests.invalidate);
 

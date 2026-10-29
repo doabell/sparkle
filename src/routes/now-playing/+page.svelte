@@ -6,7 +6,7 @@
         seekLyrics,
         updateCurrentTrackLrcOffset,
         updateCurrentTrackLyricsSource,
-    } from "$lib/stores/playback";
+    } from "#lib/stores/playback.ts";
     import {
         getLyrics,
         getAlbumArt,
@@ -28,21 +28,21 @@
         type Track,
         type LyricCandidate,
         type LyricSearchResults,
-    } from "$lib/api";
-    import { cachedImageToUrl } from "$lib/utils/base64";
-    import { getFontStack } from "$lib/utils/fonts";
-    import { addToast } from "$lib/stores/toast";
+    } from "#lib/api.ts";
+    import { cachedImageToUrl } from "#lib/utils/base64.ts";
+    import { getFontStack } from "#lib/utils/fonts.ts";
+    import { addToast } from "#lib/stores/toast.ts";
     import { listen } from "@tauri-apps/api/event";
-    import { parseLrc, lrcFileOffsetMs } from "$lib/utils/lrc";
-    import SyncedLyrics from "$lib/components/SyncedLyrics.svelte";
-    import Select from "$lib/components/Select.svelte";
-    import SearchField from "$lib/components/SearchField.svelte";
-    import SearchFeedback from "$lib/components/SearchFeedback.svelte";
-    import { dialogFocus } from "$lib/utils/dialogFocus";
-    import ArtistCredits from "$lib/components/ArtistCredits.svelte";
-    import ArtistLinks from "$lib/components/ArtistLinks.svelte";
-    import LyricsOffsetControls from "$lib/components/LyricsOffsetControls.svelte";
-    import { nowPlayingLayout } from "$lib/stores/uiPrefs";
+    import { parseLrc, lrcFileOffsetMs } from "#lib/utils/lrc.ts";
+    import SyncedLyrics from "#lib/components/SyncedLyrics.svelte";
+    import Select from "#lib/components/Select.svelte";
+    import SearchField from "#lib/components/SearchField.svelte";
+    import SearchFeedback from "#lib/components/SearchFeedback.svelte";
+    import { dialogFocus } from "#lib/utils/dialogFocus.ts";
+    import ArtistCredits from "#lib/components/ArtistCredits.svelte";
+    import ArtistLinks from "#lib/components/ArtistLinks.svelte";
+    import LyricsOffsetControls from "#lib/components/LyricsOffsetControls.svelte";
+    import { nowPlayingLayout } from "#lib/stores/uiPrefs.ts";
 
     let lyrics = $state<Lyrics | null>(null);
     let loading = $state(false);

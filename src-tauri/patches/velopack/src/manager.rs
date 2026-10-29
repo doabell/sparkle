@@ -10,7 +10,7 @@ use crate::{
     constants,
     locator::{self, LocationContext, VelopackLocator, VelopackLocatorConfig},
     misc,
-    sources::UpdateSource,
+    sources::{UpdateSource, VelopackFlowSource},
     Error,
 };
 
@@ -164,6 +164,21 @@ pub enum UpdateCheck {
 }
 
 impl UpdateManager {
+    /// Create a new UpdateManager instance using a `VelopackFlowSource`, which retrieves
+    /// updates from the hosted Velopack Flow service (https://velopack.io).
+    /// This is a convenience function which is equivalent to creating a `VelopackFlowSource`
+    /// and passing it to `UpdateManager::new`.
+    /// This will return an error if the application is not yet installed.
+    /// ## Example:
+    /// ```rust
+    /// use velopack::*;
+    ///
+    /// let um = UpdateManager::new_flow(None, None);
+    /// ```
+    pub fn new_flow(options: Option<UpdateOptions>, locator: Option<VelopackLocatorConfig>) -> Result<UpdateManager, Error> {
+        UpdateManager::new(VelopackFlowSource::new(None), options, locator)
+    }
+
     /// Create a new UpdateManager instance using the specified UpdateSource.
     /// This will return an error if the application is not yet installed.
     /// ## Example:
@@ -484,12 +499,12 @@ impl UpdateManager {
             let delta_file = packages_dir.join(&delta.FileName);
             let partial_file = delta_file.with_extension("partial");
 
-            info!("Downloading delta package: '{}'", &delta.FileName);
+            info!("Downloading delta package: '{}'", delta.FileName);
             self.inner.source.download_release_entry(delta, &partial_file, None)?;
             self.verify_package_checksum(&partial_file, delta)?;
 
             fs::rename(&partial_file, &delta_file)?;
-            debug!("Successfully downloaded file: '{}'", &delta.FileName);
+            debug!("Successfully downloaded file: '{}'", delta.FileName);
             if let Some(progress) = &progress {
                 let _ = progress.send(((i as f64 / update.DeltasToTarget.len() as f64) * 70.0) as i16);
             }
@@ -614,7 +629,7 @@ impl UpdateManager {
         let pkg_path = self.inner.locator.get_packages_dir().join(&to_apply.FileName);
 
         if !pkg_path.exists() {
-            error!("Package does not exist on disk: '{:?}'", &pkg_path);
+            error!("Package does not exist on disk: '{:?}'", pkg_path);
             return Err(Error::FileNotFound(pkg_path));
         }
 

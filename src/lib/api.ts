@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import type { LogLevel } from "$lib/logger";
-import type { ThemeMode } from "$lib/utils/themeMode";
-import type { DiscordTemplateValues } from "$lib/utils/discord";
+import type { LogLevel } from "#lib/logger.ts";
+import type { ThemeMode } from "#lib/utils/themeMode.ts";
+import type { DiscordTemplateValues } from "#lib/utils/discord.ts";
 
 export interface AppStatus {
     db_path: string;

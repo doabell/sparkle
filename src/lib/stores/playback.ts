@@ -1,4 +1,4 @@
-import { logger } from "$lib/logger";
+import { logger } from "#lib/logger.ts";
 import { readable, writable } from "svelte/store";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -28,7 +28,7 @@ import {
     LYRICS_CHANGED_EVENT,
     PLAYBACK_STATE_EVENT,
     PLAYBACK_PROGRESS_EVENT,
-} from "$lib/api";
+} from "#lib/api.ts";
 
 export interface Track extends ApiTrack {}
 

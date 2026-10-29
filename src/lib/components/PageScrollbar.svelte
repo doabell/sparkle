@@ -3,7 +3,7 @@
         scrollbarGeometry,
         scrollbarKeyTarget,
         scrollTopFromThumb,
-    } from "$lib/utils/scrollbar";
+    } from "#lib/utils/scrollbar.ts";
 
     let {
         target,

@@ -1,20 +1,20 @@
 <script lang="ts">
-    import { getTracks, type Track as ApiTrack } from "$lib/api";
-    import { loadQueue } from "$lib/stores/playback";
-    import { uiPref } from "$lib/stores/uiPrefs";
-    import Loading from "$lib/components/Loading.svelte";
-    import { type ScrollIndexEntry } from "$lib/components/ScrollIndex.svelte";
-    import TrackRow from "$lib/components/TrackRow.svelte";
-    import Select from "$lib/components/Select.svelte";
-    import SortDirButton from "$lib/components/SortDirButton.svelte";
-    import { songIndexLanguage } from "$lib/stores/songIndex";
+    import { getTracks, type Track as ApiTrack } from "#lib/api.ts";
+    import { loadQueue } from "#lib/stores/playback.ts";
+    import { uiPref } from "#lib/stores/uiPrefs.ts";
+    import Loading from "#lib/components/Loading.svelte";
+    import { type ScrollIndexEntry } from "#lib/components/ScrollIndex.svelte";
+    import TrackRow from "#lib/components/TrackRow.svelte";
+    import Select from "#lib/components/Select.svelte";
+    import SortDirButton from "#lib/components/SortDirButton.svelte";
+    import { songIndexLanguage } from "#lib/stores/songIndex.ts";
     import {
         getSongCollator,
         createScrollIndexEntries,
         createGroupScrollIndexEntries,
         resolveScrollIndexMode,
-    } from "$lib/utils/songIndex";
-    import VirtualTrackList from "$lib/components/VirtualTrackList.svelte";
+    } from "#lib/utils/songIndex.ts";
+    import VirtualTrackList from "#lib/components/VirtualTrackList.svelte";
     import { onMount } from "svelte";
 
     const SORT_OPTIONS = [

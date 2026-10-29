@@ -1,5 +1,5 @@
-import { uiPref } from "$lib/stores/uiPrefs";
-import type { SongIndexLanguage } from "$lib/utils/songIndex";
+import { uiPref } from "#lib/stores/uiPrefs.ts";
+import type { SongIndexLanguage } from "#lib/utils/songIndex.ts";
 
 export const songIndexLanguage = uiPref<SongIndexLanguage>(
     "songs.indexLanguage",

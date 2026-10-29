@@ -1,22 +1,22 @@
 <script lang="ts">
-    import { logger } from "$lib/logger";
-    import { getArtists, getTracksByArtist, type Artist } from "$lib/api";
-    import { plural } from "$lib/utils/text";
-    import { loadQueue } from "$lib/stores/playback";
-    import { uiPref } from "$lib/stores/uiPrefs";
-    import Loading from "$lib/components/Loading.svelte";
+    import { logger } from "#lib/logger.ts";
+    import { getArtists, getTracksByArtist, type Artist } from "#lib/api.ts";
+    import { plural } from "#lib/utils/text.ts";
+    import { loadQueue } from "#lib/stores/playback.ts";
+    import { uiPref } from "#lib/stores/uiPrefs.ts";
+    import Loading from "#lib/components/Loading.svelte";
     import ScrollIndex, {
         type ScrollIndexEntry,
-    } from "$lib/components/ScrollIndex.svelte";
-    import Select from "$lib/components/Select.svelte";
-    import SortDirButton from "$lib/components/SortDirButton.svelte";
-    import ViewModeToggle from "$lib/components/ViewModeToggle.svelte";
-    import ArtistAvatar from "$lib/components/ArtistAvatar.svelte";
-    import { songIndexLanguage } from "$lib/stores/songIndex";
-    import { createScrollIndexEntries } from "$lib/utils/songIndex";
-    import { intersect } from "$lib/utils/intersect";
+    } from "#lib/components/ScrollIndex.svelte";
+    import Select from "#lib/components/Select.svelte";
+    import SortDirButton from "#lib/components/SortDirButton.svelte";
+    import ViewModeToggle from "#lib/components/ViewModeToggle.svelte";
+    import ArtistAvatar from "#lib/components/ArtistAvatar.svelte";
+    import { songIndexLanguage } from "#lib/stores/songIndex.ts";
+    import { createScrollIndexEntries } from "#lib/utils/songIndex.ts";
+    import { intersect } from "#lib/utils/intersect.ts";
     import { onDestroy, onMount } from "svelte";
-    import { scrollbackRegistry } from "$lib/utils/scrollback";
+    import { scrollbackRegistry } from "#lib/utils/scrollback.ts";
 
     const SORT_OPTIONS = [
         { value: "name", label: "Name" },

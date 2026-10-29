@@ -6,14 +6,14 @@
         getListeningStats,
         type Artist,
         type Album,
-    } from "$lib/api";
-    import { playback } from "$lib/stores/playback";
-    import { cachedImageToUrl } from "$lib/utils/base64";
-    import { plural } from "$lib/utils/text";
+    } from "#lib/api.ts";
+    import { playback } from "#lib/stores/playback.ts";
+    import { cachedImageToUrl } from "#lib/utils/base64.ts";
+    import { plural } from "#lib/utils/text.ts";
     import { onMount } from "svelte";
-    import Loading from "$lib/components/Loading.svelte";
-    import Artwork from "$lib/components/Artwork.svelte";
-    import ArtistAvatar from "$lib/components/ArtistAvatar.svelte";
+    import Loading from "#lib/components/Loading.svelte";
+    import Artwork from "#lib/components/Artwork.svelte";
+    import ArtistAvatar from "#lib/components/ArtistAvatar.svelte";
     import { goto } from "$app/navigation";
 
     let artists = $state<Artist[]>([]);

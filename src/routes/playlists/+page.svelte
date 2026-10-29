@@ -9,14 +9,14 @@
         getPlaylistCollageAlbumIds,
         refreshLiveMixes,
         type Playlist,
-    } from "$lib/api";
-    import { loadQueue } from "$lib/stores/playback";
-    import { uiPref } from "$lib/stores/uiPrefs";
-    import Loading from "$lib/components/Loading.svelte";
-    import CoverCollage from "$lib/components/CoverCollage.svelte";
-    import Select from "$lib/components/Select.svelte";
-    import SortDirButton from "$lib/components/SortDirButton.svelte";
-    import { addToast } from "$lib/stores/toast";
+    } from "#lib/api.ts";
+    import { loadQueue } from "#lib/stores/playback.ts";
+    import { uiPref } from "#lib/stores/uiPrefs.ts";
+    import Loading from "#lib/components/Loading.svelte";
+    import CoverCollage from "#lib/components/CoverCollage.svelte";
+    import Select from "#lib/components/Select.svelte";
+    import SortDirButton from "#lib/components/SortDirButton.svelte";
+    import { addToast } from "#lib/stores/toast.ts";
     import { onMount } from "svelte";
 
     const SORT_OPTIONS = [

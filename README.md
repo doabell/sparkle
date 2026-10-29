@@ -35,7 +35,7 @@ Your database, cache, and listening history stay local. Online providers are con
 
 ## Develop
 
-Install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/), Bun 1.3.14, and Rust 1.89:
+Install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/), Bun 1.4.4, and Rust 1.99.1:
 
 ```sh
 bun install --frozen-lockfile
@@ -43,6 +43,7 @@ bun run tauri dev
 ```
 
 Debug builds use a separate library and settings profile from installed builds.
+TypeScript stays on 6.x while `svelte-check` supports TypeScript 5 and 6.
 
 ## Documentation
 
