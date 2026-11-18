@@ -10,6 +10,7 @@ mod playback_commands;
 mod playback_observation;
 mod updates;
 mod window_icon;
+mod window_motion;
 
 use sparkle_core::{
     analytics, artwork_store, backup, cache, db_writer, http_client, library_scan, models,
@@ -611,6 +612,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            window_motion::set_window_transitions_enabled,
             updates::get_update_status,
             updates::check_for_updates,
             updates::download_update,

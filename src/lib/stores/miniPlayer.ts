@@ -1,5 +1,6 @@
 import { tick } from "svelte";
 import { writable } from "svelte/store";
+import { invoke } from "@tauri-apps/api/core";
 import {
     currentMonitor,
     getCurrentWindow,
@@ -43,6 +44,14 @@ interface WindowSnapshot {
     resizable: boolean;
     maximizable: boolean;
     alwaysOnTop: boolean;
+}
+
+async function setWindowTransitionsEnabled(enabled: boolean) {
+    try {
+        await invoke("set_window_transitions_enabled", { enabled });
+    } catch (error) {
+        console.warn("Failed to configure window transitions:", error);
+    }
 }
 
 // Reuse the main webview: there is still only one media session and one queue.
@@ -141,6 +150,7 @@ export function createMiniPlayer(
         }
         if (errors.length)
             throw new AggregateError(errors, "Window restore failed");
+        await setWindowTransitionsEnabled(true);
     }
 
     async function toggle() {
@@ -189,6 +199,9 @@ export function createMiniPlayer(
                     alwaysOnTop,
                 };
                 try {
+                    // Windows can enlarge the compact viewport during its minimize
+                    // transition. Disable it for the entire mini player session.
+                    await setWindowTransitionsEnabled(false);
                     if (fullscreen) await window.setFullscreen(false);
                     if (maximized) await window.unmaximize();
                     // Capture normal bounds as well as the maximized state so
