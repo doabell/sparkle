@@ -8,6 +8,7 @@ import {
     type Monitor,
 } from "@tauri-apps/api/window";
 import { createMiniPlayer } from "../src/lib/stores/miniPlayer";
+import { invoke } from "./support/platform";
 
 const normalSize = new PhysicalSize(1280, 720);
 const normalPosition = new PhysicalPosition(120, 80);
@@ -96,6 +97,7 @@ function fixture(getStorage = () => null, beforeShow = async () => {}) {
 }
 
 afterEach(() => {
+    invoke.mockReset();
     consoleError?.mockRestore();
     consoleError = undefined;
 });
@@ -113,6 +115,9 @@ test("mini player fits the scaled work area and restores the original window", a
     expect(native.alwaysOnTop).toBe(true);
     expect(native.resizable).toBe(false);
     expect(native.maximizable).toBe(false);
+    expect(invoke).toHaveBeenLastCalledWith("set_window_transitions_enabled", {
+        enabled: false,
+    });
 
     native.position = new PhysicalPosition(-900, 500);
     await player.toggle();
@@ -122,6 +127,9 @@ test("mini player fits the scaled work area and restores the original window", a
     expect(native.alwaysOnTop).toBe(false);
     expect(native.resizable).toBe(true);
     expect(native.maximizable).toBe(true);
+    expect(invoke).toHaveBeenLastCalledWith("set_window_transitions_enabled", {
+        enabled: true,
+    });
 
     await player.toggle();
     expect(native.position).toEqual(new PhysicalPosition(-900, 500));
@@ -169,6 +177,10 @@ test("rolls back if pinning fails after resizing", async () => {
     expect(native.maximizable).toBe(true);
     expect(native.alwaysOnTop).toBe(false);
     expect(errors).toHaveLength(1);
+    expect(invoke.mock.calls).toEqual([
+        ["set_window_transitions_enabled", { enabled: false }],
+        ["set_window_transitions_enabled", { enabled: true }],
+    ]);
 });
 
 test("a failed restore still unpins and keeps the snapshot for retry", async () => {
@@ -183,6 +195,9 @@ test("a failed restore still unpins and keeps the snapshot for retry", async () 
     expect(native.alwaysOnTop).toBe(false);
     expect(get(player)).toEqual({ active: true, busy: false, pinned: true });
     expect(errors).toHaveLength(1);
+    expect(invoke.mock.calls).toEqual([
+        ["set_window_transitions_enabled", { enabled: false }],
+    ]);
     window.setSize = setSize;
     await player.toggle();
     expect(get(player)).toEqual({ active: false, busy: false, pinned: true });

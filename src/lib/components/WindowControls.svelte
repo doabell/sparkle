@@ -91,6 +91,7 @@
         class="window-control"
         aria-label="Minimize"
         title="Minimize"
+        disabled={$miniPlayer.busy}
         onclick={() => void withWindow((window) => window.minimize())}
     >
         <svg viewBox="0 0 16 16" aria-hidden="true">

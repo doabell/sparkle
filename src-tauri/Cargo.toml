@@ -70,7 +70,7 @@ tauri-plugin-media = { path = "patches/tauri-plugin-media" }
 velopack = { path = "patches/velopack" }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61.2", features = ["Win32_Graphics_GdiPlus", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Graphics_Dwm", "Win32_Graphics_GdiPlus", "Win32_UI_WindowsAndMessaging"] }
 velopack = "=1.2.161"
 
 # Sound Check is intentionally a background task, but unoptimized true-peak
