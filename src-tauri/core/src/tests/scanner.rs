@@ -4,6 +4,53 @@ use lofty::config::WriteOptions;
 use lofty::tag::TagExt;
 
 #[test]
+fn album_added_timestamp_survives_rescans_and_additional_tracks() {
+    let root = TestDir::new();
+    root.audio("first.flac");
+    let mut conn = monitored_library(root.path());
+    scan_library(&mut conn, &Settings::default(), false, &root.join("cache")).unwrap();
+    let (album_id, created_at): (i64, i64) = conn
+        .query_row("SELECT id, created_at FROM albums", [], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })
+        .unwrap();
+    assert!(created_at > 0);
+
+    // Use an earlier timestamp so a reset is visible without waiting for
+    // the scanner's second-resolution clock to advance.
+    let first_added = 1_700_000_000_i64;
+    conn.execute(
+        "UPDATE albums SET created_at = ? WHERE id = ?",
+        rusqlite::params![first_added, album_id],
+    )
+    .unwrap();
+    for force in [false, true] {
+        scan_library(&mut conn, &Settings::default(), force, &root.join("cache")).unwrap();
+        let timestamp: i64 = conn
+            .query_row(
+                "SELECT created_at FROM albums WHERE id = ?",
+                [album_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(timestamp, first_added);
+    }
+
+    root.audio("second.flac");
+    let result = scan_library(&mut conn, &Settings::default(), false, &root.join("cache")).unwrap();
+    assert_eq!(result.added, 1);
+    let album: (i64, i64) = conn
+        .query_row(
+            "SELECT al.created_at, COUNT(t.id) FROM albums al \
+             JOIN tracks t ON t.album_id = al.id WHERE al.id = ? GROUP BY al.id",
+            [album_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(album, (first_added, 2));
+}
+
+#[test]
 fn full_rescan_refreshes_tags_without_rehashing_unchanged_audio() {
     let root = TestDir::new();
     root.audio("tone.flac");

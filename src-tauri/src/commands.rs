@@ -589,9 +589,16 @@ pub fn get_artists(state: State<'_, AppState>) -> Result<Vec<Artist>, String> {
 #[allow(non_snake_case)]
 pub fn get_albums(state: State<'_, AppState>, artistId: Option<i64>) -> Result<Vec<Album>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
+    albums_with_connection(&conn, artistId)
+}
+
+fn albums_with_connection(
+    conn: &rusqlite::Connection,
+    artist_id: Option<i64>,
+) -> Result<Vec<Album>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT al.id, al.title, al.year, COUNT(DISTINCT t.id) AS track_count \
+            "SELECT al.id, al.title, al.year, COUNT(DISTINCT t.id) AS track_count, al.created_at \
              FROM albums al \
              LEFT JOIN available_tracks t ON t.album_id = al.id \
              WHERE (? IS NULL OR al.id IN ( \
@@ -601,11 +608,12 @@ pub fn get_albums(state: State<'_, AppState>, artistId: Option<i64>) -> Result<V
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map(rusqlite::params![artistId, artistId], |row| {
+        .query_map(rusqlite::params![artist_id, artist_id], |row| {
             Ok(Album {
                 id: row.get(0)?,
                 title: row.get(1)?,
                 year: row.get(2)?,
+                created_at: row.get(4)?,
                 artist_ids: Vec::new(),
                 artist_names: Vec::new(),
                 track_count: row.get(3)?,
@@ -616,7 +624,7 @@ pub fn get_albums(state: State<'_, AppState>, artistId: Option<i64>) -> Result<V
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
     for album in &mut albums {
-        let pairs = album_artist_pairs(&conn, album.id)?;
+        let pairs = album_artist_pairs(conn, album.id)?;
         album.artist_ids = pairs.iter().map(|(id, _)| *id).collect();
         album.artist_names = pairs.into_iter().map(|(_, name)| name).collect();
     }
@@ -626,9 +634,13 @@ pub fn get_albums(state: State<'_, AppState>, artistId: Option<i64>) -> Result<V
 #[tauri::command]
 pub fn get_album(state: State<'_, AppState>, id: i64) -> Result<Album, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
+    album_with_connection(&conn, id)
+}
+
+fn album_with_connection(conn: &rusqlite::Connection, id: i64) -> Result<Album, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT al.id, al.title, al.year, COUNT(DISTINCT t.id) AS track_count \
+            "SELECT al.id, al.title, al.year, COUNT(DISTINCT t.id) AS track_count, al.created_at \
              FROM albums al \
              LEFT JOIN available_tracks t ON t.album_id = al.id \
              WHERE al.id = ? \
@@ -641,6 +653,7 @@ pub fn get_album(state: State<'_, AppState>, id: i64) -> Result<Album, String> {
                 id: row.get(0)?,
                 title: row.get(1)?,
                 year: row.get(2)?,
+                created_at: row.get(4)?,
                 artist_ids: Vec::new(),
                 artist_names: Vec::new(),
                 track_count: row.get(3)?,
@@ -651,7 +664,7 @@ pub fn get_album(state: State<'_, AppState>, id: i64) -> Result<Album, String> {
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
     let mut album = albums.pop().ok_or_else(|| "album not found".to_string())?;
-    let pairs = album_artist_pairs(&conn, album.id)?;
+    let pairs = album_artist_pairs(conn, album.id)?;
     album.artist_ids = pairs.iter().map(|(id, _)| *id).collect();
     album.artist_names = pairs.into_iter().map(|(_, name)| name).collect();
     Ok(album)
@@ -1514,7 +1527,7 @@ fn search_with_connection(
 
     let mut album_stmt = conn
         .prepare(
-            "SELECT al.id, al.title, al.year, COUNT(DISTINCT t.id) AS track_count \
+            "SELECT al.id, al.title, al.year, COUNT(DISTINCT t.id) AS track_count, al.created_at \
              FROM albums al LEFT JOIN available_tracks t ON t.album_id = al.id \
              WHERE al.title LIKE ?1 ESCAPE '\\' \
              GROUP BY al.id HAVING COUNT(t.id) > 0 ORDER BY al.title LIMIT 20",
@@ -1526,6 +1539,7 @@ fn search_with_connection(
                 id: row.get(0)?,
                 title: row.get(1)?,
                 year: row.get(2)?,
+                created_at: row.get(4)?,
                 artist_ids: Vec::new(),
                 artist_names: Vec::new(),
                 track_count: row.get(3)?,

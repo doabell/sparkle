@@ -34,6 +34,8 @@ pub struct Album {
     pub id: i64,
     pub title: String,
     pub year: Option<i64>,
+    /// Unix timestamp when the album was first added to the library.
+    pub created_at: i64,
     #[serde(default)]
     pub artist_ids: Vec<i64>,
     pub artist_names: Vec<String>,

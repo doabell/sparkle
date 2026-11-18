@@ -14,6 +14,34 @@ fn library_fixture() -> rusqlite::Connection {
     conn
 }
 
+#[test]
+fn album_reads_expose_the_original_added_timestamp_without_a_release_year() {
+    let conn = library_fixture();
+    let created_at = 1_700_000_000_i64;
+    conn.execute(
+        "UPDATE albums SET created_at = ? WHERE id = 1",
+        [created_at],
+    )
+    .unwrap();
+
+    let listed = albums_with_connection(&conn, None).unwrap();
+    let detail = album_with_connection(&conn, 1).unwrap();
+    let search = search_with_connection(&conn, "Album").unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(search.albums.len(), 1);
+    for album in [&listed[0], &detail, &search.albums[0]] {
+        assert_eq!(album.id, 1);
+        assert_eq!(album.year, None);
+        assert_eq!(album.created_at, created_at);
+        assert_eq!(album.track_count, Some(2));
+        assert_eq!(album.artist_names, vec!["Alice", "Bob"]);
+        assert_eq!(
+            serde_json::to_value(album).unwrap()["created_at"],
+            created_at
+        );
+    }
+}
+
 fn playlist_members(conn: &rusqlite::Connection, id: i64) -> Vec<(i64, i64)> {
     conn.prepare(
         "SELECT track_id,position FROM playlist_tracks WHERE playlist_id=? ORDER BY position",
