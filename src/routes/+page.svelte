@@ -9,6 +9,8 @@
     } from "#lib/api.ts";
     import { playback } from "#lib/stores/playback.ts";
     import { cachedImageToUrl } from "#lib/utils/base64.ts";
+    import { getRecentlyAddedAlbums } from "#lib/utils/albums.ts";
+    import { fitGridRow } from "#lib/utils/fitGridRow.ts";
     import { plural } from "#lib/utils/text.ts";
     import { onMount } from "svelte";
     import Loading from "#lib/components/Loading.svelte";
@@ -18,6 +20,8 @@
 
     let artists = $state<Artist[]>([]);
     let albums = $state<Album[]>([]);
+    let albumColumns = $state(1);
+    let artistColumns = $state(1);
     let loading = $state(true);
     let error = $state<string | null>(null);
     let heroArtUrl = $state("");
@@ -36,21 +40,16 @@
             );
             const frequentArtists = (listeningStats?.top_artists ?? [])
                 .map((artist) => artistsById.get(artist.artist_id))
-                .filter((artist): artist is Artist => Boolean(artist))
-                .slice(0, 6);
-            // Keep the existing library order until listening history has
-            // produced a usable ranking.
-            artists = (
-                frequentArtists.length > 0 ? frequentArtists : artistsData
-            ).slice(0, 6);
-            // Recent albums = newest first.
-            albums = albumsData
-                .sort(
-                    (a, b) =>
-                        (b.year ?? 0) - (a.year ?? 0) ||
-                        a.title.localeCompare(b.title),
-                )
-                .slice(0, 6);
+                .filter((artist): artist is Artist => Boolean(artist));
+            // Fill any remaining room in library order after ranked artists.
+            const frequentIds = new Set(
+                frequentArtists.map((artist) => artist.id),
+            );
+            artists = [
+                ...frequentArtists,
+                ...artistsData.filter((artist) => !frequentIds.has(artist.id)),
+            ];
+            albums = getRecentlyAddedAlbums(albumsData);
             if (albums[0]) {
                 try {
                     const art = await getAlbumArt(albums[0].id);
@@ -198,9 +197,12 @@
 
         {#if albums.length > 0}
             <section class="section">
-                <h2 class="section-title">Recent Albums</h2>
-                <ul class="card-grid">
-                    {#each albums as album, index (album.id)}
+                <h2 class="section-title">Recently Added</h2>
+                <ul
+                    class="card-grid"
+                    use:fitGridRow={(columns) => (albumColumns = columns)}
+                >
+                    {#each albums.slice(0, albumColumns) as album, index (album.id)}
                         <li
                             class="card-grid-item card-enter"
                             style="animation-delay: {index * 40}ms"
@@ -229,8 +231,11 @@
         {#if artists.length > 0}
             <section class="section">
                 <h2 class="section-title">Featured Artists</h2>
-                <ul class="card-grid">
-                    {#each artists as artist, index (artist.id)}
+                <ul
+                    class="card-grid"
+                    use:fitGridRow={(columns) => (artistColumns = columns)}
+                >
+                    {#each artists.slice(0, artistColumns) as artist, index (artist.id)}
                         <li
                             class="card-grid-item artist card-enter"
                             style="animation-delay: {index * 40}ms"

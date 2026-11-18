@@ -107,7 +107,9 @@ export interface Artist {
 export interface Album {
     id: number;
     title: string;
-    year?: number;
+    year?: number | null;
+    /** Unix timestamp when the album was first added to the library. */
+    created_at: number;
     artist_ids?: number[];
     artist_names?: string[];
     track_count?: number;

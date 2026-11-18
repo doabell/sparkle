@@ -5,6 +5,8 @@ import Lists from "./Lists.svelte";
 import ArtworkRows from "./ArtworkRows.svelte";
 import MiniPlayer from "../../src/lib/components/MiniPlayer.svelte";
 import Playlist from "../../src/routes/playlists/[id]/+page.svelte";
+import Home from "../../src/routes/+page.svelte";
+import appCss from "../../src/app.css" with { type: "text" };
 import { navigate, navigations } from "./router.svelte.ts";
 import { getAlbumArt, getArtistImage } from "../../src/lib/api";
 import { playback } from "../../src/lib/stores/playback";
@@ -63,6 +65,17 @@ let removal;
 let deletion;
 const imageReads = [];
 const pendingImages = new Map();
+const homeAlbums = Array.from({ length: 12 }, (_, i) => ({
+    id: 9200 + i,
+    title: `Album ${i}`,
+    year: i === 0 ? 2026 : null,
+    created_at: 1_700_000_000 + i,
+    artist_names: [],
+}));
+const homeArtists = Array.from({ length: 12 }, (_, i) => ({
+    id: 9300 + i,
+    name: `Artist ${i}`,
+}));
 const imageUrl =
     "data:image/svg+xml," +
     encodeURIComponent(
@@ -70,6 +83,10 @@ const imageUrl =
     );
 window.__TAURI_INTERNALS__ = {
     invoke: async (command, args) => {
+        if (command === "get_albums") return homeAlbums;
+        if (command === "get_artists") return homeArtists;
+        if (command === "get_listening_stats")
+            return { top_artists: [{ artist_id: 9305 }, { artist_id: 9303 }] };
         if (command === "get_playlist") {
             const read = deferred();
             reads.push({ args, ...read });
@@ -438,6 +455,88 @@ async function miniPlayerArtwork() {
     }
 }
 
+async function homeRows() {
+    // Headless virtual time can advance timers without rendering a frame.
+    // Deliver resize notifications explicitly while measuring real CSS layout.
+    const originalObserver = window.ResizeObserver;
+    const resizeObservers = new Map();
+    window.ResizeObserver = class extends originalObserver {
+        constructor(callback) {
+            super(callback);
+            resizeObservers.set(this, callback);
+        }
+        disconnect() {
+            resizeObservers.delete(this);
+            super.disconnect();
+        }
+    };
+    const stylesheet = document.createElement("style");
+    stylesheet.textContent = appCss;
+    document.head.append(stylesheet);
+    const originalWidth = target.style.width;
+    target.style.width = "780px";
+    const app = mount(Home, { target });
+    try {
+        await settle();
+        const grids = [...target.querySelectorAll(".card-grid")];
+        check("Home has album and artist rows", grids.length, 2);
+        const expectedAlbums = [...homeAlbums]
+            .reverse()
+            .map((album) => album.id);
+        const expectedArtists = [
+            9305, 9303, 9300, 9301, 9302, 9304, 9306, 9307,
+        ];
+        for (const [width, columns] of [
+            [780, 4],
+            [1600, 8],
+            [380, 2],
+        ]) {
+            target.style.width = `${width}px`;
+            for (const [observer, notify] of resizeObservers)
+                notify([], observer);
+            await settle();
+            for (const [index, grid] of grids.entries()) {
+                const cards = [...grid.children];
+                check(
+                    `Home row ${index} count at ${width}px`,
+                    cards.length,
+                    columns,
+                );
+                check(
+                    `Home row ${index} stays on one line at ${width}px`,
+                    new Set(cards.map((card) => card.offsetTop)).size,
+                    1,
+                );
+                const ids = cards.map((card) =>
+                    Number(
+                        card
+                            .querySelector("a")
+                            .getAttribute("href")
+                            .split("/")
+                            .pop(),
+                    ),
+                );
+                check(
+                    `Home row ${index} preserves ranking at ${width}px`,
+                    JSON.stringify(ids),
+                    JSON.stringify(
+                        (index === 0 ? expectedAlbums : expectedArtists).slice(
+                            0,
+                            columns,
+                        ),
+                    ),
+                );
+            }
+        }
+    } finally {
+        await unmount(app);
+        check("Home releases its resize observers", resizeObservers.size, 0);
+        window.ResizeObserver = originalObserver;
+        target.style.width = originalWidth;
+        stylesheet.remove();
+    }
+}
+
 try {
     await lists();
     await overlappingPlaylistRead(false);
@@ -445,6 +544,7 @@ try {
     await playlistTeardown();
     await artworkRecycling();
     await miniPlayerArtwork();
+    await homeRows();
 } catch (error) {
     result.failures.push(String(error.stack ?? error));
 } finally {
